@@ -1,19 +1,79 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.03
-KEY CHANGES from v3.02:
-   - ADDED: Preserves anchorRaw and perfRaw values in adjustedHandicaps
-   - ADDED: Stores derived data (raw results for Anc and Perf columns)
-   - Ensures all calculated handicap data is saved to Firestore
-   - Prevents loss of raw values when viewing completed games
-   - All existing functionality preserved
-DEPENDS ON: Firebase Firestore
+VERSION: 3.04
+KEY CHANGES from v3.03:
+   - CHANGED: upsertPendingRecord() now uses WRV.write() and WRV.update() for reliability
+   - CHANGED: updateWithHandicap() now uses WRV.update() for reliability
+   - ADDED: Fallback to direct write/update if WRV not available
+   - PRESERVED: deleteArchiveRecord() unchanged (WRV doesn't support delete)
+   - PRESERVED: ALL v3.03 functions and API unchanged
+   - PRESERVED: ALL existing functionality
+DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
 var HistoryRecord = (function() {
     
     var COLLECTION = "historyGames";
+    
+    // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Helper: WRV write with callback (callback compatible)
+    // ============================================================
+    function wrw(collection, docId, data, callback) {
+        if (typeof WRV !== 'undefined' && WRV.write) {
+            WRV.write(collection, docId, data, function(err, result) {
+                if (err) {
+                    if (callback) callback(err);
+                } else {
+                    if (callback) callback(null, result);
+                }
+            });
+        } else {
+            // Fallback: direct write
+            console.warn('[HistoryRecord] WRV not available, using direct write');
+            var db = getDb();
+            db.collection(collection).doc(docId).set(data)
+                .then(function() {
+                    if (callback) callback(null);
+                })
+                .catch(function(err) {
+                    if (callback) callback(err);
+                });
+        }
+    }
+    
+    // ============================================================
+    // Helper: WRV update with callback (callback compatible)
+    // ============================================================
+    function wru(collection, docId, data, callback) {
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            WRV.update(collection, docId, data, function(err, result) {
+                if (err) {
+                    if (callback) callback(err);
+                } else {
+                    if (callback) callback(null, result);
+                }
+            });
+        } else {
+            // Fallback: direct update
+            console.warn('[HistoryRecord] WRV not available, using direct update');
+            var db = getDb();
+            db.collection(collection).doc(docId).update(data)
+                .then(function() {
+                    if (callback) callback(null);
+                })
+                .catch(function(err) {
+                    if (callback) callback(err);
+                });
+        }
+    }
     
     // ============================================================
     // Generate fixed document ID from game ID
@@ -77,6 +137,7 @@ var HistoryRecord = (function() {
     // Create or update archive record (UPSERT with fixed ID)
     // Stores data strings directly - NO conversion
     // NEW v3.02: Uses fixed document ID (gameId + "_H")
+    // v3.04: Uses WRV for reliability
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -124,11 +185,16 @@ var HistoryRecord = (function() {
                         results: results
                     };
                     
-                    return firebase.firestore().collection(COLLECTION).doc(docId).update(updateData)
-                        .then(function() {
+                    // Use WRV for reliable Firestore update
+                    wru(COLLECTION, docId, updateData, function(err) {
+                        if (err) {
+                            console.error("Error updating archive record:", err);
+                            if (callback) callback(err, null);
+                        } else {
                             console.log("Archive record updated:", docId);
                             if (callback) callback(null, docId);
-                        });
+                        }
+                    });
                     
                 } else {
                     // CREATE new record
@@ -209,11 +275,16 @@ var HistoryRecord = (function() {
                         archiveId: docId
                     };
                     
-                    return firebase.firestore().collection(COLLECTION).doc(docId).set(archiveData)
-                        .then(function() {
+                    // Use WRV for reliable Firestore write
+                    wrw(COLLECTION, docId, archiveData, function(err) {
+                        if (err) {
+                            console.error("Error creating archive record:", err);
+                            if (callback) callback(err, null);
+                        } else {
                             console.log("New archive record created:", docId);
                             if (callback) callback(null, docId);
-                        });
+                        }
+                    });
                 }
             })
             .catch(function(err) {
@@ -225,6 +296,7 @@ var HistoryRecord = (function() {
     // ============================================================
     // Update with handicap adjustment (mark as completed)
     // v3.03: Now preserves anchorRaw and perfRaw values
+    // v3.04: Uses WRV for reliability
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -284,15 +356,16 @@ var HistoryRecord = (function() {
             "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        firebase.firestore().collection(COLLECTION).doc(archiveId).update(updatePayload)
-            .then(function() {
-                console.log("Archive record completed with handicap:", archiveId);
-                if (callback) callback(null);
-            })
-            .catch(function(err) {
+        // Use WRV for reliable Firestore update
+        wru(COLLECTION, archiveId, updatePayload, function(err) {
+            if (err) {
                 console.error("Error updating archive record:", err);
                 if (callback) callback(err);
-            });
+            } else {
+                console.log("Archive record completed with handicap:", archiveId);
+                if (callback) callback(null);
+            }
+        });
     }
     
     // ============================================================
@@ -388,7 +461,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Delete archive record
+    // Delete archive record - UNCHANGED (WRV doesn't support delete)
     // ============================================================
     
     function deleteArchiveRecord(archiveId, callback) {
@@ -435,7 +508,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Public API
+    // Public API - UNCHANGED
     // ============================================================
     
     return {
@@ -456,13 +529,14 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.03
-KEY CHANGES from v3.02:
-   - ADDED: Preserves anchorRaw and perfRaw values in adjustedHandicaps
-   - ADDED: Stores derived data (raw results for Anc and Perf columns)
-   - Ensures all calculated handicap data is saved to Firestore
-   - Prevents loss of raw values when viewing completed games
-   - All existing functionality preserved
-DEPENDS ON: Firebase Firestore
+VERSION: 3.04
+KEY CHANGES from v3.03:
+   - CHANGED: upsertPendingRecord() now uses WRV.write() and WRV.update() for reliability
+   - CHANGED: updateWithHandicap() now uses WRV.update() for reliability
+   - ADDED: Fallback to direct write/update if WRV not available
+   - PRESERVED: deleteArchiveRecord() unchanged (WRV doesn't support delete)
+   - PRESERVED: ALL v3.03 functions and API unchanged
+   - PRESERVED: ALL existing functionality
+DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */

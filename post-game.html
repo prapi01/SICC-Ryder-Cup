@@ -1,13 +1,17 @@
 <!--
 FILE: post-game.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.04
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
+   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
+   - ADDED: js/history-record.js (v3.04) for history record operations
+   - ADDED: Firebase Storage and html2canvas SDKs
+   - ADDED: copyCelebrationPhoto() call in SEE RESULTS handler
+   - UPDATED: game-data.js to v2.08 (WRV-integrated)
+   - UPDATED: sign-card.js to v1.19 (WRV-integrated)
+   - PRESERVED: All v1.05 UI design and functionality
+   - PRESERVED: Dark theme, modal-based layout, all original styling
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -20,18 +24,29 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=1.05"></script>
-    <script src="js/session.js?v=1.05"></script>
-    <script src="js/settings.js?v=1.05"></script>
-    <script src="js/modal.js?v=1.05"></script>
-    <script src="js/waiting-screen.js?v=1.05"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    
+    <!-- html2canvas for celebration capture -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    
+    <script src="js/firebase-config.js?v=1.06"></script>
+    <script src="js/session.js?v=1.06"></script>
+    <script src="js/settings.js?v=1.06"></script>
+    <script src="js/modal.js?v=1.06"></script>
+    <script src="js/waiting-screen.js?v=1.06"></script>
     <script src="js/game-order.js?v=1.00"></script>
-    <script src="js/game-data.js?v=2.07"></script>
+    
+    <!-- WRV Core - MUST be loaded before dependent files -->
+    <script src="js/wrv.js?v=1.02"></script>
+    <script src="js/celebration-photo.js?v=1.01"></script>
+    <script src="js/history-record.js?v=3.04"></script>
+    
+    <script src="js/game-data.js?v=2.08"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/sign-card.js?v=1.18"></script>
+    <script src="js/sign-card.js?v=1.19"></script>
     <script src="js/firebase-retry.js"></script>
     
     <style>
@@ -176,7 +191,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
 // ============================================================
@@ -189,10 +204,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.05: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v1.06: WRV integration
 // ============================================================
-var APP_VERSION = "1.05";
-var CACHE_KEY = "post_game_version_v105";
+var APP_VERSION = "1.06";
+var CACHE_KEY = "post_game_version_v106";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -210,8 +225,9 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.05";
-console.log("[POST-GAME] Initializing v1.05 - Added settings.js zoom control");
+window.POST_GAME_PAGE_VERSION = "1.06";
+console.log("[POST-GAME] Initializing v1.06 - WRV integration");
+console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
 // Main Logic
@@ -244,6 +260,18 @@ function showGameCompleteModal() {
     
     document.getElementById('seeResultsBtn').addEventListener('click', function() {
         console.log("[POST-GAME] SEE RESULTS clicked");
+        
+        // Check for celebration photo
+        if (typeof copyCelebrationPhoto === 'function') {
+            console.log('[POST-GAME] 📸 Checking for celebration photo');
+            copyCelebrationPhoto(gameId, function(err) {
+                if (err) {
+                    console.warn('[POST-GAME] Celebration photo copy failed:', err);
+                } else {
+                    console.log('[POST-GAME] Celebration photo ready');
+                }
+            });
+        }
         
         // Store celebration data and go to celebration
         var players = gameData.players || [];
@@ -407,13 +435,17 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.04
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
+   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
+   - ADDED: js/history-record.js (v3.04) for history record operations
+   - ADDED: Firebase Storage and html2canvas SDKs
+   - ADDED: copyCelebrationPhoto() call in SEE RESULTS handler
+   - UPDATED: game-data.js to v2.08 (WRV-integrated)
+   - UPDATED: sign-card.js to v1.19 (WRV-integrated)
+   - PRESERVED: All v1.05 UI design and functionality
+   - PRESERVED: Dark theme, modal-based layout, all original styling
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->

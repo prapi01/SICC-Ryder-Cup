@@ -1,17 +1,19 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
-   - All order-related functions now delegate to GameOrder
-   - Maintains backward compatibility with existing API
-   - All other functionality unchanged (data strings, saving, loading, etc.)
+VERSION: 4.11
+KEY CHANGES from v4.10:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18))
+     - f1IntraMatches: {} (was new Array(18))
+     - f2IntraMatches: {} (was new Array(18))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: ALL other functionality from v4.10 unchanged
 DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.07
+// FILE: js/game-data.js - VERSION 4.11
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -45,6 +47,26 @@ var GameData = (function() {
     
     var dataCallbacks = [];
     var errorCallbacks = [];
+    
+    // Track WRV recovery keys to prevent duplicate runs
+    var wrvRecoveryKeys = {};
+    
+    // ============================================================
+    // v4.02: Timestamp Helper for Debug Logs
+    // ============================================================
+    
+    function getTimestamp() {
+        var now = new Date();
+        var h = String(now.getHours()).padStart(2, '0');
+        var m = String(now.getMinutes()).padStart(2, '0');
+        var s = String(now.getSeconds()).padStart(2, '0');
+        var ms = String(now.getMilliseconds()).padStart(3, '0');
+        return h + ':' + m + ':' + s + '.' + ms;
+    }
+    
+    function logWithTimestamp(prefix, message) {
+        console.log('[' + getTimestamp() + '] ' + prefix + ' ' + message);
+    }
     
     // ============================================================
     // SHOTGUN START HELPER FUNCTIONS - Now delegate to GameOrder
@@ -432,20 +454,28 @@ var GameData = (function() {
         return newData;
     }
     
+    // ============================================================
+    // v4.11: initializeEmptyResults - OBJECTS instead of ARRAYS
+    // Firestore does NOT support nested arrays (arrays inside arrays)
+    // Using objects: matchResults[0] works the same as array[0]
+    // ============================================================
+    
     function initializeEmptyResults() {
         return {
             version: 1,
-            matchResults: new Array(18),
-            f1IntraMatches: new Array(18),
-            f2IntraMatches: new Array(18),
+            matchResults: {},                 // v4.11: Object with position keys (was new Array(18))
+            f1IntraMatches: {},               // v4.11: Object with position keys (was new Array(18))
+            f2IntraMatches: {},               // v4.11: Object with position keys (was new Array(18))
             game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
             game2: {
                 flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
                 flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
                 pointsA: new Array(18).fill(1),
-                pointsB: new Array(18).fill(1)
+                pointsB: new Array(18).fill(1),
+                displayT1: new Array(18).fill("AS"),
+                displayT2: new Array(18).fill("AS")
             },
-            game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
+            game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5), displayStrk: new Array(18).fill("AS") },
             tr: { 
                 teamA: new Array(18).fill(null), 
                 teamB: new Array(18).fill(null), 
@@ -457,6 +487,10 @@ var GameData = (function() {
             playerTotals: {}
         };
     }
+    
+    // ============================================================
+    // v4.10: resetFullGame - NESTED structure for flight data
+    // ============================================================
     
     function resetFullGame(gameIdParam, startingHoleParam, courseParArray, callback) {
         if (!gameIdParam) {
@@ -471,13 +505,18 @@ var GameData = (function() {
         
         var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
         
+        // v4.10: NESTED structure - flight data inside f1/f2 objects
         var resetData = {
-            "f1.d": rotatedData,
-            "f1.se": false,
-            "f1.x": false,
-            "f2.d": rotatedData,
-            "f2.se": false,
-            "f2.x": false,
+            "f1": {
+                d: rotatedData,
+                se: false,
+                x: false
+            },
+            "f2": {
+                d: rotatedData,
+                se: false,
+                x: false
+            },
             "locks.f1": null,
             "locks.f2": null,
             "currentHoleF1": 1,
@@ -610,42 +649,197 @@ var GameData = (function() {
         return "scheduledGames";
     }
     
+    // ============================================================
+    // v4.01: generateWRVKey - Create unique key for WRV recovery
+    // ============================================================
+    
+    function generateWRVKey(flight, holeNumber) {
+        return gameId + '_' + flight + '_' + holeNumber + '_' + Date.now();
+    }
+    
+    // ============================================================
+    // v4.02: startWRVVerification - Enhanced debug logging
+    // ============================================================
+    
+    function startWRVVerification(flight, holeNumber, newData) {
+        var timestamp = getTimestamp();
+        logWithTimestamp('[WRV-VERIFY]', '===== START WRV VERIFICATION =====');
+        logWithTimestamp('[WRV-VERIFY]', 'flight=' + flight + ', hole=' + holeNumber);
+        logWithTimestamp('[WRV-VERIFY]', 'newData (first 30 chars): ' + (newData ? newData.substring(0, 30) + '...' : 'undefined'));
+        
+        // Check if WRV is available
+        if (typeof WRV === 'undefined') {
+            logWithTimestamp('[WRV-VERIFY]', '❌ WRV is UNDEFINED - not loaded!');
+            return;
+        }
+        
+        if (typeof WRV.recover !== 'function') {
+            logWithTimestamp('[WRV-VERIFY]', '❌ WRV.recover is NOT a function!');
+            logWithTimestamp('[WRV-VERIFY]', 'WRV object keys: ' + Object.keys(WRV).join(', '));
+            return;
+        }
+        
+        logWithTimestamp('[WRV-VERIFY]', '✅ WRV is available and WRV.recover is a function');
+        logWithTimestamp('[WRV-VERIFY]', 'WRV version: ' + (window.WRV_VERSION || 'unknown'));
+        
+        var collection = getCollectionName();
+        var recoveryKey = generateWRVKey(flight, holeNumber);
+        var flightField = (flight === 1) ? 'f1' : 'f2';
+        var otherFlightField = (flight === 1) ? 'f2' : 'f1';
+        
+        // Build the correct update payload based on local data
+        var localFlightData = (flight === 1) ? flight1Data.data : flight2Data.data;
+        var localSaveEvent = (flight === 1) ? flight1Data.saveEvent : flight2Data.saveEvent;
+        var otherCrossEvent = (flight === 1) ? flight2Data.crossEvent : flight1Data.crossEvent;
+        
+        var updatePayload = {};
+        updatePayload[flightField + '.d'] = localFlightData;
+        updatePayload[flightField + '.se'] = localSaveEvent;
+        updatePayload[otherFlightField + '.x'] = true;
+        // v4.08: Do NOT include updatedAt - WRV should not verify server-generated timestamps
+        
+        logWithTimestamp('[WRV-VERIFY]', 'collection=' + collection);
+        logWithTimestamp('[WRV-VERIFY]', 'gameId=' + gameId);
+        logWithTimestamp('[WRV-VERIFY]', 'recoveryKey=' + recoveryKey);
+        logWithTimestamp('[WRV-VERIFY]', 'localFlightData length=' + (localFlightData ? localFlightData.length : 0));
+        logWithTimestamp('[WRV-VERIFY]', 'localSaveEvent=' + localSaveEvent);
+        logWithTimestamp('[WRV-VERIFY]', 'otherCrossEvent=' + otherCrossEvent);
+        
+        // Check if already running
+        if (wrvRecoveryKeys[recoveryKey]) {
+            logWithTimestamp('[WRV-VERIFY]', '⏭️ Verification already in progress for key: ' + recoveryKey);
+            return;
+        }
+        
+        wrvRecoveryKeys[recoveryKey] = true;
+        logWithTimestamp('[WRV-VERIFY]', '🔑 Recovery key registered');
+        
+        // Log call stack to trace where this was called from
+        logWithTimestamp('[WRV-VERIFY]', '📞 Call stack (first 3 frames):');
+        try {
+            var stack = new Error().stack;
+            var lines = stack.split('\n');
+            for (var i = 0; i < Math.min(5, lines.length); i++) {
+                logWithTimestamp('[WRV-VERIFY]', '  ' + lines[i].trim());
+            }
+        } catch(e) {
+            logWithTimestamp('[WRV-VERIFY]', '  (could not get stack)');
+        }
+        
+        logWithTimestamp('[WRV-VERIFY]', '🚀 Calling WRV.recover() now...');
+        
+        // Call WRV.recover() as fire-and-forget verification
+        try {
+            WRV.recover({
+                gameId: gameId,
+                collection: collection,
+                updatePayload: updatePayload,
+                flight: flight,
+                holeNumber: holeNumber,
+                newData: newData,
+                flight1Data: flight1Data.data,
+                flight2Data: flight2Data.data,
+                getLocalData: function() {
+                    var f1 = getFlightData(1);
+                    var f2 = getFlightData(2);
+                    var result = {
+                        flight1Data: f1.data,
+                        flight2Data: f2.data,
+                        flight1SaveEvent: f1.saveEvent,
+                        flight2SaveEvent: f2.saveEvent,
+                        flight1CrossEvent: f1.crossEvent,
+                        flight2CrossEvent: f2.crossEvent
+                    };
+                    logWithTimestamp('[WRV-VERIFY]', '📋 getLocalData() called - returning local data snapshot');
+                    return result;
+                },
+                verificationMode: true,
+                recoveryKey: recoveryKey,
+                onComplete: function() {
+                    delete wrvRecoveryKeys[recoveryKey];
+                    logWithTimestamp('[WRV-VERIFY]', '✅ Verification complete for key: ' + recoveryKey);
+                }
+            });
+            logWithTimestamp('[WRV-VERIFY]', '✅ WRV.recover() called successfully');
+        } catch(err) {
+            logWithTimestamp('[WRV-VERIFY]', '❌ WRV.recover() threw an error: ' + err.message);
+            logWithTimestamp('[WRV-VERIFY]', '❌ Error stack: ' + err.stack);
+            delete wrvRecoveryKeys[recoveryKey];
+        }
+        
+        logWithTimestamp('[WRV-VERIFY]', '===== END WRV VERIFICATION =====');
+    }
+    
+    // ============================================================
+    // v4.09: saveCurrentHole - WRV call REMOVED to eliminate competing writes
+    // Only the consolidated WRV write in real-game-save.js writes to Firestore
+    // ============================================================
+    
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         var newData = updateHoleData(flightData, holeNumber, scores, true);
         
-        var collection = getCollectionName();
-        var updatePayload = {};
-        var flightField = (flight === 1) ? "f1" : "f2";
-        var otherFlightField = (flight === 1) ? "f2" : "f1";
+        // Update local data IMMEDIATELY (user sees success)
+        if (flight === 1) {
+            flight1Data.data = newData;
+            flight1Data.saveEvent = true;
+            flight2Data.crossEvent = true;
+        } else {
+            flight2Data.data = newData;
+            flight2Data.saveEvent = true;
+            flight1Data.crossEvent = true;
+        }
         
-        updatePayload[flightField + ".d"] = newData;
-        updatePayload[flightField + ".se"] = true;
-        updatePayload[otherFlightField + ".x"] = true;
-        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        
-        firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-            .then(function() {
-                if (flight === 1) {
-                    flight1Data.data = newData;
-                    flight1Data.saveEvent = true;
-                    flight2Data.crossEvent = true;
-                } else {
-                    flight2Data.data = newData;
-                    flight2Data.saveEvent = true;
-                    flight1Data.crossEvent = true;
+        // v4.07: Update cache's data strings AND savedHoles so UI shows saved state immediately
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (cache) {
+            if (flight === 1) {
+                cache.f1DataString = newData;
+                // Rebuild flight1Data from the new data string
+                if (!cache.flight1Data) cache.flight1Data = {};
+                for (var h = 1; h <= 18; h++) {
+                    cache.flight1Data[h] = parseHoleData(newData, h);
                 }
-                console.log("Save successful");
-                notifyDataChanged();
-                if (callback) callback(true);
-            })
-            .catch(function(err) {
-                console.error("Save error:", err);
-                notifyError("Save failed: " + err.message);
-                if (callback) callback(false);
-            });
+                // v4.07: Update savedHoles for flight 1
+                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
+                var savedHoles1 = cache.savedHoles[1] || [];
+                if (savedHoles1.indexOf(holeNumber) === -1) {
+                    savedHoles1.push(holeNumber);
+                    cache.savedHoles[1] = savedHoles1;
+                    logWithTimestamp('[SAVE]', '✅ Updated cache.savedHoles[1] with hole ' + holeNumber);
+                }
+                logWithTimestamp('[SAVE]', '✅ Updated cache.f1DataString and flight1Data');
+            } else {
+                cache.f2DataString = newData;
+                if (!cache.flight2Data) cache.flight2Data = {};
+                for (var h = 1; h <= 18; h++) {
+                    cache.flight2Data[h] = parseHoleData(newData, h);
+                }
+                // v4.07: Update savedHoles for flight 2
+                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
+                var savedHoles2 = cache.savedHoles[2] || [];
+                if (savedHoles2.indexOf(holeNumber) === -1) {
+                    savedHoles2.push(holeNumber);
+                    cache.savedHoles[2] = savedHoles2;
+                    logWithTimestamp('[SAVE]', '✅ Updated cache.savedHoles[2] with hole ' + holeNumber);
+                }
+                logWithTimestamp('[SAVE]', '✅ Updated cache.f2DataString and flight2Data');
+            }
+        }
+        
+        logWithTimestamp('[SAVE]', 'Local data updated - flight ' + flight + ' data: ' + newData.substring(0, 50) + '...');
+        logWithTimestamp('[SAVE]', '⚠️ WRV write SKIPPED - consolidated write in real-game-save.js handles Firestore');
+        
+        // Notify UI immediately (user sees match, T-1, Next button)
+        notifyDataChanged();
+        logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
+        
+        // Return IMMEDIATELY - user never waits
+        // The consolidated write in real-game-save.js will handle Firestore persistence
+        logWithTimestamp('[SAVE]', '✅ Callback returning immediately - user continues');
+        if (callback) callback(true);
     }
     
     function forceRefresh() {
@@ -784,7 +978,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.07: Delegates to GameOrder for order functions
+    // Public API - v4.11: initializeEmptyResults uses objects
     // ============================================================
     
     return {
@@ -832,7 +1026,13 @@ var GameData = (function() {
         getConsecutiveSyncedLastPosition: getConsecutiveSyncedLastPosition,
         // Match index functions
         getMatchIndex: getMatchIndex,
-        getMatchValueFromResults: getMatchValueFromResults
+        getMatchValueFromResults: getMatchValueFromResults,
+        // v4.01: WRV verification methods (kept for debugging)
+        startWRVVerification: startWRVVerification,
+        generateWRVKey: generateWRVKey,
+        // v4.02: Timestamp helper (exposed for debugging)
+        getTimestamp: getTimestamp,
+        logWithTimestamp: logWithTimestamp
     };
     
 })();
@@ -842,13 +1042,15 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
-   - All order-related functions now delegate to GameOrder
-   - Maintains backward compatibility with existing API
-   - All other functionality unchanged (data strings, saving, loading, etc.)
+VERSION: 4.11
+KEY CHANGES from v4.10:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18))
+     - f1IntraMatches: {} (was new Array(18))
+     - f2IntraMatches: {} (was new Array(18))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: ALL other functionality from v4.10 unchanged
 DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */

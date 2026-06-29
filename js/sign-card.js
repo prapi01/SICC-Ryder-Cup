@@ -1,11 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - CHANGED: Celebration title "MATCH COMPLETE!" → "GAME COMPLETED!"
-   - Updated celebration screen title text
-   - All existing functionality preserved from v1.17
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - CHANGED: submitSignature() now uses WRV.update() for reliability
+   - ADDED: Fallback to direct update if WRV not available
+   - PRESERVED: All v1.18 functions and API unchanged
+   - PRESERVED: Async/await pattern for submitSignature()
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
 
@@ -635,11 +636,10 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Signature Submission
+    // Signature Submission - v1.19: WRV integration
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
-        var db = getDb();
         var updatePayload = {};
         updatePayload['signatures.f' + flight + '.signed'] = true;
         updatePayload['signatures.f' + flight + '.signedAt'] = firebase.firestore.FieldValue.serverTimestamp();
@@ -649,11 +649,29 @@ var SignCard = (function() {
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         try {
-            await db.collection(collection).doc(gameId).update(updatePayload);
-            console.log('Flight ' + flight + ' signature submitted');
-            return true;
+            // Use WRV for reliable Firestore write
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                return new Promise(function(resolve, reject) {
+                    WRV.update(collection, gameId, updatePayload, function(err, result) {
+                        if (err) {
+                            console.error('[SignCard] WRV signature error:', err);
+                            reject(err);
+                        } else {
+                            console.log('[SignCard] WRV signature successful for flight ' + flight);
+                            resolve(result);
+                        }
+                    });
+                });
+            } else {
+                // Fallback: direct update
+                console.warn('[SignCard] WRV not available, using direct update for signature');
+                var db = getDb();
+                await db.collection(collection).doc(gameId).update(updatePayload);
+                console.log('[SignCard] Direct signature successful for flight ' + flight);
+                return true;
+            }
         } catch (error) {
-            console.error('Signature error:', error);
+            console.error('[SignCard] Signature error:', error);
             return false;
         }
     }
@@ -670,7 +688,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Public API
+    // Public API - UNCHANGED
     // ============================================================
     
     return {
@@ -693,11 +711,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - CHANGED: Celebration title "MATCH COMPLETE!" → "GAME COMPLETED!"
-   - Updated celebration screen title text
-   - All existing functionality preserved from v1.17
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - CHANGED: submitSignature() now uses WRV.update() for reliability
+   - ADDED: Fallback to direct update if WRV not available
+   - PRESERVED: All v1.18 functions and API unchanged
+   - PRESERVED: Async/await pattern for submitSignature()
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */

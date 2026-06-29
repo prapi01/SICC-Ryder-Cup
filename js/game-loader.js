@@ -1,11 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: lastSyncedHole now returns null instead of 0 when no holes are synced
+   - This ensures proper handling of "no data" state in UI rendering
+   - Cross-flight bubbles now correctly show grey AS at game start (H1)
+   - All existing functionality preserved from v1.11
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -171,6 +171,7 @@ var GameLoader = (function() {
     // ============================================================
     // Helper: Build cache from Firestore document
     // v1.10: Converts sparse Firestore objects to arrays
+    // v1.12: FIXED - lastSyncedHole now null when no holes synced
     // ============================================================
     function buildCacheFromDoc(docData) {
         var course = docData.course || {};
@@ -203,7 +204,8 @@ var GameLoader = (function() {
         };
         
         var lastSyncedPosition = calculateLastSyncedPosition(savedHoles[1], savedHoles[2], startingHole);
-        var lastSyncedHole = (lastSyncedPosition >= 0) ? getNaturalHole(lastSyncedPosition, startingHole) : 0;
+        // v1.12: FIXED - return null instead of 0 when no holes are synced
+        var lastSyncedHole = (lastSyncedPosition >= 0) ? getNaturalHole(lastSyncedPosition, startingHole) : null;
         
         var displayT1 = null;
         if (results?.game2?.displayT1) {
@@ -525,12 +527,12 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: lastSyncedHole now returns null instead of 0 when no holes are synced
+   - This ensures proper handling of "no data" state in UI rendering
+   - Cross-flight bubbles now correctly show grey AS at game start (H1)
+   - All existing functionality preserved from v1.11
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */

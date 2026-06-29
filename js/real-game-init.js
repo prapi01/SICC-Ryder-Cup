@@ -1,27 +1,53 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.00
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - REMOVED: Cache refresh for myFlightChanged events (was causing UI reset)
+   - REMOVED: Cache refresh for resultsChanged events (cache already has correct data)
+   - PRESERVED: Cache refresh for otherFlightChanged events (needed for multi-device sync)
+   - This prevents the cache from being overwritten with stale data from Firestore
+   - The cache already has the correct data from the local save operation
+   - All existing functionality preserved from v1.05
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.01";
+window.REAL_GAME_INIT_VERSION = "1.06";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.01");
+    console.log("[REAL-GAME-INIT] Initializing v1.06 - Skip cache refresh for own changes");
     
     // ============================================================
     // Helper: Get Firestore instance
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Helper: WRV update with Promise wrapper (async/await compatible)
+    // ============================================================
+    function wru(collection, docId, data) {
+        return new Promise(function(resolve, reject) {
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                WRV.update(collection, docId, data, function(err, result) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            } else {
+                // Fallback: direct update
+                console.warn('[RealGameInit] WRV not available, using direct update');
+                var db = getDb();
+                db.collection(collection).doc(docId).update(data)
+                    .then(resolve)
+                    .catch(reject);
+            }
+        });
     }
     
     // ============================================================
@@ -177,8 +203,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // updateGameMetadata
-    // v1.01: Uses firebase.firestore() instead of global db
+    // updateGameMetadata - v1.02: WRV integration
     // ============================================================
     
     function updateGameMetadata(flight, holeNumber) {
@@ -210,8 +235,8 @@ var RealGameInit = (function() {
                     
                     console.log(`[METADATA] Writing to Firestore:`, metaPayload);
                     
-                    var db = getDb();
-                    db.collection("scheduledGames").doc(gameId).update(metaPayload)
+                    // Use WRV with Promise wrapper
+                    wru("scheduledGames", gameId, metaPayload)
                         .then(function() {
                             console.log(`[METADATA] Successfully updated metadata for flight ${flight}`);
                             resolve(true);
@@ -394,8 +419,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener
-    // v1.01: Uses firebase.firestore() instead of global db
+    // setupRealtimeListener - v1.06: Skip cache refresh for own changes
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -417,6 +441,16 @@ var RealGameInit = (function() {
         
         var unsubscribe = db.collection("scheduledGames").doc(gameId)
             .onSnapshot(function(doc) {
+                // Set flag that Firestore changed
+                RealGameState.setFirestoreChanged(true);
+                console.log('[REALTIME] Firestore changed - flag set');
+                
+                // Check WRV flag FIRST - if WRV in progress, do NOTHING
+                if (RealGameState.isWRVInProgress()) {
+                    console.log('[REALTIME] WRV in progress - ignoring Firestore update');
+                    return;
+                }
+                
                 if (!doc.exists) return;
                 
                 var data = doc.data();
@@ -429,37 +463,66 @@ var RealGameInit = (function() {
                 var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
                 
                 if (f1Changed || f2Changed || locksChanged || resultsChanged) {
+                    // v1.04: Determine which flight changed
+                    var myFlight = getEditableFlight();
+                    var otherFlight = (myFlight === 1) ? 2 : 1;
+                    var myFlightChanged = (myFlight === 1) ? f1Changed : f2Changed;
+                    var otherFlightChanged = (otherFlight === 1) ? f1Changed : f2Changed;
+                    
                     console.log("Realtime update detected");
                     
-                    if (typeof GameLoader !== 'undefined') {
-                        GameLoader.loadGame(gameId, "scheduledGames", function(result) {
-                            if (result.success) {
-                                console.log("Cache refreshed from realtime update");
-                                
-                                var cache = result.cache;
-                                if (cache.course) {
-                                    setCourseName(cache.course.name);
-                                    setCoursePar(cache.course.par);
-                                    setCourseSi(cache.course.si);
+                    if (otherFlightChanged) {
+                        // OTHER flight changed - refresh cache and re-render
+                        console.log('[REALTIME] Other flight changed - refreshing cache');
+                        if (typeof GameLoader !== 'undefined') {
+                            GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                                if (result.success) {
+                                    console.log("Cache refreshed from realtime update (other flight)");
+                                    
+                                    var cache = result.cache;
+                                    if (cache.course) {
+                                        setCourseName(cache.course.name);
+                                        setCoursePar(cache.course.par);
+                                        setCourseSi(cache.course.si);
+                                    }
+                                    setAllPlayers(cache.players || []);
+                                    setStartingHole(cache.startingHole || 1);
+                                    RealGameUtils.updateGameOrder(getStartingHole());
+                                    
+                                    var clinchedAtFromFS = cache.results?.clinchedAt || {};
+                                    console.log(`[CASCADE-DEBUG] Firestore cache refresh: clinchedAt count = ${Object.keys(clinchedAtFromFS).length}`);
+                                    
+                                    if (typeof Ticker !== 'undefined' && getAllPlayers().length) {
+                                        Ticker.setPlayers(getAllPlayers());
+                                    }
+                                    
+                                    checkLockOwnership();
+                                    if (renderAllCallback) renderAllCallback();
+                                    
+                                    // Clear flag after processing
+                                    RealGameState.setFirestoreChanged(false);
+                                    console.log('[REALTIME] Firestore changed flag cleared');
+                                } else {
+                                    console.warn("Failed to refresh cache from realtime update:", result.error);
                                 }
-                                setAllPlayers(cache.players || []);
-                                setStartingHole(cache.startingHole || 1);
-                                RealGameUtils.updateGameOrder(getStartingHole());
-                                
-                                var clinchedAtFromFS = cache.results?.clinchedAt || {};
-                                console.log(`[CASCADE-DEBUG] Firestore cache refresh: clinchedAt count = ${Object.keys(clinchedAtFromFS).length}`);
-                                
-                                if (typeof Ticker !== 'undefined' && getAllPlayers().length) {
-                                    Ticker.setPlayers(getAllPlayers());
-                                }
-                                
-                                checkLockOwnership();
-                                if (renderAllCallback) renderAllCallback();
-                            } else {
-                                console.warn("Failed to refresh cache from realtime update:", result.error);
-                            }
-                        });
+                            });
+                        }
+                    } else if (myFlightChanged) {
+                        // v1.06: MY flight changed - SKIP cache refresh
+                        // Cache already has correct data from local save
+                        console.log('[REALTIME] My flight changed - skipping cache refresh (cache already correct)');
+                        RealGameState.setFirestoreChanged(false);
+                        
+                    } else if (resultsChanged) {
+                        // v1.06: Results changed - SKIP cache refresh
+                        // Cache already has correct data from our write
+                        console.log('[REALTIME] Results changed - skipping cache refresh (cache already correct)');
+                        RealGameState.setFirestoreChanged(false);
                     }
+                } else {
+                    // No actual changes detected, clear flag
+                    RealGameState.setFirestoreChanged(false);
+                    console.log('[REALTIME] No changes detected - flag cleared');
                 }
             }, function(error) {
                 console.warn("Firestore realtime listener error:", error);
@@ -545,8 +608,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // exitToMainMenu
-    // v1.01: Uses firebase.firestore() instead of global db
+    // exitToMainMenu - v1.02: WRV integration
     // ============================================================
     
     function exitToMainMenu() {
@@ -568,8 +630,10 @@ var RealGameInit = (function() {
                 ["locks.f" + editableFlight]: null,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            var db = getDb();
-            db.collection("scheduledGames").doc(gameId).update(releasePayload)
+            console.log("[EXIT] Releasing lock for flight", editableFlight);
+            
+            // Use WRV with Promise wrapper
+            wru("scheduledGames", gameId, releasePayload)
                 .then(function() {
                     console.log("[EXIT] Lock released for flight", editableFlight);
                 })
@@ -608,7 +672,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // init - Main Initialization Function
+    // init - Main Initialization Function - UNCHANGED
     // ============================================================
     
     async function init(renderAllCallback) {
@@ -824,7 +888,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // Public API
+    // Public API - UNCHANGED
     // ============================================================
     
     return {
@@ -867,12 +931,14 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.00
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - REMOVED: Cache refresh for myFlightChanged events (was causing UI reset)
+   - REMOVED: Cache refresh for resultsChanged events (cache already has correct data)
+   - PRESERVED: Cache refresh for otherFlightChanged events (needed for multi-device sync)
+   - This prevents the cache from being overwritten with stale data from Firestore
+   - The cache already has the correct data from the local save operation
+   - All existing functionality preserved from v1.05
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */

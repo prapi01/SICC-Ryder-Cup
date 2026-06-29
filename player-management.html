@@ -1,0 +1,920 @@
+<!--
+FILE: player-management.html
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - CHANGED: Team group now fixed width (100px) instead of flex: 1
+   - CHANGED: Form line now uses flex-wrap: nowrap to keep fields on one line
+   - PRESERVED: All functionality and other styling from v1.17
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+STATUS: Ready for integration
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Player Management - SICC Ryder Cup</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/modal.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            min-height: 100vh;
+            background: #0a0a0a;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background: #0a0a0a;
+            font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif;
+            color: #e0e0e0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .container {
+            max-width: 420px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+        
+        .version-tag {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top));
+            right: max(12px, env(safe-area-inset-right));
+            font-size: 0.6rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.5);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            letter-spacing: 0.3px;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top));
+            left: max(12px, env(safe-area-inset-left));
+            font-size: 0.5rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.3);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+        }
+        
+        /* ===== BASELINE UI ===== */
+        .header { text-align: center; margin-bottom: 20px; margin-top: 4px; }
+        .title { font-size: 1.2rem; font-weight: 600; color: #4caf50; }
+        .subtitle { font-size: 0.6rem; color: #4caf50; opacity: 0.7; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
+        
+        .card { 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a; 
+            border-radius: 10px; 
+            padding: 16px; 
+            margin-bottom: 12px; 
+        }
+        
+        .card-title { 
+            font-size: 0.75rem; 
+            font-weight: 500; 
+            color: #4caf50; 
+            margin-bottom: 12px; 
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        
+        /* ===== SELECT WRAPPER WITH CUSTOM GREEN ARROW ===== */
+        .select-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        .select-wrapper select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 8px 24px 8px 10px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            transition: border-color 0.2s ease;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            cursor: pointer;
+        }
+        .select-wrapper select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .select-wrapper .arrow {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 8px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        
+        /* ===== 2-LINE FORM LAYOUT ===== */
+        .form-line {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 8px 12px;
+            margin-bottom: 8px;
+            align-items: flex-end;
+            width: 100%;
+        }
+        .form-line:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+        }
+        .form-group label {
+            font-size: 0.6rem;
+            color: #4caf50;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            transition: border-color 0.2s ease;
+            box-sizing: border-box;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        
+        /* Name group - flexible */
+        .form-group.name-group {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        /* Label group - narrow (3 chars) */
+        .form-group.label-group {
+            flex: 0 0 80px;
+        }
+        .form-group.label-group input {
+            max-width: 80px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+        .form-group.label-group .hint {
+            display: none;
+        }
+        
+        /* Hcp group - narrow, left-aligned */
+        .form-group.hcp-group {
+            flex: 0 0 60px;
+        }
+        .form-group.hcp-group input {
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        /* Team group - fixed width */
+        .form-group.team-group {
+            flex: 0 0 100px;
+            width: 100px;
+            min-width: 100px;
+            max-width: 100px;
+        }
+        
+        /* Action buttons - inline */
+        .form-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+            align-items: flex-end;
+        }
+        .form-actions .btn {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 400;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: 1px solid #3a7a3a;
+            transition: all 0.15s ease;
+            background: rgba(20, 20, 20, 0.5);
+            color: #4caf50;
+            text-align: center;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { border-color: #4caf50; border-width: 2px; }
+        .btn-primary:hover { background: rgba(76, 175, 80, 0.04); }
+        .btn-secondary { border-color: #2a5a2a; color: #666; }
+        .btn-secondary:hover { border-color: #4caf50; color: #888; }
+        .btn-danger { border-color: #3a1a1a; color: #ff6b6b; }
+        .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
+        .btn-small { 
+            padding: 4px 6px; 
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            background: rgba(20, 20, 20, 0.5);
+        }
+        .btn-small svg {
+            width: 18px;
+            height: 18px;
+        }
+        .btn-small-edit { 
+            border: 1px solid #2a5a2a; 
+            color: #4caf50;
+        }
+        .btn-small-edit:hover { border-color: #4caf50; background: rgba(76, 175, 80, 0.05); }
+        .btn-small-delete { 
+            border: 1px solid #3a1a1a; 
+            color: #ff6b6b;
+        }
+        .btn-small-delete:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.05); }
+        
+        .btn-save { border-color: #4caf50; color: #4caf50; border-width: 2px; }
+        .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
+        .btn-cancel { border-color: #2a5a2a; color: #666; }
+        .btn-cancel:hover { border-color: #4caf50; color: #888; }
+        
+        .btn-group { 
+            display: flex; 
+            gap: 10px; 
+            margin-top: 12px; 
+            width: 100%;
+            justify-content: flex-end;
+        }
+        .btn-group .btn { 
+            flex: 0 1 auto; 
+            padding: 10px 20px;
+        }
+        
+        /* Player list - single line flex with consistent 0.9rem font */
+        .player-list { margin-top: 4px; }
+        .player-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: rgba(10, 10, 10, 0.5);
+            border-radius: 6px;
+            margin-bottom: 4px;
+            border: 1px solid #2a5a2a;
+            flex-wrap: nowrap;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .player-item .p-name { 
+            flex: 1;
+            min-width: 80px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #e0e0e0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .player-item .p-label { 
+            flex: 0 0 auto;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            background: #1a3a1a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-align: center;
+            min-width: 24px;
+        }
+        .player-item .p-hcp { 
+            flex: 0 0 auto;
+            font-size: 0.9rem;
+            color: #4caf50;
+            min-width: 28px;
+            text-align: center;
+        }
+        .player-item .p-team { 
+            flex: 0 0 auto;
+            font-size: 0.9rem;
+            color: #ffaa44;
+            min-width: 24px;
+            text-align: center;
+        }
+        .player-item .p-actions { 
+            display: flex;
+            flex: 0 0 auto;
+            gap: 3px;
+            flex-wrap: nowrap;
+        }
+        
+        .player-item.editing { border-color: #4caf50; background: #1a2a1a; }
+        
+        .empty-state { text-align: center; padding: 30px 20px; color: #444; font-size: 0.8rem; }
+        
+        /* Back link - sleek text-only style with green divider */
+        .back-link {
+            border-top: 1px solid #2a5a2a;
+            text-align: center;
+            margin-top: 16px;
+            padding: 12px 0;
+            color: #666;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: color 0.15s ease;
+            letter-spacing: 0.2px;
+        }
+        .back-link:hover { color: #888; }
+        
+        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
+        
+        /* ===== MOBILE ADJUSTMENTS ===== */
+        @media (max-width: 400px) {
+            .player-item {
+                gap: 3px;
+                padding: 3px 6px;
+            }
+            .player-item .p-name {
+                font-size: 0.8rem;
+                min-width: 60px;
+            }
+            .player-item .p-label,
+            .player-item .p-hcp,
+            .player-item .p-team {
+                font-size: 0.75rem;
+            }
+            .btn-small {
+                min-width: 28px;
+                height: 28px;
+            }
+            .btn-small svg {
+                width: 16px;
+                height: 16px;
+            }
+            
+            .form-line {
+                gap: 6px;
+            }
+            .form-group.label-group {
+                flex: 0 0 60px;
+            }
+            .form-group.label-group input {
+                max-width: 60px;
+                font-size: 0.8rem;
+            }
+            .form-group.hcp-group {
+                flex: 0 0 50px;
+            }
+            .form-group input,
+            .form-group select {
+                padding: 6px 8px;
+                font-size: 0.8rem;
+            }
+            .form-actions .btn {
+                padding: 6px 12px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="app">
+    <div class="loading">Loading players...</div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.18</div>
+
+<script>
+// ============================================================
+// FILE: player-management.html
+// VERSION: 1.18
+// ============================================================
+
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
+}
+
+var APP_VERSION = "1.18";
+var CACHE_KEY = "player_management_v118";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    console.log("[PLAYER-MGMT] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
+}
+
+window.PLAYER_MGMT_VERSION = "1.18";
+console.log("[PLAYER-MGMT] Initializing v1.18 - Team fixed width, no wrap");
+
+// ============================================================
+// Firebase
+// ============================================================
+var db = firebase.firestore();
+var firestoreReady = true;
+var deviceSession = null;
+
+// ============================================================
+// State
+// ============================================================
+var players = [];
+var editingIndex = -1;
+var isLoading = false;
+
+// ============================================================
+// SVG Icons
+// ============================================================
+function getEditSvg() {
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+}
+
+function getDeleteSvg() {
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+}
+
+// ============================================================
+// generateLabel - system-generated, user can override
+// Rule: First letter of each word, up to 3 chars, uppercase
+// ============================================================
+function generateLabel(name) {
+    if (!name || name.trim() === '') return '';
+    var parts = name.trim().split(/\s+/);
+    var label = '';
+    for (var i = 0; i < Math.min(3, parts.length); i++) {
+        if (parts[i].length > 0) {
+            label += parts[i].charAt(0).toUpperCase();
+        }
+    }
+    return label;
+}
+
+// ============================================================
+// DOM Helpers
+// ============================================================
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    document.getElementById("deviceTag").innerHTML = deviceDisplay;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// ============================================================
+// Load Players from Firestore
+// ============================================================
+function loadPlayers(callback) {
+    if (isLoading) return;
+    isLoading = true;
+    
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            if (doc.exists && doc.data().players) {
+                players = doc.data().players;
+                players.sort(function(a, b) {
+                    return a.name.localeCompare(b.name);
+                });
+                console.log("[PLAYER-MGMT] Loaded", players.length, "players");
+            } else {
+                players = [
+                    { name: "Ang C H", handicap: 1, defaultTeam: "A", label: "ACH" },
+                    { name: "Chenh Hoe", handicap: 10, defaultTeam: "A", label: "CH" },
+                    { name: "C K", handicap: 8, defaultTeam: "A", label: "CK" },
+                    { name: "Yip H M", handicap: 12, defaultTeam: "A", label: "YHM" },
+                    { name: "Jeff Goh", handicap: 0, defaultTeam: "B", label: "JG" },
+                    { name: "Ong C B", handicap: 1, defaultTeam: "B", label: "OCB" },
+                    { name: "Piti", handicap: 8, defaultTeam: "B", label: "P" },
+                    { name: "James Ong", handicap: 11, defaultTeam: "B", label: "JO" }
+                ];
+                console.log("[PLAYER-MGMT] Using default players");
+                savePlayers(function() {
+                    if (callback) callback();
+                });
+                return;
+            }
+            if (callback) callback();
+        })
+        .catch(function(err) {
+            console.error("[PLAYER-MGMT] Error loading players:", err);
+            Modal.alert("Error loading players: " + err.message);
+            if (callback) callback();
+        })
+        .finally(function() {
+            isLoading = false;
+        });
+}
+
+// ============================================================
+// Save Players to Firestore
+// ============================================================
+function savePlayers(callback) {
+    var data = {
+        players: players,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    db.collection("playerInformation").doc("players").set(data)
+        .then(function() {
+            console.log("[PLAYER-MGMT] Saved", players.length, "players");
+            if (callback) callback(true);
+        })
+        .catch(function(err) {
+            console.error("[PLAYER-MGMT] Error saving players:", err);
+            Modal.alert("Error saving players: " + err.message);
+            if (callback) callback(false);
+        });
+}
+
+// ============================================================
+// updateLabelPreview - auto-generate label from name
+// ============================================================
+function updateLabelPreview() {
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    if (nameInput && labelInput) {
+        if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
+            labelInput.value = generateLabel(nameInput.value);
+        }
+    }
+}
+
+function onLabelInput() {
+    var labelInput = document.getElementById('playerLabel');
+    if (labelInput) {
+        labelInput.dataset.userEdited = 'true';
+        if (labelInput.value.length > 3) {
+            labelInput.value = labelInput.value.substring(0, 3);
+        }
+        labelInput.value = labelInput.value.toUpperCase();
+    }
+}
+
+function onNameInput() {
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    if (nameInput && labelInput) {
+        if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
+            labelInput.value = generateLabel(nameInput.value);
+        }
+    }
+}
+
+// ============================================================
+// Cancel Edit / Add
+// ============================================================
+function cancelForm() {
+    editingIndex = -1;
+    render();
+}
+
+// ============================================================
+// Render
+// ============================================================
+function render() {
+    var container = document.getElementById('app');
+    
+    var currentLabel = '';
+    var currentName = '';
+    var currentHcp = 0;
+    var currentTeam = 'A';
+    if (editingIndex >= 0 && players[editingIndex]) {
+        var p = players[editingIndex];
+        currentName = p.name;
+        currentLabel = p.label || generateLabel(p.name);
+        currentHcp = p.handicap;
+        currentTeam = p.defaultTeam || 'A';
+    }
+    
+    var html = `
+        <div class="header">
+            <div class="title">Player Management</div>
+            <div class="subtitle">Add, edit, or remove players</div>
+        </div>
+        
+        <!-- Player List (FIRST) -->
+        <div class="card">
+            <div class="card-title">Players (${players.length})</div>
+            <div class="player-list" id="playerList">
+                ${renderPlayerList()}
+            </div>
+        </div>
+        
+        <!-- Add/Edit Form (SECOND) - 2-LINE LAYOUT -->
+        <div class="card">
+            <div class="card-title">${editingIndex >= 0 ? 'Edit Player' : 'Add New Player'}</div>
+            
+            <!-- LINE 1: Name + Label -->
+            <div class="form-line">
+                <div class="form-group name-group">
+                    <label>Name</label>
+                    <input type="text" id="playerName" placeholder="" value="${escapeHtml(currentName)}" oninput="onNameInput()">
+                </div>
+                <div class="form-group label-group">
+                    <label>Label</label>
+                    <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="" oninput="onLabelInput()">
+                    <span class="hint">system generated</span>
+                </div>
+            </div>
+            
+            <!-- LINE 2: Hcp + Team + Cancel + Add -->
+            <div class="form-line">
+                <div class="form-group hcp-group">
+                    <label>Hcp</label>
+                    <input type="number" id="playerHcp" min="0" max="54" value="${currentHcp}">
+                </div>
+                <div class="form-group team-group">
+                    <label>Team</label>
+                    <div class="select-wrapper">
+                        <select id="playerTeam">
+                            <option value="A" ${currentTeam === 'A' ? 'selected' : ''}>Team A</option>
+                            <option value="B" ${currentTeam === 'B' ? 'selected' : ''}>Team B</option>
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
+                    <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="back-link" onclick="goBackToSettings()">Back to Game Settings</div>
+        
+        <div class="footer">SICC Ryder Cup v${APP_VERSION}</div>
+    `;
+    
+    container.innerHTML = html;
+    
+    document.getElementById('savePlayerBtn').addEventListener('click', savePlayer);
+    document.getElementById('cancelBtn').addEventListener('click', cancelForm);
+    
+    document.getElementById('playerName').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') savePlayer();
+    });
+    document.getElementById('playerHcp').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') savePlayer();
+    });
+    document.getElementById('playerLabel').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') savePlayer();
+    });
+    document.getElementById('playerTeam').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') savePlayer();
+    });
+    
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    if (nameInput && labelInput) {
+        nameInput.addEventListener('input', function() {
+            if (!labelInput.value || labelInput.dataset.userEdited === 'false') {
+                labelInput.value = generateLabel(nameInput.value);
+                labelInput.dataset.userEdited = 'false';
+            }
+        });
+    }
+    
+    if (editingIndex >= 0 && labelInput) {
+        labelInput.dataset.userEdited = 'true';
+    }
+    
+    attachPlayerActions();
+}
+
+// ============================================================
+// Render Player List - with SVG icons
+// ============================================================
+function renderPlayerList() {
+    if (players.length === 0) {
+        return '<div class="empty-state">No players found.</div>';
+    }
+    
+    var html = '';
+    for (var i = 0; i < players.length; i++) {
+        var p = players[i];
+        var isEditing = (i === editingIndex);
+        var label = p.label || generateLabel(p.name);
+        
+        html += `
+            <div class="player-item ${isEditing ? 'editing' : ''}">
+                <span class="p-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
+                <span class="p-label">${escapeHtml(label)}</span>
+                <span class="p-hcp">${p.handicap}</span>
+                <span class="p-team">${p.defaultTeam || 'A'}</span>
+                <div class="p-actions">
+                    <button class="btn btn-small btn-small-edit edit-btn" data-index="${i}">${getEditSvg()}</button>
+                    <button class="btn btn-small btn-small-delete delete-btn" data-index="${i}">${getDeleteSvg()}</button>
+                </div>
+            </div>
+        `;
+    }
+    return html;
+}
+
+function attachPlayerActions() {
+    document.querySelectorAll('.edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            editingIndex = parseInt(this.dataset.index);
+            render();
+            setTimeout(function() {
+                var nameInput = document.getElementById('playerName');
+                if (nameInput) { nameInput.focus(); nameInput.select(); }
+                var labelInput = document.getElementById('playerLabel');
+                if (labelInput) {
+                    labelInput.dataset.userEdited = 'true';
+                }
+            }, 100);
+        });
+    });
+    
+    document.querySelectorAll('.delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            deletePlayer(parseInt(this.dataset.index));
+        });
+    });
+}
+
+// ============================================================
+// Player CRUD Operations
+// ============================================================
+function savePlayer() {
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    var hcpInput = document.getElementById('playerHcp');
+    var teamSelect = document.getElementById('playerTeam');
+    
+    var name = nameInput.value.trim();
+    var label = labelInput ? labelInput.value.trim().toUpperCase() : generateLabel(name);
+    var handicap = parseInt(hcpInput.value);
+    var defaultTeam = teamSelect.value;
+    
+    if (!name) {
+        Modal.alert("Please enter a player name.");
+        nameInput.focus();
+        return;
+    }
+    
+    if (isNaN(handicap) || handicap < 0 || handicap > 54) {
+        Modal.alert("Please enter a valid handicap (0-54).");
+        hcpInput.focus();
+        return;
+    }
+    
+    if (label.length > 3) {
+        Modal.alert("Label must be 3 characters or less.");
+        labelInput.focus();
+        return;
+    }
+    
+    for (var i = 0; i < players.length; i++) {
+        if (i !== editingIndex && players[i].name.toLowerCase() === name.toLowerCase()) {
+            Modal.alert("A player with this name already exists.");
+            nameInput.focus();
+            return;
+        }
+    }
+    
+    var playerData = {
+        name: name,
+        label: label || generateLabel(name),
+        handicap: handicap,
+        defaultTeam: defaultTeam
+    };
+    
+    if (editingIndex >= 0) {
+        players[editingIndex] = playerData;
+        players.sort(function(a, b) { return a.name.localeCompare(b.name); });
+        editingIndex = -1;
+    } else {
+        players.push(playerData);
+        players.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    }
+    
+    savePlayers(function(success) {
+        if (success) {
+            render();
+            Modal.alert("Player saved.");
+        } else {
+            loadPlayers(function() {
+                render();
+                Modal.alert("Failed to save player. Changes reverted.");
+            });
+        }
+    });
+}
+
+function deletePlayer(index) {
+    var player = players[index];
+    Modal.confirm(
+        "Delete '" + player.name + "'?",
+        function() {
+            players.splice(index, 1);
+            if (editingIndex === index) editingIndex = -1;
+            else if (editingIndex > index) editingIndex--;
+            savePlayers(function(success) {
+                if (success) { render(); Modal.alert("Player deleted."); }
+                else { loadPlayers(function() { render(); Modal.alert("Failed to delete."); }); }
+            });
+        },
+        function() { console.log("Cancelled"); }
+    );
+}
+
+// ============================================================
+// Navigation - Back to Game Settings (admin.html)
+// ============================================================
+function goBackToSettings() {
+    window.location.href = "admin.html";
+}
+
+// ============================================================
+// INIT
+// ============================================================
+SessionManager.initSession("player-management.html", "admin.html", function(session) {
+    console.log("Session initialized:", session);
+    deviceSession = session;
+    displayDeviceId();
+    loadPlayers(function() { render(); });
+});
+
+window.goBackToSettings = goBackToSettings;
+window.savePlayer = savePlayer;
+window.deletePlayer = deletePlayer;
+window.generateLabel = generateLabel;
+window.updateLabelPreview = updateLabelPreview;
+window.onLabelInput = onLabelInput;
+window.onNameInput = onNameInput;
+window.cancelForm = cancelForm;
+</script>
+</body>
+</html>
+
+<!--
+FILE: player-management.html
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - CHANGED: Team group now fixed width (100px) instead of flex: 1
+   - CHANGED: Form line now uses flex-wrap: nowrap to keep fields on one line
+   - PRESERVED: All functionality and other styling from v1.17
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+STATUS: Ready for integration
+-->

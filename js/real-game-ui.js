@@ -1,19 +1,21 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
-   - All existing functionality preserved from v1.00
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: getBubbleClass() now correctly passes -1 instead of cache.lastSyncedHole when no holes are synced
+   - This ensures cross-flight bubbles show grey AS at game start (H1)
+   - Now properly handles lastSyncedPosition = -1 (no data) state
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.01";
+window.REAL_GAME_UI_VERSION = "1.03";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.01");
+    console.log("[REAL-GAME-UI] Initializing v1.03 - Fixed cross-flight grey AS at H1");
     
     // ============================================================
     // Private Helpers
@@ -69,6 +71,147 @@ var RealGameUI = (function() {
     
     function getDebugTargetHole() {
         return RealGameState.getDebugTargetHole();
+    }
+    
+    // ============================================================
+    // v1.02: WRV Button State Management
+    // ============================================================
+    
+    /**
+     * Disable the save button during WRV operations
+     * Shows status text to indicate saving in progress
+     */
+    function disableSaveButton(statusText) {
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (!saveBtn) return;
+        
+        var canEdit = getCanEdit();
+        var takeoverDetected = isTakeoverDetected();
+        var viewOtherFlight = isViewOtherFlight();
+        
+        if (canEdit && !takeoverDetected && !viewOtherFlight) {
+            saveBtn.disabled = true;
+            saveBtn.style.cursor = 'not-allowed';
+            saveBtn.style.opacity = '0.6';
+            
+            if (statusText) {
+                saveBtn.innerText = statusText;
+            } else {
+                saveBtn.innerText = '⏳ Saving...';
+            }
+            
+            // Add visual feedback
+            saveBtn.style.background = '#1a2a1a';
+            saveBtn.style.borderColor = '#4caf50';
+            saveBtn.style.color = '#4caf50';
+        }
+        
+        RealGameState.setSaveInProgress(true);
+    }
+    
+    /**
+     * Enable the save button after WRV operations complete
+     */
+    function enableSaveButton() {
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (!saveBtn) return;
+        
+        var currentHole = getCurrentHole();
+        var canEdit = getCanEdit();
+        var takeoverDetected = isTakeoverDetected();
+        var viewOtherFlight = isViewOtherFlight();
+        
+        if (canEdit && !takeoverDetected && !viewOtherFlight) {
+            saveBtn.disabled = false;
+            saveBtn.style.cursor = 'pointer';
+            saveBtn.style.opacity = '1';
+            saveBtn.innerText = 'SAVE H' + currentHole;
+            saveBtn.style.background = '#1a3a1a';
+            saveBtn.style.borderColor = '#4caf50';
+            saveBtn.style.color = '#4caf50';
+        }
+        
+        RealGameState.setSaveInProgress(false);
+        
+        // Update save button state based on current conditions
+        if (typeof RealGameSave !== 'undefined' && RealGameSave.updateSaveButtonState) {
+            RealGameSave.updateSaveButtonState();
+        }
+    }
+    
+    /**
+     * Set the save button to retry state after a failed WRV
+     */
+    function setSaveButtonRetry() {
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (!saveBtn) return;
+        
+        var canEdit = getCanEdit();
+        var takeoverDetected = isTakeoverDetected();
+        var viewOtherFlight = isViewOtherFlight();
+        
+        if (canEdit && !takeoverDetected && !viewOtherFlight) {
+            saveBtn.disabled = false;
+            saveBtn.style.cursor = 'pointer';
+            saveBtn.style.opacity = '1';
+            saveBtn.innerText = 'RETRY';
+            saveBtn.style.background = '#2a1a1a';
+            saveBtn.style.borderColor = '#ff4444';
+            saveBtn.style.color = '#ff4444';
+        }
+        
+        RealGameState.setSaveInProgress(false);
+    }
+    
+    /**
+     * Flash the save button to indicate success
+     */
+    function flashSaveButtonSuccess() {
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (!saveBtn) return;
+        
+        var originalBg = saveBtn.style.background;
+        var originalColor = saveBtn.style.color;
+        
+        saveBtn.style.background = '#1a3a1a';
+        saveBtn.style.borderColor = '#4caf50';
+        saveBtn.style.color = '#4caf50';
+        saveBtn.innerText = '✅ Saved!';
+        
+        setTimeout(function() {
+            if (saveBtn) {
+                var currentHole = getCurrentHole();
+                saveBtn.innerText = 'SAVE H' + currentHole;
+                saveBtn.style.background = originalBg || '#1a3a1a';
+                saveBtn.style.color = originalColor || '#4caf50';
+                saveBtn.style.borderColor = '#4caf50';
+            }
+        }, 800);
+    }
+    
+    /**
+     * Get the current save button status
+     */
+    function getSaveButtonStatus() {
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (!saveBtn) return 'idle';
+        
+        if (saveBtn.disabled) {
+            if (saveBtn.innerText.includes('SAVING') || saveBtn.innerText.includes('⏳')) {
+                return 'saving';
+            }
+            return 'disabled';
+        }
+        
+        if (saveBtn.innerText === 'RETRY') {
+            return 'retry';
+        }
+        
+        if (saveBtn.innerText.includes('✅')) {
+            return 'success';
+        }
+        
+        return 'idle';
     }
     
     // ============================================================
@@ -179,6 +322,10 @@ var RealGameUI = (function() {
         return absValue.toString();
     }
     
+    // ============================================================
+    // v1.03: FIXED - getBubbleClass now correctly passes -1 when no data
+    // ============================================================
+    
     function getBubbleClass(player, opponent) {
         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (!cache) return 'bubble-grey';
@@ -189,9 +336,17 @@ var RealGameUI = (function() {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var startingHole = getStartingHole();
         
+        // v1.03: FIXED - Always pass -1 when no holes are synced
+        // Previously this fell back to cache.lastSyncedHole (which was 0)
+        // Now we explicitly check lastSyncedPosition and use -1 if < 0
         var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
             ? cache.lastSyncedPosition 
-            : cache.lastSyncedHole;
+            : -1;  // FIXED: Use -1 instead of cache.lastSyncedHole
+        
+        // Debug logging for initial state
+        if (cache.lastSyncedPosition === -1) {
+            console.log(`[DEBUG-UI] getBubbleClass: No holes synced, lastSyncedValue=${lastSyncedValue} (should be -1)`);
+        }
         
         if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
             return GameMatch.getMatchBubbleClass(
@@ -517,7 +672,13 @@ var RealGameUI = (function() {
         getOpponentsForPlayer: getOpponentsForPlayer,
         getMatchValueForPlayer: getMatchValueForPlayer,
         getBubbleDisplayValue: getBubbleDisplayValue,
-        getBubbleClass: getBubbleClass
+        getBubbleClass: getBubbleClass,
+        // v1.02: WRV Button Functions
+        disableSaveButton: disableSaveButton,
+        enableSaveButton: enableSaveButton,
+        setSaveButtonRetry: setSaveButtonRetry,
+        flashSaveButtonSuccess: flashSaveButtonSuccess,
+        getSaveButtonStatus: getSaveButtonStatus
     };
     
 })();
@@ -528,9 +689,18 @@ window.RealGameUI = RealGameUI;
 // Setup callbacks for control bar
 window._saveHoleCallback = function() {
     if (typeof RealGameSave !== 'undefined' && RealGameSave.saveHole) {
+        // Disable button before save (WRV will handle the rest)
+        if (typeof RealGameUI !== 'undefined' && RealGameUI.disableSaveButton) {
+            RealGameUI.disableSaveButton('⏳ Saving...');
+        }
+        
         RealGameSave.saveHole(null, function() {
-            if (typeof RealGameUI !== 'undefined') {
+            if (typeof RealGameUI !== 'undefined' && RealGameUI.renderAll) {
                 RealGameUI.renderAll();
+                // Re-enable button after render
+                if (typeof RealGameUI !== 'undefined' && RealGameUI.enableSaveButton) {
+                    RealGameUI.enableSaveButton();
+                }
             }
         });
     }
@@ -562,10 +732,12 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
-   - All existing functionality preserved from v1.00
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: getBubbleClass() now correctly passes -1 instead of cache.lastSyncedHole when no holes are synced
+   - This ensures cross-flight bubbles show grey AS at game start (H1)
+   - Now properly handles lastSyncedPosition = -1 (no data) state
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */

@@ -1,12 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 7.38
-KEY CHANGES from v7.37:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called to apply user's zoom preference
-   - All existing functionality preserved from v7.37
+VERSION: 7.39
+KEY CHANGES from v7.38:
+   - FIXED: Game completion now uses Firestore status === "completed" as source of truth
+   - FIXED: isGameComplete() now checks cache.status first (primary), signatures as fallback
+   - FIXED: checkPostGameContext() now checks cache.status === "completed" first
+   - FIXED: isGameCompletedFromCache() new function for unified completion check
+   - FIXED: Realtime listener now detects status change from "scheduled" to "completed"
+   - FIXED: init() uses isGameCompletedFromCache() for proper post-game redirect
+   - All existing functionality preserved from v7.38
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -20,9 +22,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.38"></script>
-    <script src="js/session.js?v=7.38"></script>
-    <script src="js/settings.js?v=7.38"></script>
+    <script src="js/firebase-config.js?v=7.39"></script>
+    <script src="js/session.js?v=7.39"></script>
+    <script src="js/settings.js?v=7.39"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -31,11 +33,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.38"></script>
-    <script src="js/history-record.js?v=7.38"></script>
-    <script src="js/sign-card.js?v=7.38"></script>
-    <script src="js/hcp-adjust.js?v=7.38"></script>
-    <script src="js/modal.js?v=7.38"></script>
+    <script src="js/ticker.js?v=7.39"></script>
+    <script src="js/history-record.js?v=7.39"></script>
+    <script src="js/sign-card.js?v=7.39"></script>
+    <script src="js/hcp-adjust.js?v=7.39"></script>
+    <script src="js/modal.js?v=7.39"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -156,14 +158,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.38</div>
+<div class="version-tag">v7.39</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.38: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v7.39: Uses Firestore status as source of truth
 // ============================================================
-var APP_VERSION = "7.38";
-var CACHE_KEY = "view_game_version_v738";
+var APP_VERSION = "7.39";
+var CACHE_KEY = "view_game_version_v739";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -181,8 +183,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.38";
-console.log("[VIEW-GAME] Initializing v7.38 - Added settings.js zoom control");
+window.VIEW_GAME_VERSION = "7.39";
+console.log("[VIEW-GAME] Initializing v7.39 - Firestore status as source of truth");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -222,12 +224,31 @@ var isPostGameContext = false;
 var firestoreUnsubscribe = null;
 
 // ============================================================
-// v7.27: Post-game context detection
+// v7.39: Check completion from Firestore status (source of truth)
+// ============================================================
+
+function isGameCompletedFromCache(cache) {
+    if (!cache) return false;
+    // PRIMARY: Firestore status field
+    if (cache.status === "completed") return true;
+    // SECONDARY: local signatures (fallback for legacy)
+    return isGameComplete();
+}
+
+// ============================================================
+// v7.39: Post-game context detection - uses status first
 // ============================================================
 
 function checkPostGameContext(cache) {
     if (!cache) return false;
     
+    // PRIMARY: Firestore status field (source of truth)
+    if (cache.status === "completed") {
+        console.log("[VIEW-GAME] Post-game context: status=completed");
+        return true;
+    }
+    
+    // SECONDARY: local signatures (fallback)
     var signatures = cache.signatures || {};
     var f1Signed = signatures.f1 === true || (signatures.f1 && signatures.f1.signed === true);
     var f2Signed = signatures.f2 === true || (signatures.f2 && signatures.f2.signed === true);
@@ -506,7 +527,8 @@ function applyPreloadedData(preloadData) {
         signatures: { f1: false, f2: false },
         submitted: { f1: false, f2: false },
         locks: { f1: null, f2: null },
-        gameStarted: true
+        gameStarted: true,
+        status: preloadData.status || "scheduled"
     };
     
     if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
@@ -566,7 +588,8 @@ function loadFromHistoryRecord(historyId) {
                 submitted: { f1: true, f2: true },
                 locks: { f1: null, f2: null },
                 gameStarted: true,
-                gameComplete: true
+                gameComplete: true,
+                status: "completed"
             };
             
             for (var h = 1; h <= 18; h++) {
@@ -854,13 +877,18 @@ function getBubbleClassWithClinch(player, opponent) {
 }
 
 // ============================================================
-// Game Completion Detection
+// v7.39: Game Completion Detection - uses status as source of truth
 // ============================================================
 
 function isGameComplete() {
     var cache = GameLoader.getLocalCache();
-    if (!cache || !cache.signatures) return false;
+    if (!cache) return false;
     
+    // PRIMARY: Firestore status field
+    if (cache.status === "completed") return true;
+    
+    // SECONDARY: local signatures (fallback)
+    if (!cache.signatures) return false;
     var f1Signed = cache.signatures.f1 === true || (cache.signatures.f1 && cache.signatures.f1.signed === true);
     var f2Signed = cache.signatures.f2 === true || (cache.signatures.f2 && cache.signatures.f2.signed === true);
     
@@ -1121,9 +1149,10 @@ function setupRealtimeListener() {
             var f2Changed = (currentCache.f2DataString !== data.f2?.d);
             var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
             var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
+            var statusChanged = (currentCache.status !== data.status);
             
-            if (f1Changed || f2Changed || resultsChanged || signaturesChanged) {
-                console.log("Realtime update detected");
+            if (f1Changed || f2Changed || resultsChanged || signaturesChanged || statusChanged) {
+                console.log("Realtime update detected (statusChanged=" + statusChanged + ", newStatus=" + data.status + ")");
                 
                 GameLoader.loadGame(gameId, "scheduledGames", function(result) {
                     if (result.success) {
@@ -1145,8 +1174,9 @@ function setupRealtimeListener() {
                         var wasComplete = gameCompleteFlag;
                         gameCompleteFlag = isGameComplete();
                         
-                        if (!wasComplete && gameCompleteFlag && !hasSwitchedToHistory) {
-                            console.log("Game completed - switching to history record");
+                        // v7.39: Check if completion was triggered by status change
+                        if ((!wasComplete && gameCompleteFlag) || statusChanged) {
+                            console.log("Game completed (status=" + data.status + ") - switching to history record");
                             var historyId = gameId + "_H";
                             loadFromHistoryRecord(historyId);
                         }
@@ -1318,7 +1348,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.38: Initialization - with settings.js
+// v7.39: Initialization - uses status as source of truth
 // ============================================================
 
 async function init() {
@@ -1421,13 +1451,14 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
-            // v7.37: Check if game is complete AND it's Game Day
+            // v7.39: Check completion from Firestore status (source of truth)
             var gameDate = cache.course?.date || null;
             var today = new Date().toISOString().split('T')[0];
             var isToday = (gameDate === today);
+            var isCompleted = isGameCompletedFromCache(cache);
             
-            if (isToday && gameCompleteFlag && !celebrationTriggered && !hasSwitchedToHistory) {
-                console.log("[VIEW-GAME] Game Day - showing GAME COMPLETED modal (redirect to post-game.html)");
+            if (isToday && isCompleted && !celebrationTriggered && !hasSwitchedToHistory) {
+                console.log("[VIEW-GAME] Game Day - game completed (status=completed), redirecting to post-game.html");
                 showGameCompleteModal();
             } else {
                 renderAll();
@@ -1439,7 +1470,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
-// v7.38: settings.js already initialized at top of script
+// v7.39: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1448,13 +1479,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.38
-KEY CHANGES from v7.37:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called to apply user's zoom preference
-   - All existing functionality preserved from v7.37
+VERSION: 7.39
+KEY CHANGES from v7.38:
+   - FIXED: Game completion now uses Firestore status === "completed" as source of truth
+   - FIXED: isGameComplete() now checks cache.status first (primary), signatures as fallback
+   - FIXED: checkPostGameContext() now checks cache.status === "completed" first
+   - FIXED: isGameCompletedFromCache() new function for unified completion check
+   - FIXED: Realtime listener now detects status change from "scheduled" to "completed"
+   - FIXED: init() uses isGameCompletedFromCache() for proper post-game redirect
+   - All existing functionality preserved from v7.38
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->

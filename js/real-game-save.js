@@ -1,27 +1,97 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.20
-KEY CHANGES from v1.06:
-   - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
-   - Previously game1 points were not updated during cascade, causing TR values to remain static
-   - This fixes the cascade bug where editing a previous hole didn't recalculate TR values correctly
-   - All existing functionality preserved from v1.06
-DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: Added safety checks in writeSingleHoleToFirestore() for flight data existence
+   - FIXED: processPendingWrites() now initializes full cache structure with flight data fields
+   - FIXED: writeNewHoleData() now sets computedUpToHole = position + 1 before building payload
+   - This ensures cascade writes don't fail when cache lacks flight data
+   - PREVIOUS: processPendingWrites() could call writeSingleHoleToFirestore() with incomplete cache
+   - PRESERVED: ALL other functionality from v1.35 (nested flight data structure)
+DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.20";
+window.REAL_GAME_SAVE_VERSION = "1.36";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.20 - fixed game1 points in cascade");
+    console.log("[REAL-GAME-SAVE] Initializing v1.36 - Robust flight data handling + computedUpToHole fix");
     
     // ============================================================
     // Helper: Get Firestore instance
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Helper: WRV update - BACKGROUND (fire and forget)
+    // Does NOT block the calling function
+    // NO CACHE REFRESH - IMR is the source of truth for this device
+    // ============================================================
+    function wruBackground(collection, docId, data, logLabel, callback) {
+        // Set WRV flag to prevent real-time listener from processing
+        RealGameState.setWRVInProgress(true);
+        console.log('[RealGameSave] WRV flag set: true' + (logLabel ? ' (' + logLabel + ')' : ''));
+        
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            WRV.update(collection, docId, data, function(err, result) {
+                // Clear WRV flag when WRV completes
+                RealGameState.setWRVInProgress(false);
+                console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                
+                if (err) {
+                    console.warn('[RealGameSave] BACKGROUND WRV failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
+                } else {
+                    console.log('[RealGameSave] BACKGROUND WRV success' + (logLabel ? ' (' + logLabel + ')' : ''));
+                }
+                
+                if (callback) callback(err, result);
+            });
+        } else {
+            // Fallback: direct update in background
+            console.warn('[RealGameSave] WRV not available, using direct background update');
+            var db = getDb();
+            db.collection(collection).doc(docId).update(data)
+                .then(function() {
+                    RealGameState.setWRVInProgress(false);
+                    console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    console.log('[RealGameSave] BACKGROUND direct update success' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    if (callback) callback(null, true);
+                })
+                .catch(function(err) {
+                    RealGameState.setWRVInProgress(false);
+                    console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    console.warn('[RealGameSave] BACKGROUND direct update failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
+                    if (callback) callback(err, false);
+                });
+        }
+    }
+    
+    // ============================================================
+    // Helper: WRV update with Promise wrapper (async/await compatible)
+    // ============================================================
+    function wru(collection, docId, data) {
+        return new Promise(function(resolve, reject) {
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                WRV.update(collection, docId, data, function(err, result) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            } else {
+                // Fallback: direct update
+                console.warn('[RealGameSave] WRV not available, using direct update');
+                var db = getDb();
+                db.collection(collection).doc(docId).update(data)
+                    .then(resolve)
+                    .catch(reject);
+            }
+        });
     }
     
     // ============================================================
@@ -116,7 +186,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.20] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.36] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -247,7 +317,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore
+    // writeSingleHoleToFirestore - v1.36: Safety checks + nested flight data
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -270,33 +340,16 @@ var RealGameSave = (function() {
         
         var updatePayload = {};
         
+        // v1.31: Update cache.results with the new data for this position
         if (resultsData.matchResults !== null) {
-            updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
+            cache.results.matchResults[position] = resultsData.matchResults;
         }
-        
         if (resultsData.f1IntraMatches !== null) {
-            updatePayload[`results.f1IntraMatches.${position}`] = resultsData.f1IntraMatches;
+            cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
         }
-        
         if (resultsData.f2IntraMatches !== null) {
-            updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
-            if(isTarget) console.log(`[DEBUG-WRITE] Adding f2IntraMatches to payload at position ${position}`);
-        } else {
-            if(isTarget) console.warn(`[DEBUG-WRITE] f2IntraMatches is NULL - NOT adding to payload!`);
+            cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
         }
-        
-        updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
-        updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
-        updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
-        updatePayload["results.game2.pointsB"] = cache.results.game2.pointsB;
-        updatePayload["results.game2.flight1.leader"] = cache.results.game2.flight1.leader;
-        updatePayload["results.game2.flight2.leader"] = cache.results.game2.flight2.leader;
-        updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
-        updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
-        updatePayload["results.game3.leader"] = cache.results.game3.leader;
-        updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
-        updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
-        updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
         
         // v1.03: Ensure TR values are properly set before writing
         if (resultsData.trA !== undefined && resultsData.trA !== null) {
@@ -308,61 +361,23 @@ var RealGameSave = (function() {
         cache.results.tr.teamAGreen[position] = resultsData.trAGreen || false;
         cache.results.tr.teamBGreen[position] = resultsData.trBGreen || false;
         
-        if(isTarget) {
-            console.log(`[DEBUG-WRITE] TR values: teamA[${position}]=${cache.results.tr.teamA[position]}, teamB[${position}]=${cache.results.tr.teamB[position]}`);
-        }
-        
-        updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
-        updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
-        updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
-        updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
-        
-        var fullDisplayT1 = new Array(18).fill("AS");
-        if (cache.results.game2.displayT1) {
-            for (var i = 0; i < 18; i++) {
-                if (cache.results.game2.displayT1[i] !== undefined && cache.results.game2.displayT1[i] !== null) {
-                    fullDisplayT1[i] = cache.results.game2.displayT1[i];
-                }
-            }
-        }
-        updatePayload["results.game2.displayT1"] = fullDisplayT1;
-        
-        var fullFlight1Leader = new Array(18).fill("AS");
-        if (cache.results.game2.flight1.leader) {
-            for (var i = 0; i < 18; i++) {
-                if (cache.results.game2.flight1.leader[i] !== undefined && cache.results.game2.flight1.leader[i] !== null) {
-                    fullFlight1Leader[i] = cache.results.game2.flight1.leader[i];
-                }
-            }
-        }
-        updatePayload["results.game2.flight1.leader"] = fullFlight1Leader;
-        
-        var fullFlight1Cumulative = new Array(18).fill(0);
-        if (cache.results.game2.flight1.cumulativePoints) {
-            for (var i = 0; i < 18; i++) {
-                if (cache.results.game2.flight1.cumulativePoints[i] !== undefined && cache.results.game2.flight1.cumulativePoints[i] !== null) {
-                    fullFlight1Cumulative[i] = cache.results.game2.flight1.cumulativePoints[i];
-                }
-            }
-        }
-        updatePayload["results.game2.flight1.cumulativePoints"] = fullFlight1Cumulative;
-        
         if (resultsData.flight1ClinchedHole !== undefined && resultsData.flight1ClinchedHole !== null) {
-            updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
+            cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
         }
         if (resultsData.flight2ClinchedHole !== undefined && resultsData.flight2ClinchedHole !== null) {
-            updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
+            cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
         }
         
         if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-            updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+            cache.results.clinchedAt = resultsData.updatedClinched;
         } else {
-            updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+            cache.results.clinchedAt = resultsData.updatedClinched;
         }
         
-        var now = new Date().toISOString();
-        updatePayload["results.lastComputedAt"] = now;
-        updatePayload["results.playerTotals"] = cache.results.playerTotals;
+        cache.results.lastComputedAt = new Date().toISOString();
+        
+        // v1.31: Write the COMPLETE results object - no more flattened fields
+        updatePayload["results"] = cache.results;
         
         // v1.04: ADD savedHoles to payload
         if (cache.savedHoles) {
@@ -375,29 +390,62 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
         
+        // v1.36: ADD computedUpToHole to payload
+        // This ensures completed games have computedUpToHole = 18
+        if (cache.results && cache.results.computedUpToHole !== undefined) {
+            updatePayload["computedUpToHole"] = cache.results.computedUpToHole;
+            console.log(`[DEBUG-WRITE] Added computedUpToHole=${cache.results.computedUpToHole} to payload`);
+        } else {
+            // Fallback: calculate from savedHoles
+            var bothSaved = 0;
+            if (cache.savedHoles && cache.savedHoles[1] && cache.savedHoles[2]) {
+                var holes1 = cache.savedHoles[1] || [];
+                var holes2 = cache.savedHoles[2] || [];
+                var playOrder = RealGameUtils.getPlayOrder();
+                for (var i = 0; i < playOrder.length; i++) {
+                    var h = playOrder[i];
+                    if (holes1.indexOf(h) !== -1 && holes2.indexOf(h) !== -1) {
+                        bothSaved++;
+                    } else {
+                        break;
+                    }
+                }
+                updatePayload["computedUpToHole"] = bothSaved;
+                console.log(`[DEBUG-WRITE] Calculated computedUpToHole=${bothSaved} from savedHoles`);
+            }
+        }
+        
+        // v1.35: Flight data as NESTED structure (with safety checks)
+        // v1.36: Added safety checks - only write if data exists
+        if (cache.f1DataString) {
+            updatePayload["f1"] = {
+                d: cache.f1DataString,
+                se: cache.flight1Data?.se || false,
+                x: cache.flight1Data?.x || false
+            };
+            if(isTarget) console.log(`[DEBUG-WRITE] Added f1 nested: d=${cache.f1DataString.substring(0, 30)}..., se=${cache.flight1Data?.se || false}`);
+        }
+        if (cache.f2DataString) {
+            updatePayload["f2"] = {
+                d: cache.f2DataString,
+                se: cache.flight2Data?.se || false,
+                x: cache.flight2Data?.x || false
+            };
+            if(isTarget) console.log(`[DEBUG-WRITE] Added f2 nested: d=${cache.f2DataString.substring(0, 30)}..., se=${cache.flight2Data?.se || false}`);
+        }
+        
         if(isTarget) {
-            console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
-            console.log(`[DEBUG-WRITE] TR in payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
+            console.log(`[DEBUG-WRITE] Payload prepared (will be sent in consolidated write)`);
         }
         
-        try {
-            var db = getDb();
-            await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-            if(isTarget) console.log(`[DEBUG-WRITE] SUCCESS - Firestore update completed for hole ${holeNumber}`);
-            console.log(`[CASCADE-DEBUG] Results saved successfully for hole ${holeNumber}`);
-        } catch (error) {
-            console.error('Error saving results:', error);
-            if(isTarget) console.error(`[DEBUG-WRITE] FAILED - Firestore update error:`, error);
-        }
-        
-        return true;
+        return updatePayload;
     }
     
     // ============================================================
-    // writeNewHoleData - v1.06: Fixes stroke points 0 value issue
+    // writeNewHoleData - v1.36: computedUpToHole fix + nested flight data
     // ============================================================
     
-    async function writeNewHoleData(position, holeNumber, cache) {
+    async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
         var gameId = RealGameState.getGameId();
         var allPlayers = RealGameState.getAllPlayers();
         var courseSi = RealGameState.getCourseSi();
@@ -642,70 +690,40 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- playerTotals calculated: ${Object.keys(playerTotals).length} players`);
         
         // ============================================================
-        // BUILD PAYLOAD AND WRITE TO FIRESTORE
+        // v1.31: ASSIGN MATCH DATA TO CACHE.RESULTS BEFORE WRITING
+        // ============================================================
+        if (f1IntraMatchesForHole !== null) {
+            cache.results.f1IntraMatches[position] = f1IntraMatchesForHole;
+            console.log(`[DEBUG-FLOW] --- Assigned f1IntraMatches to cache.results at position ${position}`);
+        }
+        if (f2IntraMatchesForHole !== null) {
+            cache.results.f2IntraMatches[position] = f2IntraMatchesForHole;
+            console.log(`[DEBUG-FLOW] --- Assigned f2IntraMatches to cache.results at position ${position}`);
+        }
+        if (matchResultsArray !== null) {
+            cache.results.matchResults[position] = matchResultsArray;
+            console.log(`[DEBUG-FLOW] --- Assigned matchResults to cache.results at position ${position}`);
+        }
+        
+        cache.results.clinchedAt = updatedClinched;
+        cache.results.lastComputedAt = new Date().toISOString();
+        cache.results.playerTotals = playerTotals;
+        
+        // ============================================================
+        // v1.36: SET computedUpToHole BEFORE building payload
+        // This fixes the issue where computedUpToHole remains at 17 for completed games
+        // ============================================================
+        cache.results.computedUpToHole = position + 1;
+        console.log(`[DEBUG-FLOW] --- Set computedUpToHole=${position + 1} (position ${position} + 1)`);
+        
+        // ============================================================
+        // v1.35: BUILD PAYLOAD - Flight data as NESTED structure
+        // This is the STANDARD format that the UI reads from
         // ============================================================
         var updatePayload = {};
         
-        if (f1IntraMatchesForHole !== null) {
-            updatePayload[`results.f1IntraMatches.${position}`] = f1IntraMatchesForHole;
-            console.log(`[DEBUG-FLOW] --- Adding f1IntraMatches at position ${position}`);
-        }
-        if (f2IntraMatchesForHole !== null) {
-            updatePayload[`results.f2IntraMatches.${position}`] = f2IntraMatchesForHole;
-            console.log(`[DEBUG-FLOW] --- Adding f2IntraMatches at position ${position}`);
-        }
-        if (matchResultsArray !== null) {
-            updatePayload[`results.matchResults.${position}`] = matchResultsArray;
-            console.log(`[DEBUG-FLOW] --- Adding matchResults at position ${position}`);
-        }
-        
-        // Team game arrays - now using cache values (already assigned above)
-        updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
-        updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
-        updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
-        updatePayload["results.game2.pointsB"] = cache.results.game2.pointsB;
-        updatePayload["results.game2.flight1.leader"] = cache.results.game2.flight1.leader;
-        updatePayload["results.game2.flight2.leader"] = cache.results.game2.flight2.leader;
-        updatePayload["results.game2.displayT1"] = cache.results.game2.displayT1;
-        updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
-        updatePayload["results.game2.flight1.cumulativePoints"] = cache.results.game2.flight1.cumulativePoints;
-        updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
-        
-        // Stroke game arrays - now using cache values (already assigned above)
-        updatePayload["results.game3.leader"] = cache.results.game3.leader;
-        updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
-        updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
-        updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
-        updatePayload["results.game3.nettA"] = cache.results.game3.nettA;
-        updatePayload["results.game3.nettB"] = cache.results.game3.nettB;
-        
-        // TR arrays
-        updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
-        updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
-        updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
-        updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
-        
-        if (isTarget) {
-            console.log(`[DEBUG-FLOW] --- TR payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
-            console.log(`[DEBUG-FLOW] --- displayStrk payload: ${updatePayload["results.game3.displayStrk"][position]}`);
-            console.log(`[DEBUG-FLOW] --- displayT2 payload: ${updatePayload["results.game2.displayT2"][position]}`);
-            console.log(`[DEBUG-FLOW] --- game3.pointsA[${position}]: ${updatePayload["results.game3.pointsA"][position]}`);
-            console.log(`[DEBUG-FLOW] --- game3.pointsB[${position}]: ${updatePayload["results.game3.pointsB"][position]}`);
-        }
-        
-        if (Object.keys(clinchedAtUpdates).length > 0) {
-            updatePayload["results.clinchedAt"] = updatedClinched;
-        }
-        
-        if (teamGameResults && teamGameResults.flight1ClinchedHole !== null) {
-            updatePayload["results.game2.flight1.clinchedHole"] = teamGameResults.flight1ClinchedHole;
-        }
-        if (teamGameResults && teamGameResults.flight2ClinchedHole !== null) {
-            updatePayload["results.game2.flight2.clinchedHole"] = teamGameResults.flight2ClinchedHole;
-        }
-        
-        updatePayload["results.lastComputedAt"] = new Date().toISOString();
-        updatePayload["results.playerTotals"] = cache.results.playerTotals;
+        // v1.31: Write the COMPLETE results object - no more flattened fields
+        updatePayload["results"] = cache.results;
         
         // v1.04: ADD savedHoles to payload
         if (cache.savedHoles) {
@@ -718,34 +736,62 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         console.log(`[DEBUG-FLOW] --- Adding lastSyncedPosition=${lastSyncedPos} to payload`);
         
-        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        // v1.33: ADD gameStarted and currentHole to payload (metadata)
+        var editableFlight = RealGameState.getEditableFlight();
+        var currentHole = RealGameState.getCurrentHole();
+        updatePayload["gameStarted"] = true;
+        if (editableFlight === 1) {
+            updatePayload["currentHoleF1"] = currentHole;
+        } else if (editableFlight === 2) {
+            updatePayload["currentHoleF2"] = currentHole;
+        } else {
+            updatePayload["currentHoleF1"] = currentHole;
+            updatePayload["currentHoleF2"] = currentHole;
+        }
+        
+        // v1.36: Add computedUpToHole to top-level payload for easy access
+        updatePayload["computedUpToHole"] = position + 1;
+        console.log(`[DEBUG-FLOW] --- Adding computedUpToHole=${position + 1} to top-level payload`);
+        
+        // ============================================================
+        // v1.35: FLIGHT DATA AS NESTED STRUCTURE (STANDARD)
+        // Write BOTH flights as nested objects to ensure consistency
+        // ============================================================
+        // Flight 1 - nested structure
+        if (cache.f1DataString) {
+            updatePayload["f1"] = {
+                d: cache.f1DataString,
+                se: cache.flight1Data?.se || false,
+                x: cache.flight1Data?.x || false
+            };
+            console.log(`[DEBUG-FLOW] --- f1 nested: d=${cache.f1DataString.substring(0, 30)}..., se=${cache.flight1Data?.se || false}`);
+        }
+        
+        // Flight 2 - nested structure
+        if (cache.f2DataString) {
+            updatePayload["f2"] = {
+                d: cache.f2DataString,
+                se: cache.flight2Data?.se || false,
+                x: cache.flight2Data?.x || false
+            };
+            console.log(`[DEBUG-FLOW] --- f2 nested: d=${cache.f2DataString.substring(0, 30)}..., se=${cache.flight2Data?.se || false}`);
+        }
         
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
-        console.log(`[DEBUG-FLOW] --- Has f1IntraMatches: ${!!updatePayload[`results.f1IntraMatches.${position}`]}`);
-        console.log(`[DEBUG-FLOW] --- Has f2IntraMatches: ${!!updatePayload[`results.f2IntraMatches.${position}`]}`);
-        console.log(`[DEBUG-FLOW] --- Has matchResults: ${!!updatePayload[`results.matchResults.${position}`]}`);
-        console.log(`[DEBUG-FLOW] --- Has playerTotals: ${!!updatePayload["results.playerTotals"]}`);
-        console.log(`[DEBUG-FLOW] --- Has TR teamA: ${!!updatePayload["results.tr.teamA"][position]}`);
-        console.log(`[DEBUG-FLOW] --- Has TR teamB: ${!!updatePayload["results.tr.teamB"][position]}`);
+        console.log(`[DEBUG-FLOW] --- Has results: ${!!updatePayload["results"]}`);
         console.log(`[DEBUG-FLOW] --- Has savedHoles: ${!!updatePayload["savedHoles"]}`);
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
-        console.log(`[DEBUG-FLOW] --- Has game3.displayStrk: ${!!updatePayload["results.game3.displayStrk"][position]}`);
-        console.log(`[DEBUG-FLOW] --- Has game2.displayT2: ${!!updatePayload["results.game2.displayT2"][position]}`);
-        console.log(`[DEBUG-FLOW] --- Has game3.pointsA: ${updatePayload["results.game3.pointsA"][position] !== undefined}`);
-        console.log(`[DEBUG-FLOW] --- Has game3.pointsB: ${updatePayload["results.game3.pointsB"][position] !== undefined}`);
+        console.log(`[DEBUG-FLOW] --- Has gameStarted: ${!!updatePayload["gameStarted"]}`);
+        console.log(`[DEBUG-FLOW] --- Has currentHoleF1/F2: ${!!updatePayload["currentHoleF1"] || !!updatePayload["currentHoleF2"]}`);
+        console.log(`[DEBUG-FLOW] --- Has computedUpToHole: ${updatePayload["computedUpToHole"] !== undefined}`);
+        console.log(`[DEBUG-FLOW] --- Has f1 nested: ${!!updatePayload["f1"]}`);
+        console.log(`[DEBUG-FLOW] --- Has f2 nested: ${!!updatePayload["f2"]}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         
-        try {
-            var db = getDb();
-            await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-            console.log(`[DEBUG-FLOW] Firestore write SUCCESS for hole ${holeNumber}`);
-            return true;
-        } catch (error) {
-            console.error(`[DEBUG-FLOW] Firestore write FAILED for hole ${holeNumber}:`, error);
-            throw error;
-        }
+        // v1.33: Return payload for consolidated write (do NOT call wruBackground here)
+        return updatePayload;
     }
     
     // ============================================================
@@ -902,10 +948,18 @@ var RealGameSave = (function() {
             cache.lastSyncedPosition = newLastSyncedPos;
             console.log(`[DEBUG-CACHE] Updated lastSyncedPosition=${newLastSyncedPos} in cache`);
         }
+        
+        // v1.36: Update computedUpToHole in cache.results
+        // This ensures the cache reflects the correct computed value
+        var highestBothSaved = RealGameUtils.getHighestBothSaved(cache);
+        if (highestBothSaved !== undefined && highestBothSaved !== null) {
+            cache.results.computedUpToHole = highestBothSaved;
+            console.log(`[DEBUG-CACHE] Updated computedUpToHole=${highestBothSaved} in cache.results`);
+        }
     }
     
     // ============================================================
-    // performSave - v1.20: Uses updated updateLocalCacheWithResults
+    // performSave - v1.36: Uses nested flight data structure + computedUpToHole
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -952,27 +1006,21 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-SAVE] Scores: a1=${scores.a1}, a2=${scores.a2}, b1=${scores.b1}, b2=${scores.b2}`);
             
             if (typeof GameData !== 'undefined') {
+                // v1.33: GameData.saveCurrentHole() still updates local data and cache
+                // But we will NOT call WRV inside it - we'll build a consolidated payload
                 GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
                     if (success) {
                         RealGameState.removeLocalChangesForHole(flight, currentHole);
                         
-                        console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS`);
-                        console.log(`[DEBUG-SAVE] Refreshing cache...`);
-                        
-                        await new Promise(function(resolveLoad) {
-                            if (typeof GameLoader !== 'undefined') {
-                                GameLoader.loadGame(gameId, "scheduledGames", function(result) {
-                                    if (result.success) console.log("[DEBUG-SAVE] Cache refreshed");
-                                    resolveLoad();
-                                });
-                            } else {
-                                resolveLoad();
-                            }
-                        });
+                        console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS (local only)`);
+                        // v1.25: REMOVED manual cache refresh before writeNewHoleData()
+                        // Cache is already updated by GameData.saveCurrentHole() (v4.04)
+                        // This prevents stale data from overwriting cache before calculations
+                        console.log(`[DEBUG-SAVE] Using current cache (already updated by GameData)`);
                         
                         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
                         if (!cache) {
-                            reject(new Error("No cache available after refresh"));
+                            reject(new Error("No cache available"));
                             return;
                         }
                         
@@ -982,76 +1030,29 @@ var RealGameSave = (function() {
                         console.log(`[DEBUG-SAVE] currentPosition=${currentPosition}, lastSyncedPos=${lastSyncedPos}`);
                         console.log(`[DEBUG-SAVE] isNewHole = ${currentPosition >= lastSyncedPos}`);
                         
-                        // ============================================================
-                        // T-1 IMMEDIATE RECALCULATION
-                        // ============================================================
-                        console.log(`[DEBUG-SAVE] --- T-1 IMMEDIATE RECALCULATION ---`);
-                        
-                        if (typeof GameTeam !== 'undefined') {
-                            var teamGameResults = GameTeam.calculate(
-                                allPlayers,
-                                cache.f1DataString,
-                                cache.f2DataString,
-                                courseSi,
-                                startingHole,
-                                teamGameFormat
-                            );
-                            
-                            if (!cache.results) cache.results = RealGameUtils.initializeEmptyResults();
-                            if (!cache.results.game2) cache.results.game2 = { flight1: {}, flight2: {} };
-                            if (!cache.results.game2.flight1) cache.results.game2.flight1 = {};
-                            if (!cache.results.game2.flight2) cache.results.game2.flight2 = {};
-                            if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
-                            if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
-                            if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
-                            if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
-                            if (!cache.t1Row) cache.t1Row = new Array(18).fill('_');
-                            
-                            cache.results.game2.flight1.cumulativePoints[currentPosition] = teamGameResults.flight1Cumulative[currentPosition];
-                            cache.results.game2.displayT1[currentPosition] = teamGameResults.displayT1[currentPosition];
-                            cache.results.game2.flight1.leader[currentPosition] = teamGameResults.flight1Leaders[currentPosition];
-                            cache.t1Row[currentPosition] = teamGameResults.displayT1[currentPosition];
-                            
-                            console.log(`[DEBUG-SAVE] T-1 at position ${currentPosition}: ${teamGameResults.displayT1[currentPosition]}`);
-                            
-                            var fullDisplayT1 = cache.results.game2.displayT1.slice();
-                            var fullCumulativeF1 = cache.results.game2.flight1.cumulativePoints.slice();
-                            var fullLeaderF1 = cache.results.game2.flight1.leader.slice();
-                            
-                            var t1UpdatePayload = {};
-                            t1UpdatePayload["results.game2.displayT1"] = fullDisplayT1;
-                            t1UpdatePayload["results.game2.flight1.cumulativePoints"] = fullCumulativeF1;
-                            t1UpdatePayload["results.game2.flight1.leader"] = fullLeaderF1;
-                            t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-                            
-                            try {
-                                var db = getDb();
-                                await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
-                                console.log(`[DEBUG-SAVE] T-1 Firestore write SUCCESS`);
-                            } catch (e) {
-                                console.warn(`[DEBUG-SAVE] T-1 Firestore write FAILED:`, e);
-                            }
-                        }
-                        
-                        if (renderAllCallback) renderAllCallback();
+                        // v1.23: REMOVED separate T-1 write
+                        // T-1, T-2, Strk are all calculated in writeNewHoleData()
+                        console.log(`[DEBUG-SAVE] --- T-1, T-2, Strk will be calculated by writeNewHoleData ---`);
                         
                         // ============================================================
-                        // writeNewHoleData - ALWAYS call for ALL saves
-                        // v1.06: Now properly handles stroke points 0 values
+                        // writeNewHoleData - Calculate all data, return payload
+                        // v1.36: Sets computedUpToHole + nested flight data structure
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
+                        var consolidatedPayload = null;
                         try {
-                            await writeNewHoleData(currentPosition, currentHole, cache);
-                            console.log(`[DEBUG-SAVE] writeNewHoleData SUCCESS for hole ${currentHole}`);
+                            consolidatedPayload = await writeNewHoleData(currentPosition, currentHole, cache, renderAllCallback);
+                            console.log(`[DEBUG-SAVE] writeNewHoleData COMPLETE - payload ready`);
                         } catch (error) {
                             console.error(`[DEBUG-SAVE] writeNewHoleData FAILED:`, error);
-                            reject(new Error(`Failed to write match data for hole ${currentHole}`));
+                            reject(new Error(`Failed to calculate match data for hole ${currentHole}`));
                             return;
                         }
                         
                         // ============================================================
                         // CASCADE (only for previous holes)
+                        // v1.27: UI updated ONLY ONCE after all cascade holes are processed
                         // ============================================================
                         if (currentPosition < lastSyncedPos) {
                             console.log(`[DEBUG-SAVE] --- CASCADE: Recalculating positions ${currentPosition} to ${lastSyncedPos} ---`);
@@ -1083,7 +1084,8 @@ var RealGameSave = (function() {
                                     if (loopResultsData) {
                                         // v1.20: updateLocalCacheWithResults now updates game1 points too
                                         updateLocalCacheWithResults(loopResultsData);
-                                        if (renderAllCallback) renderAllCallback();
+                                        // v1.27: REMOVED renderAllCallback() from inside loop
+                                        // UI will be updated once after all cascade holes are processed
                                         cascadeResultsQueue.push({
                                             hole: holeToUpdate,
                                             resultsData: loopResultsData
@@ -1130,13 +1132,19 @@ var RealGameSave = (function() {
                                 }
                             }
                             
+                            // v1.33: For cascade writes, we need to write each hole individually
+                            // Build consolidated payload for each cascade hole
+                            var cascadePayloads = [];
                             for (var q = 0; q < cascadeResultsQueue.length; q++) {
                                 var item = cascadeResultsQueue[q];
-                                console.log(`[DEBUG-SAVE] Writing cascade hole ${item.hole} to Firestore...`);
+                                console.log(`[DEBUG-SAVE] Preparing cascade hole ${item.hole}...`);
                                 
                                 try {
-                                    await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
-                                    console.log(`[DEBUG-SAVE] Successfully wrote hole ${item.hole}`);
+                                    var cascadePayload = await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
+                                    cascadePayloads.push({
+                                        hole: item.hole,
+                                        payload: cascadePayload
+                                    });
                                     
                                     pendingData.pendingWrites = pendingData.pendingWrites.filter(function(w) {
                                         return w.hole !== item.hole;
@@ -1144,22 +1152,45 @@ var RealGameSave = (function() {
                                     savePendingWrites(pendingData);
                                     
                                 } catch (error) {
-                                    console.error(`[DEBUG-SAVE] Failed to write hole ${item.hole}:`, error);
-                                    reject(new Error(`Failed to write hole ${item.hole}`));
+                                    console.error(`[DEBUG-SAVE] Failed to prepare cascade hole ${item.hole}:`, error);
+                                    reject(new Error(`Failed to prepare cascade hole ${item.hole}`));
                                     return;
                                 }
                             }
                             
                             savePendingWrites(null);
+                            
+                            // v1.33: Write all cascade payloads in background (each is a separate WRV write)
+                            // This is necessary because cascade holes are independent
+                            for (var q = 0; q < cascadePayloads.length; q++) {
+                                var cp = cascadePayloads[q];
+                                wruBackground("scheduledGames", gameId, cp.payload, "cascadeHole_" + cp.hole);
+                                console.log(`[DEBUG-SAVE] Cascade write INITIATED for hole ${cp.hole}`);
+                            }
+                            
+                            // v1.27: Update UI ONCE after ALL cascade holes are processed
+                            console.log(`[DEBUG-SAVE] --- CASCADE COMPLETE - Updating UI once ---`);
+                            if (renderAllCallback) renderAllCallback();
+                            
                         } else {
                             console.log(`[DEBUG-SAVE] --- No cascade needed (new hole or position >= lastSyncedPos)`);
                         }
                         
                         // ============================================================
-                        // UPDATE METADATA
+                        // v1.35: CONSOLIDATED WRV WRITE - ONE WRV for ALL data
+                        // This writes results, savedHoles, lastSyncedPosition, metadata, AND flight data
+                        // Flight data is now written as NESTED structure (f1.d, f1.se, f1.x inside f1)
+                        // v1.36: Also writes computedUpToHole
                         // ============================================================
-                        if (typeof RealGameInit !== 'undefined' && RealGameInit.updateGameMetadata) {
-                            await RealGameInit.updateGameMetadata(editableFlight, currentHole);
+                        if (consolidatedPayload) {
+                            console.log(`[DEBUG-SAVE] --- WRITING CONSOLIDATED PAYLOAD (ONE WRV) ---`);
+                            wruBackground("scheduledGames", gameId, consolidatedPayload, "consolidated_" + currentHole);
+                            console.log(`[DEBUG-SAVE] Consolidated WRV write INITIATED for hole ${currentHole}`);
+                        }
+                        
+                        // v1.27: Update UI once for new hole save (if not already done in cascade)
+                        if (currentPosition >= lastSyncedPos) {
+                            if (renderAllCallback) renderAllCallback();
                         }
                         
                         if (typeof Ticker !== 'undefined') {
@@ -1290,6 +1321,10 @@ var RealGameSave = (function() {
         }
     }
     
+    // ============================================================
+    // processPendingWrites - v1.36: Full cache initialization
+    // ============================================================
+    
     async function processPendingWrites(renderAllCallback) {
         var pendingData = loadPendingWrites();
         if (!pendingData) return false;
@@ -1301,30 +1336,67 @@ var RealGameSave = (function() {
             debugDiv.innerHTML = `⏳ Resuming ${pendingData.pendingWrites.length} pending updates...`;
         }
         
+        // v1.36: Get full cache with all required fields
         var resultsCache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (!resultsCache) {
-            resultsCache = { results: RealGameUtils.initializeEmptyResults() };
+            // Initialize a complete cache structure with all required fields
+            resultsCache = { 
+                results: RealGameUtils.initializeEmptyResults(),
+                savedHoles: { 1: [], 2: [] },
+                f1DataString: null,
+                f2DataString: null,
+                flight1Data: null,
+                flight2Data: null,
+                t1Row: new Array(18).fill("AS"),
+                t2Row: new Array(18).fill("AS"),
+                strkRow: new Array(18).fill("AS"),
+                lastSyncedPosition: -1
+            };
+            console.log(`[CASCADE-DEBUG] Initialized complete cache structure for pending writes`);
+        } else {
+            // Ensure all required fields exist
+            if (!resultsCache.savedHoles) {
+                resultsCache.savedHoles = { 1: [], 2: [] };
+            }
+            if (!resultsCache.results) {
+                resultsCache.results = RealGameUtils.initializeEmptyResults();
+            }
+            if (!resultsCache.t1Row) {
+                resultsCache.t1Row = new Array(18).fill("AS");
+            }
+            if (!resultsCache.t2Row) {
+                resultsCache.t2Row = new Array(18).fill("AS");
+            }
+            if (!resultsCache.strkRow) {
+                resultsCache.strkRow = new Array(18).fill("AS");
+            }
+            console.log(`[CASCADE-DEBUG] Ensured cache has all required fields`);
         }
-        if (!resultsCache.results) {
-            resultsCache.results = RealGameUtils.initializeEmptyResults();
+        
+        // v1.36: Ensure results has computedUpToHole
+        if (resultsCache.results && resultsCache.results.computedUpToHole === undefined) {
+            var highestBothSaved = RealGameUtils.getHighestBothSaved(resultsCache);
+            resultsCache.results.computedUpToHole = highestBothSaved || 0;
+            console.log(`[CASCADE-DEBUG] Set computedUpToHole=${resultsCache.results.computedUpToHole} in cache.results`);
         }
         
         for (var i = 0; i < pendingData.pendingWrites.length; i++) {
             var pending = pendingData.pendingWrites[i];
             var holeNum = pending.hole;
             
-            console.log(`[CASCADE-DEBUG] Writing pending hole ${holeNum}...`);
+            console.log(`[CASCADE-DEBUG] Preparing pending hole ${holeNum}...`);
             
             try {
-                await writeSingleHoleToFirestore(holeNum, pending.resultsData, resultsCache);
-                console.log(`[CASCADE-DEBUG] Successfully wrote pending hole ${holeNum}`);
+                var payload = await writeSingleHoleToFirestore(holeNum, pending.resultsData, resultsCache);
+                wruBackground("scheduledGames", getGameId(), payload, "pendingHole_" + holeNum);
+                console.log(`[CASCADE-DEBUG] Pending write INITIATED for hole ${holeNum}`);
                 
                 pendingData.pendingWrites.splice(i, 1);
                 i--;
                 savePendingWrites(pendingData);
                 
             } catch (error) {
-                console.error(`[CASCADE-DEBUG] Failed to write pending hole ${holeNum}:`, error);
+                console.error(`[CASCADE-DEBUG] Failed to prepare pending hole ${holeNum}:`, error);
                 if (debugDiv) {
                     debugDiv.innerHTML = `❌ Failed to write hole ${holeNum}. Will retry on next load.`;
                 }
@@ -1332,11 +1404,11 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log(`[CASCADE-DEBUG] All pending writes completed successfully`);
+        console.log(`[CASCADE-DEBUG] All pending writes processed`);
         if (debugDiv) {
-            debugDiv.innerHTML = "✓ All updates completed";
+            debugDiv.innerHTML = "✓ All updates processed";
             setTimeout(function() {
-                if (debugDiv.innerHTML === "✓ All updates completed") {
+                if (debugDiv.innerHTML === "✓ All updates processed") {
                     debugDiv.innerHTML = "";
                 }
             }, 3000);
@@ -1376,12 +1448,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.20
-KEY CHANGES from v1.06:
-   - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
-   - Previously game1 points were not updated during cascade, causing TR values to remain static
-   - This fixes the cascade bug where editing a previous hole didn't recalculate TR values correctly
-   - All existing functionality preserved from v1.06
-DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: Added safety checks in writeSingleHoleToFirestore() for flight data existence
+   - FIXED: processPendingWrites() now initializes full cache structure with flight data fields
+   - FIXED: writeNewHoleData() now sets computedUpToHole = position + 1 before building payload
+   - This ensures cascade writes don't fail when cache lacks flight data
+   - PREVIOUS: processPendingWrites() could call writeSingleHoleToFirestore() with incomplete cache
+   - PRESERVED: ALL other functionality from v1.35 (nested flight data structure)
+DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */

@@ -1,0 +1,914 @@
+<!--
+FILE: validate-new-record.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW FILE: Standalone validator for new empty records from setup-game.html
+   - ADDED: Database selector (Production / Development)
+   - ADDED: Load scheduledGames records from selected database
+   - ADDED: Structural validation only (no score computation)
+   - ADDED: Field existence, type, length, and correct value checks
+   - ADDED: Clear PASS/FAIL output with detailed diagnostics
+   - ADDED: Summary with pass/fail counts
+   - PURPOSE: QA tool for setup-game.html new record creation
+DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+STATUS: Ready for integration
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>New Record Validator - SICC Ryder Cup</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; }
+        .container { max-width: 900px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        
+        .version-tag {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top));
+            right: max(12px, env(safe-area-inset-right));
+            font-size: 0.6rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.5);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            letter-spacing: 0.3px;
+        }
+        
+        h1 { color: #4caf50; font-size: 1.4rem; margin-bottom: 6px; }
+        .subtitle { color: #666; font-size: 0.85rem; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px; }
+        .subtitle strong { color: #4caf50; }
+        .subtitle .icon { margin-right: 4px; }
+        
+        .card { background: rgba(20, 20, 20, 0.5); border: 2px solid #2a5a2a; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+        .card-title { font-size: 0.8rem; font-weight: 500; color: #4caf50; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+        
+        .input-group { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+        .input-group label { font-size: 0.85rem; color: #aaa; }
+        .input-group select { background: #1a1a1a; border: 2px solid #2a5a2a; color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; flex: 1; min-width: 200px; cursor: pointer; }
+        .input-group select:focus { outline: none; border-color: #4caf50; }
+        .input-group select:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn { background: #1a3a1a; border: 2px solid #4caf50; color: #4caf50; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; white-space: nowrap; transition: all 0.15s ease; }
+        .btn:hover { background: #2a4a2a; }
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: rgba(20, 20, 20, 0.5); border-color: #2a5a2a; color: #666; }
+        .btn-secondary:hover { border-color: #4caf50; color: #888; }
+        
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            background: #0a0a0a;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 2px solid #2a5a2a;
+        }
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: #aaa;
+            cursor: pointer;
+        }
+        .radio-group input[type="radio"] {
+            accent-color: #4caf50;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .radio-group label.active { color: #4caf50; }
+        
+        .db-indicator {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .db-indicator.prod { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .db-indicator.dev { background: #1a2a3a; color: #4a8af4; border: 1px solid #2a3a5a; }
+        
+        .status { padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; }
+        .status-success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #8bc34a; }
+        .status-error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ef5350; }
+        .status-info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #64b5f6; }
+        .status-warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffa726; }
+        
+        .result-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin: 12px 0;
+        }
+        .result-item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 2px solid #2a5a2a;
+            text-align: center;
+            background: #0a0a0a;
+        }
+        .result-item .label { font-size: 0.6rem; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
+        .result-item .value { font-size: 1.3rem; font-weight: 700; }
+        .result-item .value.pass { color: #4caf50; }
+        .result-item .value.fail { color: #ff6b6b; }
+        .result-item .value.total { color: #ffaa44; }
+        
+        .check-list {
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+            font-family: monospace;
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 8px 12px;
+            border: 1px solid #2a2a2a;
+        }
+        .check-list .check-item {
+            padding: 3px 0;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .check-list .check-item:last-child { border-bottom: none; }
+        .check-list .check-pass { color: #4caf50; }
+        .check-list .check-fail { color: #ff6b6b; }
+        .check-list .check-info { color: #64b5f6; }
+        .check-list .check-warn { color: #ffa726; }
+        .check-list .field-name { color: #888; font-weight: 400; }
+        .check-list .field-value { color: #e0e0e0; font-weight: 400; }
+        .check-list .field-expected { color: #4caf50; }
+        
+        .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.85rem; }
+        .game-info-grid .label { color: #666; }
+        .game-info-grid .value { color: #e0e0e0; }
+        
+        .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+        .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #1a3a1a; letter-spacing: 0.5px; }
+        
+        .badge-pass { background: #0a2a0a; color: #4caf50; padding: 2px 12px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; border: 1px solid #2a5a2a; }
+        .badge-fail { background: #2a0a0a; color: #ff6b6b; padding: 2px 12px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; border: 1px solid #5a2a2a; }
+        
+        .section-title { font-size: 0.7rem; font-weight: 600; color: #4caf50; margin: 8px 0 4px 0; text-transform: uppercase; letter-spacing: 0.3px; }
+        
+        @media (max-width: 500px) {
+            .container { padding: 12px 8px; }
+            .card { padding: 12px; }
+            .input-group { gap: 8px; }
+            .input-group select { min-width: 120px; font-size: 0.75rem; }
+            .btn { padding: 6px 14px; font-size: 0.75rem; }
+            .result-summary { grid-template-columns: 1fr 1fr; }
+            .game-info-grid { font-size: 0.75rem; }
+            .check-list { font-size: 0.7rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="version-tag">v1.00</div>
+    
+    <h1>🔬 New Record Validator</h1>
+    <div class="subtitle">
+        <span class="icon">📋</span> Validates <strong>new empty records</strong> created by <strong>setup-game.html</strong><br>
+        <span style="color:#666; font-size:0.75rem;">
+            Checks: Field existence, type, length, and correct values for a clean game record
+        </span>
+    </div>
+    
+    <!-- Controls -->
+    <div class="card">
+        <div class="card-title">🎯 Select Record</div>
+        
+        <!-- Database Selector -->
+        <div class="input-group">
+            <div class="radio-group" id="dbSelector">
+                <label class="active">
+                    <input type="radio" name="dbEnv" value="prod" checked> 🏭 Production
+                </label>
+                <label>
+                    <input type="radio" name="dbEnv" value="dev"> 🧪 Development
+                </label>
+            </div>
+            <span id="dbIndicator" class="db-indicator prod">PRODUCTION</span>
+        </div>
+        
+        <!-- Record Selector -->
+        <div class="input-group">
+            <label for="recordSelect">Scheduled Game:</label>
+            <select id="recordSelect"><option value="">— Loading scheduled games... —</option></select>
+            <button class="btn" id="validateBtn">🔬 Validate</button>
+            <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
+            <button class="btn btn-secondary" id="clearBtn">Clear</button>
+        </div>
+        
+        <div id="statusMessage"></div>
+    </div>
+    
+    <!-- Results -->
+    <div id="results" style="display:none;">
+        <!-- Summary -->
+        <div class="card" style="border-color: #4caf50;">
+            <div class="card-title">📊 Validation Summary</div>
+            <div id="summaryContent"></div>
+        </div>
+        
+        <!-- Game Info -->
+        <div class="card">
+            <div class="card-title">📋 Game Info</div>
+            <div id="gameInfoContent"></div>
+        </div>
+        
+        <!-- Detailed Checks -->
+        <div class="card">
+            <div class="card-title">🔍 Detailed Checks</div>
+            <div id="checksContent"></div>
+        </div>
+    </div>
+    
+    <div class="footer">New Record Validator v1.00 — Structural validation only</div>
+</div>
+
+<script>
+// ============================================================
+// FILE: validate-new-record.html
+// VERSION: 1.00
+// ============================================================
+
+window.VALIDATOR_VERSION = "1.00";
+console.log("[NewRecordValidator] v1.00 - Structural validation for new records");
+
+// ============================================================
+// FIREBASE
+// ============================================================
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+var DEV_CONFIG = {
+    apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
+    authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
+    projectId: "sicc-ryder-cup-dev",
+    storageBucket: "sicc-ryder-cup-dev.firebasestorage.app",
+    messagingSenderId: "181134548931",
+    appId: "1:181134548931:web:2e4b0d5e3a513ac21e2776"
+};
+
+var currentDb = 'prod';
+var scheduledRecords = [];
+var currentRecordIndex = -1;
+var db = null;
+
+function getFirestoreConfig() {
+    return currentDb === 'prod' ? FIREBASE_CONFIG : DEV_CONFIG;
+}
+
+function getDbLabel() {
+    return currentDb === 'prod' ? 'PRODUCTION' : 'DEVELOPMENT';
+}
+
+function initFirebase() {
+    var config = getFirestoreConfig();
+    if (firebase.apps && firebase.apps.length) {
+        firebase.apps[0].delete();
+    }
+    firebase.initializeApp(config);
+    db = firebase.firestore();
+    console.log("[NewRecordValidator] Firebase initialized with:", getDbLabel());
+}
+
+initFirebase();
+
+// ============================================================
+// UTILITY
+// ============================================================
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return 'Unknown';
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0];
+    }
+    return dateStr;
+}
+
+function setStatus(msg, type) {
+    var el = document.getElementById('statusMessage');
+    if (!msg) { el.innerHTML = ''; return; }
+    var icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+    el.innerHTML = '<div class="status status-' + type + '">' + (icons[type] || '') + ' ' + msg + '</div>';
+}
+
+// ============================================================
+// DATABASE SELECTOR
+// ============================================================
+document.querySelectorAll('input[name="dbEnv"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            currentDb = this.value;
+            var indicator = document.getElementById('dbIndicator');
+            indicator.textContent = getDbLabel();
+            indicator.className = 'db-indicator ' + (currentDb === 'prod' ? 'prod' : 'dev');
+            initFirebase();
+            loadScheduledRecords();
+            setStatus('Switched to ' + getDbLabel() + '. Refreshing records...', 'info');
+        }
+    });
+});
+
+// ============================================================
+// LOAD SCHEDULED RECORDS
+// ============================================================
+function loadScheduledRecords() {
+    var select = document.getElementById('recordSelect');
+    select.disabled = true;
+    select.innerHTML = '<option value="">Loading...</option>';
+    setStatus('Loading scheduled games from ' + getDbLabel() + '...', 'info');
+    
+    db.collection('scheduledGames').orderBy('date', 'desc').limit(200).get()
+        .then(function(snapshot) {
+            scheduledRecords = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                scheduledRecords.push({
+                    id: doc.id,
+                    date: data.date || 'Unknown',
+                    courseName: data.course?.name || 'Unknown Course',
+                    status: data.status || 'unknown',
+                    rawData: data,
+                    createdAt: data.createdAt || null
+                });
+            });
+            
+            if (scheduledRecords.length === 0) {
+                select.innerHTML = '<option value="">No scheduled games found</option>';
+                setStatus('No scheduled games found in ' + getDbLabel() + '.', 'warning');
+                select.disabled = false;
+                return;
+            }
+            
+            var html = '<option value="">— Select a scheduled game —</option>';
+            for (var i = 0; i < scheduledRecords.length; i++) {
+                var r = scheduledRecords[i];
+                var label = r.id + ' — ' + formatDate(r.date) + ' (' + r.status + ')';
+                html += '<option value="' + i + '">' + escapeHtml(label) + '</option>';
+            }
+            select.innerHTML = html;
+            select.disabled = false;
+            setStatus('Loaded ' + scheduledRecords.length + ' scheduled games from ' + getDbLabel(), 'success');
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            select.disabled = false;
+            setStatus('Error loading records: ' + err.message, 'error');
+        });
+}
+
+// ============================================================
+// VALIDATE NEW RECORD (STRUCTURAL ONLY)
+// ============================================================
+function validateNewRecord(data, recordId) {
+    var checks = [];
+    var allPass = true;
+    
+    // ==========================================================
+    // TOP LEVEL FIELDS
+    // ==========================================================
+    
+    // 1. lastSyncedPosition
+    if (data.lastSyncedPosition === undefined) {
+        checks.push({ field: 'lastSyncedPosition', pass: false, expected: '-1', actual: 'undefined', msg: 'Field missing' });
+        allPass = false;
+    } else if (data.lastSyncedPosition === -1) {
+        checks.push({ field: 'lastSyncedPosition', pass: true, expected: '-1', actual: '-1', msg: 'Correct' });
+    } else {
+        checks.push({ field: 'lastSyncedPosition', pass: false, expected: '-1', actual: String(data.lastSyncedPosition), msg: 'Should be -1' });
+        allPass = false;
+    }
+    
+    // 2. gameStarted
+    if (data.gameStarted === undefined) {
+        checks.push({ field: 'gameStarted', pass: false, expected: 'false', actual: 'undefined', msg: 'Field missing' });
+        allPass = false;
+    } else if (data.gameStarted === false) {
+        checks.push({ field: 'gameStarted', pass: true, expected: 'false', actual: 'false', msg: 'Correct' });
+    } else {
+        checks.push({ field: 'gameStarted', pass: false, expected: 'false', actual: String(data.gameStarted), msg: 'Should be false' });
+        allPass = false;
+    }
+    
+    // 3. savedHoles
+    if (data.savedHoles === undefined) {
+        checks.push({ field: 'savedHoles', pass: false, expected: '{"1":[],"2":[]}', actual: 'undefined', msg: 'Field missing' });
+        allPass = false;
+    } else if (typeof data.savedHoles === 'object' && data.savedHoles['1'] !== undefined && data.savedHoles['2'] !== undefined &&
+               Array.isArray(data.savedHoles['1']) && Array.isArray(data.savedHoles['2']) &&
+               data.savedHoles['1'].length === 0 && data.savedHoles['2'].length === 0) {
+        checks.push({ field: 'savedHoles', pass: true, expected: '{"1":[],"2":[]}', actual: JSON.stringify(data.savedHoles), msg: 'Correct' });
+    } else {
+        checks.push({ field: 'savedHoles', pass: false, expected: '{"1":[],"2":[]}', actual: JSON.stringify(data.savedHoles), msg: 'Invalid structure' });
+        allPass = false;
+    }
+    
+    // 4. status
+    if (data.status === undefined) {
+        checks.push({ field: 'status', pass: false, expected: 'scheduled', actual: 'undefined', msg: 'Field missing' });
+        allPass = false;
+    } else if (data.status === 'scheduled') {
+        checks.push({ field: 'status', pass: true, expected: 'scheduled', actual: data.status, msg: 'Correct' });
+    } else {
+        checks.push({ field: 'status', pass: false, expected: 'scheduled', actual: data.status, msg: 'Should be scheduled' });
+        allPass = false;
+    }
+    
+    // 5. gameType
+    if (data.gameType === undefined) {
+        checks.push({ field: 'gameType', pass: false, expected: 'real', actual: 'undefined', msg: 'Field missing' });
+        allPass = false;
+    } else if (data.gameType === 'real') {
+        checks.push({ field: 'gameType', pass: true, expected: 'real', actual: data.gameType, msg: 'Correct' });
+    } else {
+        checks.push({ field: 'gameType', pass: false, expected: 'real', actual: data.gameType, msg: 'Should be real' });
+        allPass = false;
+    }
+    
+    // ==========================================================
+    // RESULTS STRUCTURE
+    // ==========================================================
+    
+    if (data.results === undefined || data.results === null) {
+        checks.push({ field: 'results', pass: false, expected: 'Object', actual: 'undefined/null', msg: 'Results missing' });
+        allPass = false;
+    } else {
+        var results = data.results;
+        
+        // 6. results.version
+        if (results.version === undefined) {
+            checks.push({ field: 'results.version', pass: false, expected: '1', actual: 'undefined', msg: 'Field missing' });
+            allPass = false;
+        } else if (results.version === 1) {
+            checks.push({ field: 'results.version', pass: true, expected: '1', actual: String(results.version), msg: 'Correct' });
+        } else {
+            checks.push({ field: 'results.version', pass: false, expected: '1', actual: String(results.version), msg: 'Should be 1' });
+            allPass = false;
+        }
+        
+        // 7. results.f1IntraMatches
+        if (!Array.isArray(results.f1IntraMatches)) {
+            checks.push({ field: 'results.f1IntraMatches', pass: false, expected: 'Array of 18 nulls', actual: typeof results.f1IntraMatches, msg: 'Not an array' });
+            allPass = false;
+        } else if (results.f1IntraMatches.length === 18) {
+            var allNull = results.f1IntraMatches.every(function(v) { return v === null; });
+            if (allNull) {
+                checks.push({ field: 'results.f1IntraMatches', pass: true, expected: 'Array of 18 nulls', actual: 'length 18, all null', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.f1IntraMatches', pass: false, expected: 'Array of 18 nulls', actual: 'length 18, has non-null values', msg: 'Should be all null' });
+                allPass = false;
+            }
+        } else {
+            checks.push({ field: 'results.f1IntraMatches', pass: false, expected: 'Array of 18 nulls', actual: 'length ' + results.f1IntraMatches.length, msg: 'Should be length 18' });
+            allPass = false;
+        }
+        
+        // 8. results.f2IntraMatches
+        if (!Array.isArray(results.f2IntraMatches)) {
+            checks.push({ field: 'results.f2IntraMatches', pass: false, expected: 'Array of 18 nulls', actual: typeof results.f2IntraMatches, msg: 'Not an array' });
+            allPass = false;
+        } else if (results.f2IntraMatches.length === 18) {
+            var allNull = results.f2IntraMatches.every(function(v) { return v === null; });
+            if (allNull) {
+                checks.push({ field: 'results.f2IntraMatches', pass: true, expected: 'Array of 18 nulls', actual: 'length 18, all null', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.f2IntraMatches', pass: false, expected: 'Array of 18 nulls', actual: 'length 18, has non-null values', msg: 'Should be all null' });
+                allPass = false;
+            }
+        } else {
+            checks.push({ field: 'results.f2IntraMatches', pass: false, expected: 'Array of 18 nulls', actual: 'length ' + results.f2IntraMatches.length, msg: 'Should be length 18' });
+            allPass = false;
+        }
+        
+        // 9. results.matchResults
+        if (!Array.isArray(results.matchResults)) {
+            checks.push({ field: 'results.matchResults', pass: false, expected: 'Array of 18 nulls', actual: typeof results.matchResults, msg: 'Not an array' });
+            allPass = false;
+        } else if (results.matchResults.length === 18) {
+            var allNull = results.matchResults.every(function(v) { return v === null; });
+            if (allNull) {
+                checks.push({ field: 'results.matchResults', pass: true, expected: 'Array of 18 nulls', actual: 'length 18, all null', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.matchResults', pass: false, expected: 'Array of 18 nulls', actual: 'length 18, has non-null values', msg: 'Should be all null' });
+                allPass = false;
+            }
+        } else {
+            checks.push({ field: 'results.matchResults', pass: false, expected: 'Array of 18 nulls', actual: 'length ' + results.matchResults.length, msg: 'Should be length 18' });
+            allPass = false;
+        }
+        
+        // 10. results.clinchedAt
+        if (results.clinchedAt === undefined) {
+            checks.push({ field: 'results.clinchedAt', pass: false, expected: '{}', actual: 'undefined', msg: 'Field missing' });
+            allPass = false;
+        } else if (typeof results.clinchedAt === 'object' && !Array.isArray(results.clinchedAt)) {
+            var isEmpty = Object.keys(results.clinchedAt).length === 0;
+            if (isEmpty) {
+                checks.push({ field: 'results.clinchedAt', pass: true, expected: '{}', actual: '{}', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.clinchedAt', pass: false, expected: '{}', actual: JSON.stringify(results.clinchedAt), msg: 'Should be empty object' });
+                allPass = false;
+            }
+        } else {
+            checks.push({ field: 'results.clinchedAt', pass: false, expected: '{}', actual: typeof results.clinchedAt, msg: 'Should be object' });
+            allPass = false;
+        }
+        
+        // 11. results.computedUpToHole
+        if (results.computedUpToHole === undefined) {
+            checks.push({ field: 'results.computedUpToHole', pass: false, expected: '0', actual: 'undefined', msg: 'Field missing' });
+            allPass = false;
+        } else if (results.computedUpToHole === 0) {
+            checks.push({ field: 'results.computedUpToHole', pass: true, expected: '0', actual: String(results.computedUpToHole), msg: 'Correct' });
+        } else {
+            checks.push({ field: 'results.computedUpToHole', pass: false, expected: '0', actual: String(results.computedUpToHole), msg: 'Should be 0' });
+            allPass = false;
+        }
+        
+        // ==========================================================
+        // RESULTS.TR STRUCTURE
+        // ==========================================================
+        
+        // 12. results.tr
+        if (results.tr === undefined) {
+            checks.push({ field: 'results.tr', pass: false, expected: 'Object', actual: 'undefined', msg: 'TR object missing' });
+            allPass = false;
+        } else {
+            var tr = results.tr;
+            
+            // 13. results.tr.teamA
+            if (!Array.isArray(tr.teamA)) {
+                checks.push({ field: 'results.tr.teamA', pass: false, expected: 'Array of 18 numbers (0)', actual: typeof tr.teamA, msg: 'Not an array' });
+                allPass = false;
+            } else if (tr.teamA.length === 18) {
+                var allZero = tr.teamA.every(function(v) { return v === 0 || v === null; });
+                if (allZero) {
+                    checks.push({ field: 'results.tr.teamA', pass: true, expected: 'Array of 18 zeros', actual: 'length 18, all 0 or null', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.tr.teamA', pass: false, expected: 'Array of 18 zeros', actual: 'length 18, has non-zero values', msg: 'Should be all 0' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.tr.teamA', pass: false, expected: 'Array of 18 zeros', actual: 'length ' + tr.teamA.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+            
+            // 14. results.tr.teamB
+            if (!Array.isArray(tr.teamB)) {
+                checks.push({ field: 'results.tr.teamB', pass: false, expected: 'Array of 18 numbers (0)', actual: typeof tr.teamB, msg: 'Not an array' });
+                allPass = false;
+            } else if (tr.teamB.length === 18) {
+                var allZero = tr.teamB.every(function(v) { return v === 0 || v === null; });
+                if (allZero) {
+                    checks.push({ field: 'results.tr.teamB', pass: true, expected: 'Array of 18 zeros', actual: 'length 18, all 0 or null', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.tr.teamB', pass: false, expected: 'Array of 18 zeros', actual: 'length 18, has non-zero values', msg: 'Should be all 0' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.tr.teamB', pass: false, expected: 'Array of 18 zeros', actual: 'length ' + tr.teamB.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+            
+            // 15. results.tr.teamAGreen
+            if (!Array.isArray(tr.teamAGreen)) {
+                checks.push({ field: 'results.tr.teamAGreen', pass: false, expected: 'Array of 18 booleans (false)', actual: typeof tr.teamAGreen, msg: 'Not an array' });
+                allPass = false;
+            } else if (tr.teamAGreen.length === 18) {
+                var allFalse = tr.teamAGreen.every(function(v) { return v === false; });
+                if (allFalse) {
+                    checks.push({ field: 'results.tr.teamAGreen', pass: true, expected: 'Array of 18 false', actual: 'length 18, all false', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.tr.teamAGreen', pass: false, expected: 'Array of 18 false', actual: 'length 18, has non-false values', msg: 'Should be all false' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.tr.teamAGreen', pass: false, expected: 'Array of 18 false', actual: 'length ' + tr.teamAGreen.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+            
+            // 16. results.tr.teamBGreen
+            if (!Array.isArray(tr.teamBGreen)) {
+                checks.push({ field: 'results.tr.teamBGreen', pass: false, expected: 'Array of 18 booleans (false)', actual: typeof tr.teamBGreen, msg: 'Not an array' });
+                allPass = false;
+            } else if (tr.teamBGreen.length === 18) {
+                var allFalse = tr.teamBGreen.every(function(v) { return v === false; });
+                if (allFalse) {
+                    checks.push({ field: 'results.tr.teamBGreen', pass: true, expected: 'Array of 18 false', actual: 'length 18, all false', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.tr.teamBGreen', pass: false, expected: 'Array of 18 false', actual: 'length 18, has non-false values', msg: 'Should be all false' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.tr.teamBGreen', pass: false, expected: 'Array of 18 false', actual: 'length ' + tr.teamBGreen.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+        }
+        
+        // ==========================================================
+        // RESULTS.GAME2 STRUCTURE
+        // ==========================================================
+        
+        // 17. results.game2
+        if (results.game2 === undefined) {
+            checks.push({ field: 'results.game2', pass: false, expected: 'Object', actual: 'undefined', msg: 'game2 object missing' });
+            allPass = false;
+        } else {
+            var game2 = results.game2;
+            
+            // 18. results.game2.displayT1
+            if (!Array.isArray(game2.displayT1)) {
+                checks.push({ field: 'results.game2.displayT1', pass: false, expected: 'Array of 18 strings ("AS")', actual: typeof game2.displayT1, msg: 'Not an array' });
+                allPass = false;
+            } else if (game2.displayT1.length === 18) {
+                var allAS = game2.displayT1.every(function(v) { return v === 'AS' || v === '-'; });
+                if (allAS) {
+                    checks.push({ field: 'results.game2.displayT1', pass: true, expected: 'Array of 18 "AS"', actual: 'length 18, all "AS"', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.game2.displayT1', pass: false, expected: 'Array of 18 "AS"', actual: 'length 18, has non-AS values', msg: 'Should be all "AS"' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.game2.displayT1', pass: false, expected: 'Array of 18 "AS"', actual: 'length ' + game2.displayT1.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+            
+            // 19. results.game2.displayT2
+            if (!Array.isArray(game2.displayT2)) {
+                checks.push({ field: 'results.game2.displayT2', pass: false, expected: 'Array of 18 strings ("AS")', actual: typeof game2.displayT2, msg: 'Not an array' });
+                allPass = false;
+            } else if (game2.displayT2.length === 18) {
+                var allAS = game2.displayT2.every(function(v) { return v === 'AS' || v === '-'; });
+                if (allAS) {
+                    checks.push({ field: 'results.game2.displayT2', pass: true, expected: 'Array of 18 "AS"', actual: 'length 18, all "AS"', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.game2.displayT2', pass: false, expected: 'Array of 18 "AS"', actual: 'length 18, has non-AS values', msg: 'Should be all "AS"' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.game2.displayT2', pass: false, expected: 'Array of 18 "AS"', actual: 'length ' + game2.displayT2.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+            
+            // 20. results.game2.flight1 (optional check)
+            if (game2.flight1 === undefined) {
+                checks.push({ field: 'results.game2.flight1', pass: false, expected: 'Object', actual: 'undefined', msg: 'flight1 missing' });
+                allPass = false;
+            } else if (Array.isArray(game2.flight1.leader) && game2.flight1.leader.length === 18) {
+                checks.push({ field: 'results.game2.flight1.leader', pass: true, expected: 'Array of 18', actual: 'length 18', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.game2.flight1.leader', pass: false, expected: 'Array of 18', actual: game2.flight1.leader ? 'length ' + game2.flight1.leader.length : 'undefined', msg: 'Invalid' });
+                allPass = false;
+            }
+            
+            // 21. results.game2.flight2 (optional check)
+            if (game2.flight2 === undefined) {
+                checks.push({ field: 'results.game2.flight2', pass: false, expected: 'Object', actual: 'undefined', msg: 'flight2 missing' });
+                allPass = false;
+            } else if (Array.isArray(game2.flight2.leader) && game2.flight2.leader.length === 18) {
+                checks.push({ field: 'results.game2.flight2.leader', pass: true, expected: 'Array of 18', actual: 'length 18', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.game2.flight2.leader', pass: false, expected: 'Array of 18', actual: game2.flight2.leader ? 'length ' + game2.flight2.leader.length : 'undefined', msg: 'Invalid' });
+                allPass = false;
+            }
+        }
+        
+        // ==========================================================
+        // RESULTS.GAME3 STRUCTURE
+        // ==========================================================
+        
+        // 22. results.game3
+        if (results.game3 === undefined) {
+            checks.push({ field: 'results.game3', pass: false, expected: 'Object', actual: 'undefined', msg: 'game3 object missing' });
+            allPass = false;
+        } else {
+            var game3 = results.game3;
+            
+            // 23. results.game3.displayStrk
+            if (!Array.isArray(game3.displayStrk)) {
+                checks.push({ field: 'results.game3.displayStrk', pass: false, expected: 'Array of 18 strings ("AS")', actual: typeof game3.displayStrk, msg: 'Not an array' });
+                allPass = false;
+            } else if (game3.displayStrk.length === 18) {
+                var allAS = game3.displayStrk.every(function(v) { return v === 'AS' || v === '-'; });
+                if (allAS) {
+                    checks.push({ field: 'results.game3.displayStrk', pass: true, expected: 'Array of 18 "AS"', actual: 'length 18, all "AS"', msg: 'Correct' });
+                } else {
+                    checks.push({ field: 'results.game3.displayStrk', pass: false, expected: 'Array of 18 "AS"', actual: 'length 18, has non-AS values', msg: 'Should be all "AS"' });
+                    allPass = false;
+                }
+            } else {
+                checks.push({ field: 'results.game3.displayStrk', pass: false, expected: 'Array of 18 "AS"', actual: 'length ' + game3.displayStrk.length, msg: 'Should be length 18' });
+                allPass = false;
+            }
+            
+            // 24. results.game3.leader (optional check)
+            if (Array.isArray(game3.leader) && game3.leader.length === 18) {
+                checks.push({ field: 'results.game3.leader', pass: true, expected: 'Array of 18', actual: 'length 18', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.game3.leader', pass: false, expected: 'Array of 18', actual: game3.leader ? 'length ' + game3.leader.length : 'undefined', msg: 'Invalid' });
+                allPass = false;
+            }
+        }
+        
+        // ==========================================================
+        // RESULTS.GAME1 STRUCTURE (optional check)
+        // ==========================================================
+        
+        // 25. results.game1
+        if (results.game1 === undefined) {
+            checks.push({ field: 'results.game1', pass: false, expected: 'Object', actual: 'undefined', msg: 'game1 object missing' });
+            allPass = false;
+        } else {
+            var game1 = results.game1;
+            if (Array.isArray(game1.pointsA) && game1.pointsA.length === 18 &&
+                Array.isArray(game1.pointsB) && game1.pointsB.length === 18) {
+                checks.push({ field: 'results.game1.points', pass: true, expected: 'Arrays of 18', actual: 'pointsA length 18, pointsB length 18', msg: 'Correct' });
+            } else {
+                checks.push({ field: 'results.game1.points', pass: false, expected: 'Arrays of 18', actual: 'Invalid', msg: 'Should have pointsA and pointsB arrays of length 18' });
+                allPass = false;
+            }
+        }
+    }
+    
+    // ==========================================================
+    // SUMMARY
+    // ==========================================================
+    
+    var totalChecks = checks.length;
+    var passedChecks = checks.filter(function(c) { return c.pass; }).length;
+    var failedChecks = totalChecks - passedChecks;
+    
+    return {
+        allPass: allPass,
+        totalChecks: totalChecks,
+        passedChecks: passedChecks,
+        failedChecks: failedChecks,
+        checks: checks,
+        recordId: recordId
+    };
+}
+
+// ============================================================
+// RENDER RESULTS
+// ============================================================
+function renderResults(record, data, validation) {
+    document.getElementById('results').style.display = 'block';
+    
+    // ---- SUMMARY ----
+    var summaryHtml = '<div class="result-summary">';
+    summaryHtml += '<div class="result-item"><div class="label">Overall Status</div>';
+    summaryHtml += '<div class="value ' + (validation.allPass ? 'pass' : 'fail') + '">' + (validation.allPass ? '✅ PASS' : '❌ FAIL') + '</div></div>';
+    summaryHtml += '<div class="result-item"><div class="label">Checks Passed</div>';
+    summaryHtml += '<div class="value pass">' + validation.passedChecks + '/' + validation.totalChecks + '</div></div>';
+    summaryHtml += '<div class="result-item"><div class="label">Failed Checks</div>';
+    summaryHtml += '<div class="value ' + (validation.failedChecks > 0 ? 'fail' : 'pass') + '">' + validation.failedChecks + '</div></div>';
+    summaryHtml += '<div class="result-item" style="border-color: #ffaa44;"><div class="label">Record ID</div>';
+    summaryHtml += '<div class="value total" style="font-size:0.8rem;">' + escapeHtml(validation.recordId) + '</div></div>';
+    summaryHtml += '</div>';
+    
+    if (validation.allPass) {
+        summaryHtml += '<div style="margin-top:12px; padding:12px 16px; background:#0a2a0a; border:2px solid #2a5a2a; border-radius:8px; color:#4caf50; font-size:0.95rem; text-align:center;">';
+        summaryHtml += '✅ <strong>ALL CHECKS PASSED</strong> — The record is structurally correct and ready for play.';
+        summaryHtml += '</div>';
+    } else {
+        summaryHtml += '<div style="margin-top:12px; padding:12px 16px; background:#2a0a0a; border:2px solid #5a2a2a; border-radius:8px; color:#ff6b6b; font-size:0.95rem; text-align:center;">';
+        summaryHtml += '❌ <strong>' + validation.failedChecks + ' CHECK(S) FAILED</strong> — The record has structural issues. Fix setup-game.html.';
+        summaryHtml += '</div>';
+    }
+    document.getElementById('summaryContent').innerHTML = summaryHtml;
+    
+    // ---- GAME INFO ----
+    var courseName = data.course?.name || 'Unknown';
+    var date = data.date || 'Unknown';
+    var players = data.players || [];
+    var playersStr = players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ');
+    
+    var infoHtml = '<div class="game-info-grid">';
+    infoHtml += '<span class="label">ID</span><span class="value">' + escapeHtml(record.id) + '</span>';
+    infoHtml += '<span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span>';
+    infoHtml += '<span class="label">Course</span><span class="value">' + escapeHtml(courseName) + '</span>';
+    infoHtml += '<span class="label">Players</span><span class="value">' + escapeHtml(playersStr) + '</span>';
+    infoHtml += '<span class="label">Status</span><span class="value">' + escapeHtml(data.status || 'unknown') + '</span>';
+    infoHtml += '<span class="label">Database</span><span class="value"><span class="db-indicator ' + (currentDb === 'prod' ? 'prod' : 'dev') + '">' + getDbLabel() + '</span></span>';
+    infoHtml += '</div>';
+    document.getElementById('gameInfoContent').innerHTML = infoHtml;
+    
+    // ---- DETAILED CHECKS ----
+    var checksHtml = '<div class="check-list">';
+    for (var i = 0; i < validation.checks.length; i++) {
+        var check = validation.checks[i];
+        var icon = check.pass ? '✅' : '❌';
+        var cls = check.pass ? 'check-pass' : 'check-fail';
+        var valueDisplay = check.actual || 'undefined';
+        checksHtml += '<div class="check-item">';
+        checksHtml += '<span><span class="' + cls + '">' + icon + '</span> <span class="field-name">' + escapeHtml(check.field) + '</span></span>';
+        checksHtml += '<span><span class="field-expected">' + escapeHtml(check.expected) + '</span> → <span class="field-value">' + escapeHtml(valueDisplay) + '</span> <span class="' + cls + '">' + (check.pass ? '✓' : '✗') + '</span></span>';
+        checksHtml += '</div>';
+    }
+    checksHtml += '</div>';
+    document.getElementById('checksContent').innerHTML = checksHtml;
+}
+
+// ============================================================
+// VALIDATE RECORD
+// ============================================================
+function validateRecord() {
+    var select = document.getElementById('recordSelect');
+    var index = parseInt(select.value);
+    if (isNaN(index) || index < 0 || index >= scheduledRecords.length) {
+        setStatus('Please select a scheduled game', 'warning');
+        return;
+    }
+    
+    currentRecordIndex = index;
+    var record = scheduledRecords[index];
+    var data = record.rawData;
+    
+    setStatus('Validating: ' + record.id + '...', 'info');
+    document.getElementById('results').style.display = 'none';
+    
+    try {
+        var validation = validateNewRecord(data, record.id);
+        renderResults(record, data, validation);
+        
+        if (validation.allPass) {
+            setStatus('✅ Validation PASSED — Record is structurally correct.', 'success');
+        } else {
+            setStatus('❌ Validation FAILED — ' + validation.failedChecks + ' structural issue(s) found.', 'error');
+        }
+    } catch (err) {
+        setStatus('Error during validation: ' + err.message, 'error');
+        console.error(err);
+    }
+}
+
+// ============================================================
+// EVENTS
+// ============================================================
+document.getElementById('validateBtn').addEventListener('click', validateRecord);
+document.getElementById('refreshBtn').addEventListener('click', loadScheduledRecords);
+document.getElementById('clearBtn').addEventListener('click', function() {
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('statusMessage').innerHTML = '';
+    document.getElementById('recordSelect').value = '';
+    currentRecordIndex = -1;
+});
+
+// ============================================================
+// INIT
+// ============================================================
+loadScheduledRecords();
+console.log('🔬 New Record Validator v1.00 loaded.');
+console.log('📌 Structural validation only — no score computation.');
+console.log('📌 Purpose: QA for setup-game.html new record creation.');
+</script>
+</body>
+</html>
+
+<!--
+FILE: validate-new-record.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW FILE: Standalone validator for new empty records from setup-game.html
+   - ADDED: Database selector (Production / Development)
+   - ADDED: Load scheduledGames records from selected database
+   - ADDED: Structural validation only (no score computation)
+   - ADDED: Field existence, type, length, and correct value checks
+   - ADDED: Clear PASS/FAIL output with detailed diagnostics
+   - ADDED: Summary with pass/fail counts
+   - PURPOSE: QA tool for setup-game.html new record creation
+DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+STATUS: Ready for integration
+-->

@@ -1,12 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.58
-KEY CHANGES from v3.57:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v3.57
+VERSION: 3.65
+KEY CHANGES from v3.64:
+   - FIXED: Splash screen now only shows once per session (flag set BEFORE splash starts)
+   - CHANGED: appInitialized flag moved to initApp() before splash animation
+   - PRESERVED: All styling, functionality, and UI from v3.64
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -58,10 +56,10 @@ STATUS: Ready for integration
             font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             color: #ffffff;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-            position: relative;
+            min-height: 100vh;
         }
         
         /* v3.51: Pull-to-refresh container */
@@ -126,18 +124,12 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* Main Container - initially hidden, fades in after preload */
+        /* Main Container - immediately visible */
         .container {
             max-width: 500px;
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
-            opacity: 0;
-            transition: opacity 0.4s ease;
-        }
-        
-        .container.visible {
-            opacity: 1;
         }
         
         /* v3.53: Splash Overlay - fixed 4 second display */
@@ -275,9 +267,9 @@ STATUS: Ready for integration
         }
         
         .header { text-align: center; margin-bottom: 20px; }
-        .golf-icon { 
-            font-size: 4rem; 
-            margin-bottom: 4px; 
+        .golf-icon {
+            font-size: 4rem;
+            margin-bottom: 4px;
             filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
             cursor: pointer;
             transition: transform 0.1s ease;
@@ -312,14 +304,14 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
-        .title { 
-            font-size: 1.8rem; 
-            font-weight: 800; 
-            letter-spacing: -0.5px; 
-            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); 
-            background-clip: text; 
-            -webkit-background-clip: text; 
-            color: transparent; 
+        .title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
             text-shadow: 0 2px 4px rgba(0,0,0,0.2);
             display: inline-block;
             white-space: nowrap;
@@ -334,11 +326,11 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* SQUARE NGB BUTTONS - 95% of title width */
+        /* ROUNDED RECTANGLE NGB BUTTONS - SQUARE */
         .ngb {
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
-            border-radius: 32px;
+            border-radius: 12px;
             margin: 0 auto 24px auto;
             display: flex;
             flex-direction: column;
@@ -348,6 +340,8 @@ STATUS: Ready for integration
             transition: all 0.3s ease;
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
             cursor: pointer;
+            padding: 20px;
+            width: auto;
         }
         .ngb-inactive {
             background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
@@ -380,41 +374,57 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* VIEW PREVIOUS GAMES and DEMO buttons - same width as NGB */
+        /* MENU BUTTONS - rounded rectangle, no icons */
         .menu-btn {
-            background: linear-gradient(145deg, #1a1a1a, #111);
-            border: 1px solid #4caf50;
-            border-radius: 60px;
+            background: rgba(20, 20, 20, 0.5);
+            border: 2px solid #4caf50;
+            border-radius: 10px;
             padding: 14px 20px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
             box-sizing: border-box;
-            white-space: nowrap;
+            width: auto;
+            margin: 0 auto;
+        }
+        .menu-btn:hover {
+            border-color: #4caf50;
+            background: rgba(20, 20, 20, 0.8);
         }
         .menu-btn:active { transform: scale(0.98); }
         .menu-btn .label {
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-weight: 600;
             color: #4caf50;
+            letter-spacing: -0.1px;
         }
         
-        /* GAME SETTINGS button - same width as NGB */
+        /* GAME SETTINGS button - grey border */
         .gsb {
-            background: rgba(17,17,17,0.9);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 60px;
-            padding: 12px 24px;
+            background: rgba(20, 20, 20, 0.5);
+            border: 2px solid #666;
+            border-radius: 10px;
+            padding: 14px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s ease;
             margin: 0 auto;
-            backdrop-filter: blur(4px);
             box-sizing: border-box;
+            width: auto;
         }
-        .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
-        .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
-        .gsb .label { font-size: 0.85rem; font-weight: 600; color: #ccc; display: inline-block; vertical-align: middle; }
+        .gsb:hover {
+            border-color: #4caf50;
+            background: rgba(20, 20, 20, 0.8);
+        }
+        .gsb:active { transform: scale(0.98); }
+        .gsb .label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #666;
+            display: inline-block;
+            vertical-align: middle;
+            letter-spacing: -0.1px;
+        }
         
         .footer {
             text-align: center;
@@ -546,36 +556,6 @@ STATUS: Ready for integration
             100% { transform: scale(1); opacity: 1; }
         }
     </style>
-    
-    <script>
-        // Dynamically set button widths based on title width
-        function setButtonWidths() {
-            var title = document.querySelector('.title');
-            var ngb = document.querySelector('.ngb');
-            var menuBtns = document.querySelectorAll('.menu-btn');
-            var gsb = document.querySelector('.gsb');
-            
-            if (!title || !ngb) return;
-            
-            var titleWidth = title.offsetWidth;
-            var buttonWidth = Math.floor(titleWidth * 1.05);
-            
-            ngb.style.width = buttonWidth + 'px';
-            ngb.style.height = buttonWidth + 'px';
-            
-            menuBtns.forEach(function(btn) {
-                btn.style.width = buttonWidth + 'px';
-            });
-            
-            if (gsb) {
-                gsb.style.width = buttonWidth + 'px';
-            }
-        }
-        
-        // Run after page loads
-        window.addEventListener('load', setButtonWidths);
-        window.addEventListener('resize', setButtonWidths);
-    </script>
 </head>
 <body>
 
@@ -597,17 +577,18 @@ STATUS: Ready for integration
     <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
-<!-- Main Container - Hidden Initially, Fades In After Splash -->
+<!-- Main Container - Immediately Visible -->
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.58</div>
+<div class="version-tag">v3.65</div>
 
 <script>
-// FILE: index.html - VERSION 3.58
+// FILE: index.html v3.65
+// VERSION: 3.65
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.58";
+window.INDEX_VERSION = "3.65";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -618,8 +599,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.58";
-var CACHE_KEY = "index_version_v358";
+var APP_VERSION = "3.65";
+var CACHE_KEY = "index_version_v365";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -672,8 +653,7 @@ var splashSubtitle = document.getElementById('splashSubtitle');
 // ============================================================
 
 function recordSplashShown() {
-    sessionStorage.setItem('appInitialized', 'true');
-    console.log("[SPLASH] App marked as initialized");
+    console.log("[SPLASH] App already marked as initialized");
 }
 
 function startSplashAnimation() {
@@ -748,11 +728,6 @@ function startSplashAnimation() {
         splashOverlay.style.opacity = '0';
         setTimeout(function() {
             if (splashOverlay) splashOverlay.remove();
-            var appDiv = document.getElementById("app");
-            if (appDiv && !appDiv.classList.contains('visible')) {
-                appDiv.classList.add('visible');
-            }
-            recordSplashShown();
             // Now load the UI (data may already be loaded)
             if (typeof renderMainUI === 'function') {
                 renderMainUI();
@@ -781,10 +756,6 @@ function hideGreyIconScreen() {
 function showIndexDirectly() {
     console.log("[INDEX] Showing index directly (no splash)");
     hideGreyIconScreen();
-    var appDiv = document.getElementById("app");
-    if (appDiv && !appDiv.classList.contains('visible')) {
-        appDiv.classList.add('visible');
-    }
     // Load UI
     if (typeof renderMainUI === 'function') {
         renderMainUI();
@@ -1254,6 +1225,34 @@ function goToAdmin() {
     window.location.href = "admin.html";
 }
 
+// v3.64: Dynamically set button widths based on title width
+function setButtonWidths() {
+    var title = document.querySelector('.title');
+    var ngb = document.querySelector('.ngb');
+    var menuBtns = document.querySelectorAll('.menu-btn');
+    var gsb = document.querySelector('.gsb');
+    
+    if (!title || !ngb) return;
+    
+    var titleWidth = title.offsetWidth;
+    var buttonWidth = Math.floor(titleWidth * 1.05);
+    
+    // GAME DAY button - SQUARE (width = height)
+    ngb.style.width = buttonWidth + 'px';
+    ngb.style.height = buttonWidth + 'px';
+    ngb.style.minHeight = buttonWidth + 'px';
+    
+    // Menu buttons - same width
+    menuBtns.forEach(function(btn) {
+        btn.style.width = buttonWidth + 'px';
+    });
+    
+    // Game Settings button - same width
+    if (gsb) {
+        gsb.style.width = buttonWidth + 'px';
+    }
+}
+
 function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
@@ -1326,15 +1325,14 @@ function renderMainUI() {
                 
                 <div class="menu-buttons">
                     <div class="menu-btn" id="previousGamesBtn">
-                        <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                        <span class="label">VIEW PREVIOUS GAMES</span>
                     </div>
                     <div class="menu-btn" id="demoBtn">
-                        <span class="label">🎮 DEMO & TUTORIAL</span>
+                        <span class="label">DEMO & TUTORIAL</span>
                     </div>
                 </div>
                 
                 <div class="gsb" id="adminBtn">
-                    <span class="icon">⚙️</span>
                     <span class="label">GAME SETTINGS</span>
                 </div>
             </div>
@@ -1344,7 +1342,8 @@ function renderMainUI() {
         
         appDiv.innerHTML = html;
         
-        setTimeout(setButtonWidths, 10);
+        // v3.64: Set button widths after DOM render (no shrink effect)
+        setButtonWidths();
         
         // Admin handler - Cmd+Click OR Long-click on golf icon
         var golfIcon = document.getElementById("golfIcon");
@@ -1362,12 +1361,11 @@ function renderMainUI() {
     }).catch(function(e) {
         console.warn(e);
         appDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">Error loading games. Please refresh.</div>';
-        appDiv.classList.add('visible');
     });
 }
 
 // ============================================================
-// Initialization - v3.58
+// Initialization - v3.65
 // ============================================================
 
 function initApp() {
@@ -1382,6 +1380,10 @@ function initApp() {
     if (isFirstLoad) {
         // FIRST LOAD: Show splash for exactly 4 seconds
         console.log("[INDEX] First load - showing splash for 4 seconds");
+        
+        // v3.65: Set flag BEFORE splash starts
+        sessionStorage.setItem('appInitialized', 'true');
+        console.log("[SPLASH] App marked as initialized before splash");
         
         // Start loading data in background immediately
         FirebaseRetry.getCollection("scheduledGames", {
@@ -1451,7 +1453,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.58
+// Start the app - v3.65
 // ============================================================
 
 if (isFirstLoad) {
@@ -1486,14 +1488,12 @@ if (isFirstLoad) {
 </html>
 
 <!--
-FILE: index.html
-VERSION: 3.58
-KEY CHANGES from v3.57:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v3.57
+FILE: index.html v3.65
+VERSION: 3.65
+KEY CHANGES from v3.64:
+   - FIXED: Splash screen now only shows once per session (flag set BEFORE splash starts)
+   - CHANGED: appInitialized flag moved to initApp() before splash animation
+   - PRESERVED: All styling, functionality, and UI from v3.64
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->

@@ -1,12 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.50
-KEY CHANGES from v2.49:
-   - CHANGED: renderTableToContainer() now creates the container dynamically
-   - Container is only created when table is ready to render
-   - Eliminates flashing green box before table loads
-   - All existing functionality preserved from v2.49
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
+VERSION: 2.51
+KEY CHANGES from v2.50:
+   - CHANGED: saveAdjustmentToFirestore() now uses WRV.write() for reliability
+   - CHANGED: updateAnchorAndRecalculate() now uses WRV.update() for reliability
+   - CHANGED: updatePlayerProfiles() now uses WRV.write() for reliability
+   - ADDED: Promise wrapper for WRV to maintain callback compatibility
+   - ADDED: Fallback to direct write/update if WRV not available
+   - PRESERVED: ALL v2.50 functions and API unchanged
+   - PRESERVED: ALL existing functionality
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
 
@@ -39,6 +42,54 @@ var HandicapAdjustment = (function() {
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Helper: WRV write with Promise wrapper (callback compatible)
+    // ============================================================
+    function wrw(collection, docId, data, merge) {
+        return new Promise(function(resolve, reject) {
+            if (typeof WRV !== 'undefined' && WRV.write) {
+                WRV.write(collection, docId, data, function(err, result) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            } else {
+                // Fallback: direct write
+                console.warn('[HCP-ADJUST] WRV not available, using direct write');
+                var db = getDb();
+                var ref = db.collection(collection).doc(docId);
+                var promise = merge ? ref.set(data, { merge: true }) : ref.set(data);
+                promise.then(resolve).catch(reject);
+            }
+        });
+    }
+    
+    // ============================================================
+    // Helper: WRV update with Promise wrapper (callback compatible)
+    // ============================================================
+    function wru(collection, docId, data) {
+        return new Promise(function(resolve, reject) {
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                WRV.update(collection, docId, data, function(err, result) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            } else {
+                // Fallback: direct update
+                console.warn('[HCP-ADJUST] WRV not available, using direct update');
+                var db = getDb();
+                db.collection(collection).doc(docId).update(data)
+                    .then(resolve)
+                    .catch(reject);
+            }
+        });
     }
     
     // ============================================================
@@ -713,7 +764,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Update anchor and recalculate
+    // Update anchor and recalculate - v2.51: WRV integration
     // ============================================================
     
     function updateAnchorAndRecalculate(newAnchor) {
@@ -727,8 +778,7 @@ var HandicapAdjustment = (function() {
             document.body.appendChild(loadingModal);
         }
         
-        var db = getDb();
-        var updatePromise = db.collection('scheduledGames').doc(currentGameId).update({
+        var updatePromise = wru('scheduledGames', currentGameId, {
             anchor: newAnchor.name,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -1009,7 +1059,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // saveAdjustmentToFirestore
+    // saveAdjustmentToFirestore - v2.51: WRV integration
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -1164,7 +1214,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Update player profiles
+    // updatePlayerProfiles - v2.51: WRV integration
     // ============================================================
     
     function updatePlayerProfiles(players, callback) {
@@ -1181,10 +1231,11 @@ var HandicapAdjustment = (function() {
                             }
                         }
                     }
-                    return db.collection('playerInformation').doc('defaultPlayers').set({
+                    // Use WRV for reliable Firestore write
+                    return wrw('playerInformation', 'defaultPlayers', {
                         players: currentPlayers,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    }, true);
                 }
                 return Promise.resolve();
             })
@@ -1262,7 +1313,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.50";
+    window.HANDICAP_ADJUST_VERSION = "2.51";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1284,12 +1335,15 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.50
-KEY CHANGES from v2.49:
-   - CHANGED: renderTableToContainer() now creates the container dynamically
-   - Container is only created when table is ready to render
-   - Eliminates flashing green box before table loads
-   - All existing functionality preserved from v2.49
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
+VERSION: 2.51
+KEY CHANGES from v2.50:
+   - CHANGED: saveAdjustmentToFirestore() now uses WRV.write() for reliability
+   - CHANGED: updateAnchorAndRecalculate() now uses WRV.update() for reliability
+   - CHANGED: updatePlayerProfiles() now uses WRV.write() for reliability
+   - ADDED: Promise wrapper for WRV to maintain callback compatibility
+   - ADDED: Fallback to direct write/update if WRV not available
+   - PRESERVED: ALL v2.50 functions and API unchanged
+   - PRESERVED: ALL existing functionality
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */

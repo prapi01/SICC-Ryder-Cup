@@ -1,12 +1,15 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.37
+VERSION: 1.59
+KEY CHANGES from v1.58:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18).fill(null))
+     - f1IntraMatches: {} (was new Array(18).fill(null))
+     - f2IntraMatches: {} (was new Array(18).fill(null))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: All UI styling and layout from v1.58 unchanged
+   - PRESERVED: All functionality from v1.58 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -28,177 +31,537 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-            background: #000000; 
-            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; 
-            color: #ffffff; 
+            background: #0a0a0a; 
+            font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif; 
+            color: #e0e0e0; 
             padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
         }
-        .container { max-width: 500px; margin: 0 auto; }
+        .container { max-width: 480px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
             position: fixed; 
-            top: max(8px, env(safe-area-inset-top, 8px)); 
-            right: max(8px, env(safe-area-inset-right, 8px)); 
-            font-size: 0.65rem; 
+            top: max(12px, env(safe-area-inset-top, 12px)); 
+            right: max(12px, env(safe-area-inset-right, 12px)); 
+            font-size: 0.6rem; 
             color: #4caf50; 
-            background: rgba(0,0,0,0.6); 
+            background: rgba(0,0,0,0.5); 
             padding: 2px 10px; 
-            border-radius: 16px;
+            border-radius: 12px;
             font-family: monospace;
             z-index: 1000;
-            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         .device-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top, 8px));
-            left: max(8px, env(safe-area-inset-left, 8px));
-            font-size: 0.55rem;
+            top: max(12px, env(safe-area-inset-top, 12px));
+            left: max(12px, env(safe-area-inset-left, 12px));
+            font-size: 0.5rem;
             color: #4caf50;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.3);
             padding: 2px 8px;
-            border-radius: 12px;
+            border-radius: 10px;
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-            letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 24px; margin-top: 20px; }
-        .title { font-size: 1.5rem; font-weight: 700; color: #4caf50; }
-        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        /* ===== BASELINE UI - LARGER SIZES ===== */
+        .header { text-align: center; margin-bottom: 28px; margin-top: 4px; }
+        .title { 
+            font-size: 1.4rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            letter-spacing: -0.3px;
+        }
+        .subtitle { 
+            font-size: 0.7rem; 
+            color: #4caf50; 
+            opacity: 0.7;
+            margin-top: 2px; 
+            letter-spacing: 0.5px; 
+            text-transform: uppercase;
+        }
         
-        .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
-        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .card { 
+            background: rgba(20, 20, 20, 0.5);
+            border: 2px solid #2a5a2a; 
+            border-radius: 12px; 
+            padding: 16px 18px; 
+            margin-bottom: 14px; 
+        }
         
-        .date-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-        .date-label { font-size: 0.9rem; color: #888; }
-        .date-input { background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 10px 16px; color: #fff; font-size: 1rem; }
-        .error-msg { color: #ff6b6b; font-size: 0.75rem; margin-top: 8px; }
+        .card-title { 
+            font-size: 0.8rem; 
+            font-weight: 500; 
+            color: #4caf50; 
+            margin-bottom: 10px; 
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
         
-        .course-select { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; }
+        /* ===== FORM ROW STYLES ===== */
+        .form-row-compact {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .form-row-compact:last-child {
+            margin-bottom: 0;
+        }
+        .form-row-compact label {
+            font-size: 0.75rem;
+            color: #4caf50;
+            white-space: nowrap;
+            font-weight: 500;
+            min-width: 70px;
+        }
         
-        .starting-hole-toggle {
+        .date-input {
+            flex: 1;
+            background: #0a0a0a;
+            border: 2px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 6px 8px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            min-width: 120px;
+            text-align: left !important;
+            -webkit-text-align: left !important;
+            direction: ltr;
+            transition: border-color 0.2s ease;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .date-input:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        
+        .select-wrapper {
+            position: relative;
+            display: inline-block;
+            flex: 1;
+            min-width: 80px;
+        }
+        .select-wrapper select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 2px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 6px 24px 6px 8px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            transition: border-color 0.2s ease;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            cursor: pointer;
+        }
+        .select-wrapper select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .select-wrapper .arrow {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 8px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        
+        .form-row-inline {
             display: flex;
             gap: 12px;
+            align-items: center;
             flex-wrap: wrap;
-            margin-bottom: 12px;
         }
-        .hole-toggle-btn {
+        .form-row-inline .field-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             flex: 1;
-            padding: 12px 16px;
+            min-width: 140px;
+        }
+        .form-row-inline .field-group label {
+            font-size: 0.75rem;
+            color: #4caf50;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        .form-row-inline .field-group .select-wrapper {
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
+        
+        /* ===== TABLE LAYOUT - FIXED COLUMN WIDTHS ===== */
+        .table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 4px;
+        }
+        .table-scroll::-webkit-scrollbar {
+            height: 3px;
+        }
+        .table-scroll::-webkit-scrollbar-track {
             background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 40px;
+        }
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: #2a5a2a;
+            border-radius: 3px;
+        }
+        
+        .table-container {
+            min-width: 300px;
+            width: 100%;
+        }
+        
+        .player-row { 
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 4px;
+            margin-bottom: 2px;
+            background: rgba(20, 20, 20, 0.06);
+            border-radius: 3px;
+            border: none;
+            border-bottom: 1px solid #1a3a1a;
+            min-height: 28px;
+            width: 100%;
+        }
+        .player-row:first-child {
+            border-top: 1px solid #1a3a1a;
+        }
+        .player-row:last-child {
+            border-bottom: none;
+        }
+        
+        .player-line1 {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            margin-bottom: 0;
+            flex: 1;
+            flex-wrap: nowrap;
+            width: 100%;
+        }
+        .player-line2 {
+            display: none;
+        }
+        
+        /* Column 1: Name - 160px */
+        .player-name-wrapper {
+            flex: 0 0 160px;
+            width: 160px;
+            min-width: 160px;
+            max-width: 160px;
+            position: relative;
+            display: inline-block;
+            height: 24px;
+        }
+        .player-name-wrapper .arrow {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .player-name-select {
+            width: 100%;
+            height: 24px;
+            font-size: 14px;
+            padding: 2px 18px 2px 4px;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
             cursor: pointer;
-            text-align: center;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: #ccc;
-            transition: all 0.2s;
+            transition: border-color 0.2s ease;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+        }
+        .player-name-select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .player-name-select option {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        
+        /* Column 2: Label - HIDDEN */
+        .label-display {
+            display: none !important;
+        }
+        
+        /* Column 3: HCP - 40px, center-aligned, arrows on focus */
+        .hcp-group {
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 4px;
+            padding: 1px 4px;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            background: #0a0a0a;
+            height: 24px;
         }
-        .hole-toggle-btn.active {
-            background: #1a3a1a;
+        .hcp-group label {
+            display: none;
+        }
+        .hcp-group input[type="number"] {
+            width: 28px;
+            font-size: 14px;
+            text-align: center;
+            font-weight: 600;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: #e0e0e0;
+            height: 22px;
+            outline: none;
+            -webkit-appearance: none;
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        .hcp-group input[type="number"]::-webkit-outer-spin-button,
+        .hcp-group input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .hcp-group input[type="number"]:focus {
+            -webkit-appearance: menulist;
+            -moz-appearance: number-input;
+            appearance: auto;
+        }
+        
+        /* Column 4: Team - 44px, right-aligned, with custom arrow */
+        .team-wrapper {
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
+            position: relative;
+            display: inline-block;
+            height: 24px;
+        }
+        .team-wrapper .arrow {
+            position: absolute;
+            right: 3px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .team-display {
+            width: 100%;
+            height: 24px;
+            font-size: 14px;
+            text-align: right;
+            padding: 1px 18px 1px 4px;
+            font-weight: 600;
+            color: #ffaa44;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            background: #0a0a0a;
+            cursor: pointer;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            transition: border-color 0.2s ease;
+        }
+        .team-display:focus {
+            outline: none;
             border-color: #4caf50;
+        }
+        .team-display option {
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        /* Column 5: Flight - 48px, right-aligned, user-assigned */
+        .flight-wrapper {
+            flex: 0 0 48px;
+            width: 48px;
+            min-width: 48px;
+            max-width: 48px;
+            position: relative;
+            display: inline-block;
+            height: 24px;
+        }
+        .flight-wrapper .arrow {
+            position: absolute;
+            right: 3px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .flight-display {
+            width: 100%;
+            height: 24px;
+            font-size: 14px;
+            text-align: right;
+            padding: 1px 18px 1px 4px;
+            font-weight: 600;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            background: #0a0a0a;
+            cursor: pointer;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            transition: border-color 0.2s ease;
+        }
+        .flight-display:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .flight-display option {
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        /* Player header row - fixed column widths (Label hidden) */
+        .player-header-row {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 4px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #2a5a2a;
+            font-size: 10px;
+            color: #4caf50;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            height: 24px;
+        }
+        .player-header-row .header-player {
+            flex: 0 0 160px;
+            width: 160px;
+            min-width: 160px;
+            max-width: 160px;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            height: 24px;
+        }
+        .player-header-row .header-label {
+            display: none !important;
+        }
+        .player-header-row .header-hcp {
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
+        }
+        .player-header-row .header-team {
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            height: 24px;
+        }
+        .player-header-row .header-flight {
+            flex: 0 0 48px;
+            width: 48px;
+            min-width: 48px;
+            max-width: 48px;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            height: 24px;
+        }
+        
+        .btn { 
+            padding: 12px 24px; 
+            border-radius: 8px; 
+            font-weight: 400; 
+            font-size: 0.95rem; 
+            text-align: center; 
+            cursor: pointer; 
+            border: 2px solid #3a7a3a; 
+            transition: all 0.15s ease;
+            background: rgba(20, 20, 20, 0.5);
             color: #4caf50;
         }
-        .hole-toggle-btn.shotgun-btn {
-            flex: 1.2;
-            gap: 2px;
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { border-color: #4caf50; color: #4caf50; }
+        .btn-primary:hover { background: rgba(76, 175, 80, 0.04); }
+        .btn-secondary { border-color: #2a5a2a; color: #666; }
+        .btn-secondary:hover { border-color: #4caf50; color: #888; }
+        
+        .button-group { display: flex; gap: 12px; margin-top: 18px; }
+        .button-group .btn { flex: 1; }
+        
+        .back-link { 
+            border-top: 1px solid #2a5a2a;
+            text-align: center; 
+            margin-top: 18px; 
+            padding: 14px; 
+            color: #888; 
+            cursor: pointer; 
+            font-size: 0.85rem; 
+            transition: color 0.15s ease;
+            letter-spacing: 0.2px;
         }
-        .inline-shotgun-select {
-            background: transparent;
-            border: none;
-            color: inherit;
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            width: 50px;
-            text-align: center;
-        }
-        .inline-shotgun-select:focus {
-            outline: none;
-        }
-        .inline-shotgun-select option {
-            background: #1a1a1a;
-            color: #fff;
+        .back-link:hover { color: #aaa; }
+        
+        .success-msg { color: #4caf50; font-size: 0.85rem; text-align: center; margin-top: 8px; display: none; }
+        .edit-badge { 
+            background: #1a3a1a; 
+            color: #4caf50; 
+            padding: 2px 12px; 
+            border-radius: 4px; 
+            font-size: 0.65rem; 
+            margin-left: 8px; 
+            display: inline-block; 
+            font-weight: 400; 
         }
         
-        .format-group {
-            margin: 16px 0 8px 0;
-        }
-        .format-option {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 12px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            margin-bottom: 10px;
-            cursor: pointer;
-            border: 1px solid #333;
-            transition: all 0.2s;
-        }
-        .format-option.selected {
-            border-color: #4caf50;
-            background: #1a3a1a;
-        }
-        .format-option input {
-            margin-top: 2px;
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        .format-option label {
-            flex: 1;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        .format-title {
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .format-desc {
-            font-size: 0.7rem;
-            color: #888;
-        }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.9rem; }
         
-        .player-row { background: #0a0a0a; border-radius: 12px; padding: 10px; margin-bottom: 8px; }
-        .player-line1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
-        .player-name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
-        .player-name-input { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 8px 10px; color: #fff; font-size: 0.85rem; width: 110px; }
-        .player-label-display { background: #1a3a1a; color: #4caf50; padding: 4px 8px; border-radius: 14px; font-size: 0.7rem; font-weight: 600; }
-        .player-hcp-group { display: flex; align-items: center; gap: 4px; background: #1a1a1a; padding: 4px 10px; border-radius: 20px; }
-        .hcp-label { font-size: 0.65rem; color: #888; }
-        .player-hcp-input { width: 45px; background: transparent; border: none; color: #fff; font-size: 0.85rem; text-align: center; }
-        .player-line2 { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
-        .team-select, .flight-select { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 6px 12px; color: #fff; font-size: 0.8rem; cursor: pointer; }
-        
-        .btn { padding: 14px 20px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; border: none; margin: 5px; }
-        .btn-primary { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .btn-secondary { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
-        
-        .button-group { display: flex; gap: 12px; margin-top: 16px; }
-        .back-link { text-align: center; margin-top: 20px; padding: 16px; color: #888; cursor: pointer; border-top: 1px solid #333; }
-        .loading { text-align: center; padding: 40px; color: #888; }
-        .success-msg { color: #4caf50; font-size: 0.8rem; text-align: center; margin-top: 10px; }
-        
-        .edit-badge { background: #ffaa44; color: #1a1a1a; padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; margin-left: 10px; display: inline-block; }
-        
-        .info-note { font-size: 0.7rem; color: #ffaa44; margin-top: 8px; text-align: center; }
-        
-        /* Anchor Selection Modal - cannot be bypassed */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.95);
+            background: rgba(0,0,0,0.92);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -206,84 +569,82 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         .anchor-modal {
-            background: #1a1a1a;
-            border-radius: 28px;
+            background: rgba(20, 20, 20, 0.95);
+            border-radius: 16px;
             padding: 28px;
-            max-width: 360px;
+            max-width: 340px;
             width: 90%;
             text-align: center;
-            border: 2px solid #ffaa44;
+            border: 1px solid #2a5a2a;
         }
         .anchor-modal-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #ffaa44;
-            margin-bottom: 16px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #4caf50;
+            margin-bottom: 4px;
+            letter-spacing: -0.2px;
         }
         .anchor-modal-message {
-            font-size: 0.85rem;
-            color: #ccc;
-            margin-bottom: 20px;
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 16px;
             line-height: 1.4;
         }
         .anchor-select {
             width: 100%;
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 12px;
-            border-radius: 30px;
-            font-size: 1rem;
-            margin-bottom: 20px;
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
             cursor: pointer;
         }
-        .anchor-select option {
-            background: #1a1a1a;
-            color: #fff;
-        }
+        .anchor-select:focus { outline: none; border-color: #4caf50; }
+        .anchor-select option { background: #0a0a0a; color: #e0e0e0; }
         .anchor-confirm-btn {
-            background: #1a3a1a;
+            background: rgba(20, 20, 20, 0.5);
             border: 1px solid #4caf50;
             color: #4caf50;
-            padding: 12px 24px;
-            border-radius: 40px;
-            font-size: 1rem;
-            font-weight: 700;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 400;
             cursor: pointer;
             width: 100%;
+            transition: all 0.15s ease;
         }
-        .anchor-confirm-btn:hover {
-            background: #2a4a2a;
-        }
+        .anchor-confirm-btn:hover { background: rgba(76, 175, 80, 0.04); }
+        .anchor-confirm-btn:active { transform: scale(0.98); }
+        
+        .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #1a3a1a; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
 <div class="container" id="app">
-    <div class="loading">Loading...</div>
+    <div class="loading">Loading</div>
 </div>
-<div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.38</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.59</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.38
+// FILE: setup-game.html
+// VERSION: 1.59
 
-// ============================================================
-// Apply user settings IMMEDIATELY before anything else
-// ============================================================
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
 } else {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.38";
-var CACHE_KEY = "setup_game_version_v138";
+var VERSION = "1.59";
+var CACHE_KEY = "setup_game_version_v159";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
-
-// v1.37: Preserve ALL existing URL parameters
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
+    
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -292,22 +653,120 @@ if (storedVersion !== VERSION) {
     window.location.href = newUrl;
 }
 
-// Firebase already initialized in firebase-config.js
 var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
 
-// ============================================================
-// v1.27: Dirty state tracking for edit mode
-// ============================================================
 var isDirty = false;
 var initialFormState = null;
 var beforeUnloadHandlerAttached = false;
 
 // ============================================================
-// Generate Short Game ID
-// Format: GM_YYMMDD_HHMM_XX
+// Player list from Firestore with isDefault support
 // ============================================================
+var playerList = [];
+
+function loadPlayerList(callback) {
+    if (!firestoreReady) {
+        if (callback) callback();
+        return;
+    }
+    
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            if (doc.exists && doc.data().players) {
+                playerList = doc.data().players;
+                playerList.sort(function(a, b) {
+                    return a.name.localeCompare(b.name);
+                });
+                console.log("[SETUP-GAME] Loaded", playerList.length, "players");
+            } else {
+                playerList = [];
+                console.warn("[SETUP-GAME] No players found in playerInformation");
+            }
+            if (callback) callback();
+        })
+        .catch(function(err) {
+            console.warn("[SETUP-GAME] Error loading players:", err);
+            playerList = [];
+            if (callback) callback();
+        });
+}
+
+// ============================================================
+// Update default players after game commit
+// ============================================================
+function updateDefaultPlayers(selectedPlayers, callback) {
+    if (!firestoreReady) {
+        if (callback) callback(false);
+        return;
+    }
+    
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            var allPlayers = [];
+            if (doc.exists && doc.data().players) {
+                allPlayers = doc.data().players;
+            }
+            
+            var selectedNames = {};
+            var selectedMap = {};
+            for (var i = 0; i < selectedPlayers.length; i++) {
+                var p = selectedPlayers[i];
+                selectedNames[p.name] = true;
+                selectedMap[p.name] = {
+                    name: p.name,
+                    handicap: p.handicap,
+                    defaultTeam: p.team,
+                    label: p.label || generateLabel(p.name),
+                    isDefault: true
+                };
+            }
+            
+            var updatedPlayers = [];
+            var existingNames = {};
+            
+            for (var i = 0; i < allPlayers.length; i++) {
+                var player = allPlayers[i];
+                existingNames[player.name] = true;
+                if (selectedNames[player.name]) {
+                    player.isDefault = true;
+                    var selected = selectedMap[player.name];
+                    player.handicap = selected.handicap;
+                    player.defaultTeam = selected.defaultTeam;
+                    player.label = selected.label;
+                    updatedPlayers.push(player);
+                } else {
+                    player.isDefault = false;
+                    updatedPlayers.push(player);
+                }
+            }
+            
+            for (var name in selectedMap) {
+                if (!existingNames[name]) {
+                    var newPlayer = selectedMap[name];
+                    updatedPlayers.push(newPlayer);
+                }
+            }
+            
+            updatedPlayers.sort(function(a, b) {
+                return a.name.localeCompare(b.name);
+            });
+            
+            return db.collection("playerInformation").doc("players").set({
+                players: updatedPlayers,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        })
+        .then(function() {
+            console.log("[SETUP-GAME] Default players updated successfully");
+            if (callback) callback(true);
+        })
+        .catch(function(err) {
+            console.error("[SETUP-GAME] Error updating default players:", err);
+            if (callback) callback(false);
+        });
+}
 
 function generateGameId() {
     var now = new Date();
@@ -322,50 +781,32 @@ function generateGameId() {
     return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
 }
 
-// ============================================================
-// v1.29: AUTO-ARCHIVE OLD GAMES
-// - 90+ days old: Move to trashGames collection, delete from scheduledGames
-// - 180+ days old: Permanently delete from trashGames
-// ============================================================
-
 function archiveOldGames() {
     if (!firestoreReady) return;
     
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // 90 days ago
     var ninetyDaysAgo = new Date(today);
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     var ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
     
-    // 180 days ago
     var oneEightyDaysAgo = new Date(today);
     oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180);
     var oneEightyDaysAgoStr = oneEightyDaysAgo.toISOString().split('T')[0];
     
-    // Step 1: Permanently delete games older than 180 days from trashGames
-    console.log("Checking trashGames for games older than 180 days (date < " + oneEightyDaysAgoStr + ")");
     db.collection("trashGames")
         .where("date", "<", oneEightyDaysAgoStr)
         .get()
         .then(function(snapshot) {
             var deletePromises = [];
             snapshot.forEach(function(doc) {
-                console.log("Permanently deleting from trash:", doc.id, "date:", doc.data().date);
                 deletePromises.push(db.collection("trashGames").doc(doc.id).delete());
             });
             return Promise.all(deletePromises);
         })
-        .then(function() {
-            console.log("Permanent deletion from trash complete");
-        })
-        .catch(function(e) {
-            console.warn("Error deleting from trash:", e);
-        });
+        .catch(function(e) { console.warn(e); });
     
-    // Step 2: Move games older than 90 days from scheduledGames to trashGames
-    console.log("Checking scheduledGames for games older than 90 days (date < " + ninetyDaysAgoStr + ")");
     db.collection("scheduledGames")
         .where("date", "<", ninetyDaysAgoStr)
         .get()
@@ -374,48 +815,23 @@ function archiveOldGames() {
             snapshot.forEach(function(doc) {
                 var data = doc.data();
                 var gameId = doc.id;
-                console.log("Moving to trash:", gameId, "date:", data.date);
-                
-                // Add trash metadata
                 data._trashedAt = firebase.firestore.FieldValue.serverTimestamp();
                 data._originalCollection = "scheduledGames";
                 data._originalId = gameId;
                 
-                // Write to trashGames
                 var movePromise = db.collection("trashGames").doc(gameId).set(data)
                     .then(function() {
-                        // Delete from scheduledGames
                         return db.collection("scheduledGames").doc(gameId).delete();
                     });
                 movePromises.push(movePromise);
             });
             return Promise.all(movePromises);
         })
-        .then(function() {
-            console.log("Old games moved to trash complete");
-        })
-        .catch(function(e) {
-            console.warn("Error moving games to trash:", e);
-        });
+        .catch(function(e) { console.warn(e); });
 }
 
-// ============================================================
-// DEFAULT PLAYERS
-// ============================================================
-
-var HARDCODED_FALLBACK_PLAYERS = [
-    { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
-    { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1 },
-    { name: "C K", handicap: 8, team: "A", flight: 2 },
-    { name: "Yip H M", handicap: 12, team: "A", flight: 2 },
-    { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
-    { name: "Ong C B", handicap: 1, team: "B", flight: 1 },
-    { name: "Piti", handicap: 8, team: "B", flight: 2 },
-    { name: "James Ong", handicap: 11, team: "B", flight: 2 }
-];
-
 function generateLabel(name) {
-    if (!name) return "???";
+    if (!name) return "?";
     var parts = name.trim().split(/\s+/);
     if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
     if (parts.length === 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
@@ -446,14 +862,26 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
+// ============================================================
+// v1.59 FIX: initializeEmptyResults with OBJECTS for nested data
+// Firestore does NOT support nested arrays (arrays inside arrays)
+// Using objects: matchResults[0] works the same as array[0]
+// ============================================================
 function initializeEmptyResults() {
-    var emptyResults = {
+    return {
         version: 1,
+        // Cross-flight match tracking - v1.59: Objects instead of arrays
+        f1IntraMatches: {},               // Object with position keys (was new Array(18).fill(null))
+        f2IntraMatches: {},               // Object with position keys (was new Array(18).fill(null))
+        matchResults: {},                 // Object with position keys (was new Array(18).fill(null))
+        clinchedAt: {},
+        // Game 1: Match game
         game1: {
             matches: {},
             pointsA: new Array(18).fill(8),
             pointsB: new Array(18).fill(8)
         },
+        // Game 2: Team game (T-1 and T-2)
         game2: {
             flight1: {
                 leader: new Array(18).fill("AS"),
@@ -464,25 +892,29 @@ function initializeEmptyResults() {
                 cumulativePoints: new Array(18).fill(0)
             },
             pointsA: new Array(18).fill(1),
-            pointsB: new Array(18).fill(1)
+            pointsB: new Array(18).fill(1),
+            displayT1: new Array(18).fill("AS"),
+            displayT2: new Array(18).fill("AS")
         },
+        // Game 3: Stroke game
         game3: {
             leader: new Array(18).fill("AS"),
             nettA: new Array(18).fill(0),
             nettB: new Array(18).fill(0),
             pointsA: new Array(18).fill(0.5),
-            pointsB: new Array(18).fill(0.5)
+            pointsB: new Array(18).fill(0.5),
+            displayStrk: new Array(18).fill("AS")
         },
+        // TR (Total Result)
         tr: {
-            teamA: new Array(18).fill(null),
-            teamB: new Array(18).fill(null),
+            teamA: new Array(18).fill(0),
+            teamB: new Array(18).fill(0),
             teamAGreen: new Array(18).fill(false),
             teamBGreen: new Array(18).fill(false)
         },
         computedUpToHole: 0,
         lastComputedAt: null
     };
-    return emptyResults;
 }
 
 function displayDeviceId() {
@@ -505,16 +937,11 @@ var state = {
     teamGameFormat: "tournament"
 };
 
-// ============================================================
-// v1.27: Dirty state tracking functions
-// ============================================================
-
 function captureInitialFormState() {
-    var datePicker = document.getElementById("datePicker");
-    var courseSelect = document.getElementById("courseSelect");
-    var shotgunHoleSelect = document.getElementById("shotgunHoleSelect");
-    var tournamentRadio = document.getElementById("formatTournament");
-    var relativeRadio = document.getElementById("formatRelative");
+    var datePicker = document.getElementById("combinedDatePicker");
+    var courseSelect = document.getElementById("combinedCourseSelect");
+    var holeSelect = document.getElementById("combinedHoleSelect");
+    var formatSelect = document.getElementById("combinedFormatSelect");
     
     var playersSnapshot = JSON.parse(JSON.stringify(state.players));
     
@@ -522,25 +949,24 @@ function captureInitialFormState() {
         date: datePicker ? datePicker.value : "",
         courseId: state.selectedCourseId,
         startingHole: state.startingHole,
-        startingHoleType: state.startingHoleType,
         teamGameFormat: state.teamGameFormat,
         players: playersSnapshot
     };
     
     isDirty = false;
-    console.log("[DIRTY] Initial state captured");
 }
 
 function checkForChanges() {
     if (!state.isEditMode) return false;
     
-    var datePicker = document.getElementById("datePicker");
-    var courseSelect = document.getElementById("courseSelect");
+    var datePicker = document.getElementById("combinedDatePicker");
+    var courseSelect = document.getElementById("combinedCourseSelect");
+    var holeSelect = document.getElementById("combinedHoleSelect");
+    var formatSelect = document.getElementById("combinedFormatSelect");
     
     var currentDate = datePicker ? datePicker.value : "";
     var currentCourseId = state.selectedCourseId;
     var currentStartingHole = state.startingHole;
-    var currentStartingHoleType = state.startingHoleType;
     var currentTeamGameFormat = state.teamGameFormat;
     
     var playersChanged = false;
@@ -562,17 +988,11 @@ function checkForChanges() {
         }
     }
     
-    var wasDirty = isDirty;
     isDirty = (currentDate !== initialFormState?.date ||
                currentCourseId !== initialFormState?.courseId ||
                currentStartingHole !== initialFormState?.startingHole ||
-               currentStartingHoleType !== initialFormState?.startingHoleType ||
                currentTeamGameFormat !== initialFormState?.teamGameFormat ||
                playersChanged);
-    
-    if (wasDirty !== isDirty) {
-        console.log("[DIRTY] Changed:", isDirty);
-    }
     
     return isDirty;
 }
@@ -590,33 +1010,17 @@ function attachBeforeUnloadHandler() {
     beforeUnloadHandlerAttached = true;
 }
 
-// ============================================================
-// Modified goBack function with dirty check - v1.28: Uses Modal.confirmWithThreeButtons
-// ============================================================
-
 function goBack() {
     if (state.isEditMode && checkForChanges()) {
-        // v1.28: Use standard Modal.confirmWithThreeButtons
         Modal.confirmWithThreeButtons(
             "You have unsaved changes.",
-            function() {
-                // UPDATE & SAVE - save and exit
-                commitGame();
-            },
-            function() {
-                // DISCARD - discard changes and exit
-                isDirty = false;
-                window.location.href = "manage-games.html";
-            },
-            function() {
-                // CANCEL - stay on page
-                console.log("Cancel - staying on edit page");
-            },
-            "UPDATE & SAVE",
-            "DISCARD"
+            function() { commitGame(); },
+            function() { isDirty = false; window.location.href = "manage-games.html"; },
+            function() { console.log("Cancel - staying on edit page"); },
+            "Update & Save",
+            "Discard"
         );
     } else {
-        // No changes, exit directly
         if (state.isEditMode) {
             window.location.href = "manage-games.html";
         } else {
@@ -626,96 +1030,113 @@ function goBack() {
 }
 
 function loadDefaultPlayers(callback) {
-    if (!firestoreReady) {
-        console.warn("Firebase not ready, using fallback");
-        state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-            return {
-                name: p.name,
-                handicap: p.handicap,
-                team: p.team,
-                flight: p.flight,
-                label: generateLabel(p.name)
-            };
+    if (playerList.length > 0) {
+        var defaultPlayers = playerList.filter(function(p) {
+            return p.isDefault === true;
         });
+        
+        console.log("[SETUP-GAME] Found", defaultPlayers.length, "default players");
+        
+        if (defaultPlayers.length === 8) {
+            var teamAPlayers = defaultPlayers.filter(function(p) { return p.defaultTeam === "A"; });
+            var teamBPlayers = defaultPlayers.filter(function(p) { return p.defaultTeam === "B"; });
+            
+            teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+            teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            var result = [];
+            for (var i = 0; i < 4; i++) {
+                var p = teamAPlayers[i] || { name: "", handicap: 0, defaultTeam: "A", label: "" };
+                var flight = p.flight !== undefined ? p.flight : null;
+                result.push({
+                    name: p.name || "",
+                    handicap: p.handicap || 0,
+                    team: "A",
+                    flight: flight,
+                    label: p.label || generateLabel(p.name)
+                });
+            }
+            for (var i = 0; i < 4; i++) {
+                var p = teamBPlayers[i] || { name: "", handicap: 0, defaultTeam: "B", label: "" };
+                var flight = p.flight !== undefined ? p.flight : null;
+                result.push({
+                    name: p.name || "",
+                    handicap: p.handicap || 0,
+                    team: "B",
+                    flight: flight,
+                    label: p.label || generateLabel(p.name)
+                });
+            }
+            
+            state.players = result;
+            console.log("[SETUP-GAME] Pre-populated", state.players.length, "default players");
+            if (callback) callback();
+            return;
+        } else {
+            console.log("[SETUP-GAME] No default players found, falling back to top 4 per team");
+        }
+    }
+    
+    if (playerList.length > 0) {
+        var teamAPlayers = playerList.filter(function(p) { return p.defaultTeam === "A"; });
+        var teamBPlayers = playerList.filter(function(p) { return p.defaultTeam === "B"; });
+        
+        teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var selectedA = teamAPlayers.slice(0, 4);
+        var selectedB = teamBPlayers.slice(0, 4);
+        
+        while (selectedA.length < 4) {
+            selectedA.push({ name: "", handicap: 0, defaultTeam: "A", label: "" });
+        }
+        while (selectedB.length < 4) {
+            selectedB.push({ name: "", handicap: 0, defaultTeam: "B", label: "" });
+        }
+        
+        var result = [];
+        for (var i = 0; i < selectedA.length; i++) {
+            var p = selectedA[i];
+            var flight = p.flight !== undefined ? p.flight : null;
+            result.push({
+                name: p.name || "",
+                handicap: p.handicap || 0,
+                team: "A",
+                flight: flight,
+                label: p.label || generateLabel(p.name)
+            });
+        }
+        for (var i = 0; i < selectedB.length; i++) {
+            var p = selectedB[i];
+            var flight = p.flight !== undefined ? p.flight : null;
+            result.push({
+                name: p.name || "",
+                handicap: p.handicap || 0,
+                team: "B",
+                flight: flight,
+                label: p.label || generateLabel(p.name)
+            });
+        }
+        
+        state.players = result;
+        console.log("[SETUP-GAME] Pre-populated", state.players.length, "players from top 4 per team");
         if (callback) callback();
         return;
     }
     
-    db.collection("playerInformation").doc("defaultPlayers").get()
-        .then(function(doc) {
-            if (doc.exists && doc.data().players && doc.data().players.length === 8) {
-                var savedPlayers = doc.data().players;
-                state.players = savedPlayers.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: generateLabel(p.name)
-                    };
-                });
-                console.log("Loaded default players from Firebase");
-            } else {
-                console.log("No default players found, using fallback");
-                state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: generateLabel(p.name)
-                    };
-                });
-            }
-            if (callback) callback();
-        })
-        .catch(function(e) {
-            console.warn("Error loading default players:", e);
-            state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-                return {
-                    name: p.name,
-                    handicap: p.handicap,
-                    team: p.team,
-                    flight: p.flight,
-                    label: generateLabel(p.name)
-                };
-            });
-            if (callback) callback();
-        });
-}
-
-function saveAsDefaultPlayers(players, callback) {
-    if (!firestoreReady) {
-        if (callback) callback(false);
-        return;
-    }
-    
-    var playersToSave = [...players];
-    playersToSave.sort(function(a, b) {
-        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
-    
-    var playersForStorage = playersToSave.map(function(p) {
-        return {
-            name: p.name,
-            handicap: p.handicap,
-            team: p.team,
-            flight: p.flight
-        };
-    });
-    
-    db.collection("playerInformation").doc("defaultPlayers").set({
-        players: playersForStorage,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(function() {
-        console.log("Default players saved to Firebase");
-        if (callback) callback(true);
-    }).catch(function(e) {
-        console.error("Error saving default players:", e);
-        if (callback) callback(false);
-    });
+    var fallback = [
+        { name: "Ang C H", handicap: 1, team: "A", flight: null, label: "ACH" },
+        { name: "Chenh Hoe", handicap: 10, team: "A", flight: null, label: "CH" },
+        { name: "C K", handicap: 8, team: "A", flight: null, label: "CK" },
+        { name: "Yip H M", handicap: 12, team: "A", flight: null, label: "YHM" },
+        { name: "Jeff Goh", handicap: 0, team: "B", flight: null, label: "JG" },
+        { name: "Ong C B", handicap: 1, team: "B", flight: null, label: "OCB" },
+        { name: "Piti", handicap: 8, team: "B", flight: null, label: "P" },
+        { name: "James Ong", handicap: 11, team: "B", flight: null, label: "JO" }
+    ];
+    state.players = fallback;
+    console.log("[SETUP-GAME] Using fallback players");
+    if (callback) callback();
 }
 
 function loadEditMode(callback) {
@@ -737,29 +1158,19 @@ function loadEditMode(callback) {
             
             if (gameData.startingHole) {
                 state.startingHole = gameData.startingHole;
-                if (state.startingHole === 1) {
-                    state.startingHoleType = "hole1";
-                } else if (state.startingHole === 10) {
-                    state.startingHoleType = "hole10";
-                } else {
-                    state.startingHoleType = "shotgun";
-                }
             }
             
-            if (gameData.teamGameFormat) {
-                state.teamGameFormat = gameData.teamGameFormat;
-            } else {
-                state.teamGameFormat = "tournament";
-            }
+            if (gameData.teamGameFormat) state.teamGameFormat = gameData.teamGameFormat;
+            else state.teamGameFormat = "tournament";
             
             if (gameData.players && gameData.players.length === 8) {
                 state.players = gameData.players.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: generateLabel(p.name)
+                    return { 
+                        name: p.name, 
+                        handicap: p.handicap, 
+                        team: p.team, 
+                        flight: p.flight !== undefined ? p.flight : null, 
+                        label: generateLabel(p.name) 
                     };
                 });
             } else {
@@ -779,7 +1190,7 @@ function loadEditMode(callback) {
 
 function loadCourses(callback) {
     if (!firestoreReady) {
-        document.getElementById("app").innerHTML = '<div class="loading">Firebase connection failed. Please check internet.</div>';
+        document.getElementById("app").innerHTML = '<div class="loading">Connection failed</div>';
         return;
     }
     
@@ -789,11 +1200,7 @@ function loadCourses(callback) {
             courses.push({ id: doc.id, name: doc.data().name, par: doc.data().par, si: doc.data().si });
         });
         courses.sort(function(a, b) {
-            var nameA = a.name.toLowerCase();
-            var nameB = b.name.toLowerCase();
-            if (nameA < nameB) return -1;
-            if (nameA > nameB) return 1;
-            return 0;
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
         });
         state.courses = courses;
         
@@ -811,11 +1218,46 @@ function loadCourses(callback) {
     });
 }
 
-function updatePlayerName(idx, value) {
-    state.players[idx].name = value;
-    state.players[idx].label = generateLabel(value);
+function populatePlayerFields(idx) {
+    var select = document.querySelector('.player-name-select[data-idx="' + idx + '"]');
+    if (!select) return;
+    
+    var selectedName = select.value;
+    if (!selectedName) return;
+    
+    var player = null;
+    for (var i = 0; i < playerList.length; i++) {
+        if (playerList[i].name === selectedName) {
+            player = playerList[i];
+            break;
+        }
+    }
+    
+    if (!player) return;
+    
+    var hcpInput = document.querySelector('.player-hcp-input[data-idx="' + idx + '"]');
+    if (hcpInput) {
+        hcpInput.value = player.handicap;
+        state.players[idx].handicap = player.handicap;
+    }
+    
+    var teamSelect = document.querySelector('.team-display[data-idx="' + idx + '"]');
+    if (teamSelect) {
+        var defaultTeam = player.defaultTeam || "A";
+        teamSelect.value = defaultTeam;
+        state.players[idx].team = defaultTeam;
+    }
+    
+    var labelDisplay = document.querySelector('.label-display[data-idx="' + idx + '"]');
+    if (labelDisplay) {
+        var label = player.label || generateLabel(player.name);
+        labelDisplay.textContent = label;
+        state.players[idx].label = label;
+    }
+    
+    state.players[idx].name = player.name;
+    
     if (state.isEditMode) checkForChanges();
-    render();
 }
 
 function updatePlayerHandicap(idx, value) {
@@ -831,9 +1273,9 @@ function updatePlayerTeam(idx, value) {
 }
 
 function updatePlayerFlight(idx, value) {
-    state.players[idx].flight = parseInt(value);
+    var flightVal = value === '' ? null : parseInt(value);
+    state.players[idx].flight = flightVal;
     if (state.isEditMode) checkForChanges();
-    render();
 }
 
 function setTeamGameFormat(format) {
@@ -843,11 +1285,26 @@ function setTeamGameFormat(format) {
 }
 
 function validateTeamFlight() {
+    var unassigned = state.players.filter(function(p) {
+        return p.flight === null || p.flight === undefined || p.flight === '';
+    });
+    
+    if (unassigned.length > 0) {
+        Modal.alert("Please assign all players to Flight 1 or Flight 2.");
+        return false;
+    }
+    
     var flight1A = state.players.filter(function(p) { return p.flight === 1 && p.team === "A"; }).length;
     var flight1B = state.players.filter(function(p) { return p.flight === 1 && p.team === "B"; }).length;
     var flight2A = state.players.filter(function(p) { return p.flight === 2 && p.team === "A"; }).length;
     var flight2B = state.players.filter(function(p) { return p.flight === 2 && p.team === "B"; }).length;
-    return flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2;
+    
+    if (flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2) {
+        return true;
+    } else {
+        Modal.alert("Each flight needs exactly 2 Team A and 2 Team B players.");
+        return false;
+    }
 }
 
 function validateDate(dateStr) {
@@ -860,31 +1317,16 @@ function validateDate(dateStr) {
     maxDate.setMonth(maxDate.getMonth() + 12);
     maxDate.setHours(0, 0, 0, 0);
     
-    if (selectedDate < today) {
-        return "Date must be today or in the future";
-    }
-    if (selectedDate > maxDate) {
-        return "Date cannot be more than 12 months in the future";
-    }
+    if (selectedDate < today) return "Date must be today or in the future";
+    if (selectedDate > maxDate) return "Date cannot be more than 12 months in the future";
     return null;
 }
 
-function setStartingHole(type, value) {
-    state.startingHoleType = type;
-    if (type === "hole1") {
-        state.startingHole = 1;
-    } else if (type === "hole10") {
-        state.startingHole = 10;
-    } else if (type === "shotgun") {
-        state.startingHole = value || 1;
-    }
+function setStartingHole(value) {
+    state.startingHole = parseInt(value) || 1;
     if (state.isEditMode) checkForChanges();
     render();
 }
-
-// ============================================================
-// Anchor Selection Modal (from v1.23)
-// ============================================================
 
 function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     var optionsHtml = '';
@@ -895,12 +1337,12 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     var modalHtml = `
         <div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">
             <div class="anchor-modal">
-                <div class="anchor-modal-title">🏌️ SELECT ANCHOR</div>
-                <div class="anchor-modal-message">We have ${zeroHcpPlayers.length} players with 0 handicap.<br>Please select the Anchor for today's game.</div>
+                <div class="anchor-modal-title">Select Anchor</div>
+                <div class="anchor-modal-message">${zeroHcpPlayers.length} players with 0 handicap. Select the Anchor for today's game.</div>
                 <select id="anchorSelect" class="anchor-select">
                     ${optionsHtml}
                 </select>
-                <button id="anchorConfirmBtn" class="anchor-confirm-btn">✓ CONFIRM ANCHOR</button>
+                <button id="anchorConfirmBtn" class="anchor-confirm-btn">Confirm Anchor</button>
             </div>
         </div>
     `;
@@ -920,15 +1362,9 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     });
 }
 
-// ============================================================
-// v1.36: SINGLE Firestore write function - waiting screen stays until redirect
-// ============================================================
-
 function performFirestoreWrite(collectionName, docId, data, successMessage, redirectUrl) {
-    // Show waiting screen IMMEDIATELY before the write
     WaitingScreen.show("Updating game...");
     
-    // FORCE browser to render the waiting screen before starting the write
     return new Promise(function(resolve) {
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
@@ -938,27 +1374,21 @@ function performFirestoreWrite(collectionName, docId, data, successMessage, redi
     }).then(function() {
         return db.collection(collectionName).doc(docId).set(data);
     }).then(function() {
-        // v1.36: DO NOT hide waiting screen - keep it visible until redirect
-        // This prevents the edit screen from flashing between write and navigation
-        if (successMessage) {
-            document.getElementById("successMsg").style.display = "block";
-            document.getElementById("successMsg").innerHTML = successMessage;
-        }
+        document.getElementById("successMsg").style.display = "block";
+        document.getElementById("successMsg").innerHTML = successMessage;
         setTimeout(function() {
             window.location.href = redirectUrl;
         }, 1500);
     }).catch(function(e) {
-        WaitingScreen.hide();  // Only hide on error
+        WaitingScreen.hide();
         Modal.alert("Error saving game: " + e.message);
         return Promise.reject(e);
     });
 }
 
 function performFirestoreUpdate(collectionName, docId, data, successMessage, redirectUrl) {
-    // Show waiting screen IMMEDIATELY before the update
     WaitingScreen.show("Updating game...");
     
-    // FORCE browser to render the waiting screen before starting the write
     return new Promise(function(resolve) {
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
@@ -968,29 +1398,20 @@ function performFirestoreUpdate(collectionName, docId, data, successMessage, red
     }).then(function() {
         return db.collection(collectionName).doc(docId).update(data);
     }).then(function() {
-        // v1.36: DO NOT hide waiting screen - keep it visible until redirect
-        // This prevents the edit screen from flashing between write and navigation
-        if (successMessage) {
-            document.getElementById("successMsg").style.display = "block";
-            document.getElementById("successMsg").innerHTML = successMessage;
-        }
+        document.getElementById("successMsg").style.display = "block";
+        document.getElementById("successMsg").innerHTML = successMessage;
         setTimeout(function() {
             window.location.href = redirectUrl;
         }, 1500);
     }).catch(function(e) {
-        WaitingScreen.hide();  // Only hide on error
+        WaitingScreen.hide();
         Modal.alert("Error updating game: " + e.message);
         return Promise.reject(e);
     });
 }
 
-// ============================================================
-// v1.34: commitGame() - PIN for UPDATE only, NO PIN for CREATE
-// ============================================================
-
 function commitGame() {
-    // Validate form first
-    var dateInput = document.getElementById("datePicker");
+    var dateInput = document.getElementById("combinedDatePicker");
     var selectedDate = dateInput ? dateInput.value : "";
     
     var dateError = validateDate(selectedDate);
@@ -1001,7 +1422,6 @@ function commitGame() {
     }
     
     if (!validateTeamFlight()) {
-        Modal.alert("Each flight needs exactly 2 Team A and 2 Team B players");
         return;
     }
     
@@ -1010,29 +1430,19 @@ function commitGame() {
         return;
     }
     
-    // ✅ For EDIT (UPDATE) - require PIN before saving
     if (state.isEditMode) {
         AuthPin.requireAuth('update', state.editingGameId, null, function() {
-            // This callback runs after successful PIN authentication
-            // NO waiting screen here - proceed to anchor/validation first
             proceedWithCommit();
         });
     } else {
-        // ✅ For CREATE (new game) - NO PIN needed
         proceedWithCommit();
     }
 }
-
-// ============================================================
-// v1.34: proceedWithCommit() - anchor selection ONLY, NO waiting screen
-// ============================================================
 
 function proceedWithCommit() {
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     var anchorCallback = function(selectedAnchor) {
-        // All user input complete (PIN done, anchor selected if needed)
-        // Now proceed to save - waiting screen will be shown INSIDE the save function
         if (state.editingGameId) {
             updateExistingGame(selectedAnchor);
         } else {
@@ -1041,32 +1451,34 @@ function proceedWithCommit() {
     };
     
     if (zeroHandicapPlayers.length > 1) {
-        // Multiple zero handicap players - need anchor selection FIRST
         showAnchorSelectionModal(zeroHandicapPlayers, anchorCallback);
     } else {
-        // 0 or 1 zero handicap player - no anchor selection needed
         var sortedByHcp = [...state.players].sort(function(a, b) { return a.handicap - b.handicap; });
         var defaultAnchor = sortedByHcp[0];
         anchorCallback(defaultAnchor);
     }
 }
 
+// ============================================================
+// v1.59 FIX: createNewGame with OBJECTS for nested results
+// ============================================================
 function createNewGame(anchorPlayer) {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
     var emptyResults = initializeEmptyResults();
     
+    console.log("[CREATE-GAME] emptyResults.matchResults:", emptyResults.matchResults);
+    console.log("[CREATE-GAME] emptyResults.f1IntraMatches:", emptyResults.f1IntraMatches);
+    console.log("[CREATE-GAME] emptyResults.f2IntraMatches:", emptyResults.f2IntraMatches);
+    console.log("[CREATE-GAME] emptyResults.game2.displayT1:", emptyResults.game2.displayT1);
+    console.log("[CREATE-GAME] emptyResults.game2.displayT2:", emptyResults.game2.displayT2);
+    console.log("[CREATE-GAME] emptyResults.game3.displayStrk:", emptyResults.game3.displayStrk);
+    
     var gameData = {
-        date: document.getElementById("datePicker").value,
+        date: document.getElementById("combinedDatePicker").value,
         course: state.selectedCourseData,
         players: state.players.map(function(p) {
-            return {
-                name: p.name,
-                handicap: p.handicap,
-                team: p.team,
-                flight: p.flight,
-                label: p.label
-            };
+            return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label };
         }),
         status: "scheduled",
         gameType: "real",
@@ -1074,46 +1486,43 @@ function createNewGame(anchorPlayer) {
         teamGameFormat: state.teamGameFormat,
         anchor: anchorPlayer.name,
         updatedAt: new Date().toISOString(),
-        f1: {
-            d: rotatedData,
-            se: false,
-            x: false
-        },
-        f2: {
-            d: rotatedData,
-            se: false,
-            x: false
-        },
-        locks: {
-            f1: null,
-            f2: null
-        },
+        f1: { d: rotatedData, se: false, x: false },
+        f2: { d: rotatedData, se: false, x: false },
+        locks: { f1: null, f2: null },
         currentHoleF1: 1,
         currentHoleF2: 1,
         results: emptyResults,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        lastSyncedPosition: -1,
+        savedHoles: { "1": [], "2": [] },
+        gameStarted: false
     };
+    
+    console.log("[CREATE-GAME] Game data prepared with results.matchResults:", gameData.results.matchResults);
+    console.log("[CREATE-GAME] Game data prepared with results.game2.displayT1:", gameData.results.game2.displayT1);
+    console.log("[CREATE-GAME] Game data prepared with results.game2.displayT2:", gameData.results.game2.displayT2);
+    console.log("[CREATE-GAME] Game data prepared with results.game3.displayStrk:", gameData.results.game3.displayStrk);
     
     var newGameId = generateGameId();
     
-    // v1.36: Single Firestore write - waiting screen stays until redirect
-    performFirestoreWrite("scheduledGames", newGameId, gameData, "✓ Game scheduled successfully! Redirecting...", "admin.html")
-        .then(function() {
-            // Save default players in background (don't block redirect)
-            saveAsDefaultPlayers(state.players, function(saveSuccess) {
-                if (saveSuccess) {
-                    console.log("Default players updated successfully");
-                } else {
-                    console.warn("Failed to save default players, but game was created");
-                }
-            });
-            SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
-        })
-        .catch(function(e) {
-            // Error already handled in performFirestoreWrite
-        });
+    updateDefaultPlayers(state.players, function(success) {
+        if (success) {
+            console.log("[SETUP-GAME] Default players updated successfully");
+        } else {
+            console.warn("[SETUP-GAME] Failed to update default players");
+        }
+        
+        performFirestoreWrite("scheduledGames", newGameId, gameData, "Game scheduled successfully", "admin.html")
+            .then(function() {
+                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
+            })
+            .catch(function(e) {});
+    });
 }
 
+// ============================================================
+// v1.59 FIX: updateExistingGame preserves OBJECTS for nested results
+// ============================================================
 function updateExistingGame(anchorPlayer) {
     db.collection("scheduledGames").doc(state.editingGameId).get()
         .then(function(doc) {
@@ -1124,23 +1533,27 @@ function updateExistingGame(anchorPlayer) {
             
             var existingData = doc.data();
             
+            var savedHoles = existingData.savedHoles || { "1": [], "2": [] };
+            if (typeof savedHoles !== 'object') {
+                savedHoles = { "1": [], "2": [] };
+            }
+            if (!savedHoles.hasOwnProperty('1')) {
+                savedHoles['1'] = [];
+            }
+            if (!savedHoles.hasOwnProperty('2')) {
+                savedHoles['2'] = [];
+            }
+            
             var updatePayload = {
-                date: document.getElementById("datePicker").value,
+                date: document.getElementById("combinedDatePicker").value,
                 course: state.selectedCourseData,
                 players: state.players.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: p.label
-                    };
+                    return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label };
                 }),
                 startingHole: state.startingHole,
                 teamGameFormat: state.teamGameFormat,
                 anchor: anchorPlayer.name,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                
                 f1: existingData.f1 || { d: "", se: false, x: false },
                 f2: existingData.f2 || { d: "", se: false, x: false },
                 results: existingData.results || null,
@@ -1149,8 +1562,15 @@ function updateExistingGame(anchorPlayer) {
                 locks: existingData.locks || { f1: null, f2: null },
                 signatures: existingData.signatures || { f1: false, f2: false },
                 submitted: existingData.submitted || { f1: false, f2: false },
-                gameStarted: existingData.gameStarted || false
+                gameStarted: existingData.gameStarted || false,
+                lastSyncedPosition: existingData.lastSyncedPosition !== undefined ? existingData.lastSyncedPosition : -1,
+                savedHoles: savedHoles
             };
+            
+            console.log("[UPDATE-GAME] Update payload results.matchResults:", updatePayload.results?.matchResults);
+            console.log("[UPDATE-GAME] Update payload preserving results.game2.displayT1:", updatePayload.results?.game2?.displayT1);
+            console.log("[UPDATE-GAME] Update payload preserving results.game2.displayT2:", updatePayload.results?.game2?.displayT2);
+            console.log("[UPDATE-GAME] Update payload preserving results.game3.displayStrk:", updatePayload.results?.game3?.displayStrk);
             
             var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
             if (courseChanged) {
@@ -1161,15 +1581,17 @@ function updateExistingGame(anchorPlayer) {
                 updatePayload.results = initializeEmptyResults();
                 updatePayload.currentHoleF1 = 1;
                 updatePayload.currentHoleF2 = 1;
+                updatePayload.lastSyncedPosition = -1;
+                updatePayload.savedHoles = { "1": [], "2": [] };
+                updatePayload.gameStarted = false;
+                console.log("[UPDATE-GAME] Course changed - reset results with matchResults, f1IntraMatches, f2IntraMatches as objects");
             }
             
             var startingHoleChanged = (existingData.startingHole !== state.startingHole);
             if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
-                // Show confirmation modal FIRST (no waiting screen)
                 Modal.confirm(
                     "Changing starting hole will reset all scores to par. Continue?",
                     function() {
-                        // User confirmed - prepare the update with reset data
                         var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
                         var rotatedData = rotateDataString(naturalData, state.startingHole);
                         updatePayload.f1 = { d: rotatedData, se: false, x: false };
@@ -1177,19 +1599,28 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.results = initializeEmptyResults();
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
+                        updatePayload.lastSyncedPosition = -1;
+                        updatePayload.savedHoles = { "1": [], "2": [] };
+                        updatePayload.gameStarted = false;
+                        console.log("[UPDATE-GAME] Starting hole changed - reset results with matchResults, f1IntraMatches, f2IntraMatches as objects");
                         
-                        // v1.36: Single Firestore update - waiting screen stays until redirect
-                        performFirestoreUpdate(
-                            "scheduledGames",
-                            state.editingGameId,
-                            updatePayload,
-                            "✓ Game updated successfully! Redirecting...",
-                            "manage-games.html"
-                        ).then(function() {
-                            SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                            isDirty = false;
-                        }).catch(function(e) {
-                            // Error already handled in performFirestoreUpdate
+                        updateDefaultPlayers(state.players, function(success) {
+                            if (success) {
+                                console.log("[SETUP-GAME] Default players updated on edit");
+                            } else {
+                                console.warn("[SETUP-GAME] Failed to update default players on edit");
+                            }
+                            
+                            performFirestoreUpdate(
+                                "scheduledGames",
+                                state.editingGameId,
+                                updatePayload,
+                                "Game updated successfully",
+                                "manage-games.html"
+                            ).then(function() {
+                                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                                isDirty = false;
+                            }).catch(function(e) {});
                         });
                     },
                     function() {
@@ -1200,18 +1631,23 @@ function updateExistingGame(anchorPlayer) {
                 return;
             }
             
-            // v1.36: Single Firestore update - waiting screen stays until redirect
-            performFirestoreUpdate(
-                "scheduledGames",
-                state.editingGameId,
-                updatePayload,
-                "✓ Game updated successfully! Redirecting...",
-                "manage-games.html"
-            ).then(function() {
-                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                isDirty = false;
-            }).catch(function(e) {
-                // Error already handled in performFirestoreUpdate
+            updateDefaultPlayers(state.players, function(success) {
+                if (success) {
+                    console.log("[SETUP-GAME] Default players updated on edit");
+                } else {
+                    console.warn("[SETUP-GAME] Failed to update default players on edit");
+                }
+                
+                performFirestoreUpdate(
+                    "scheduledGames",
+                    state.editingGameId,
+                    updatePayload,
+                    "Game updated successfully",
+                    "manage-games.html"
+                ).then(function() {
+                    SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                    isDirty = false;
+                }).catch(function(e) {});
             });
         })
         .catch(function(e) {
@@ -1236,14 +1672,6 @@ function onCourseChange(courseId) {
     render();
 }
 
-function onStartingHoleChange() {
-    if (state.isEditMode) checkForChanges();
-}
-
-function onTeamGameFormatChange(format) {
-    setTeamGameFormat(format);
-}
-
 function render() {
     var courseOptions = '';
     for (var i = 0; i < state.courses.length; i++) {
@@ -1252,162 +1680,175 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    var displayPlayers = [...state.players];
-    displayPlayers.sort(function(a, b) {
-        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
+    var displayPlayers = [];
+    var teamAPlayers = state.players.filter(function(p) { return p.team === "A"; });
+    teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = state.players.filter(function(p) { return p.team === "B"; });
+    teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    displayPlayers = [];
+    for (var i = 0; i < 4; i++) {
+        if (i < teamAPlayers.length) {
+            displayPlayers.push(teamAPlayers[i]);
+        } else {
+            displayPlayers.push({ name: "", handicap: 0, team: "A", flight: null, label: "" });
+        }
+    }
+    for (var i = 0; i < 4; i++) {
+        if (i < teamBPlayers.length) {
+            displayPlayers.push(teamBPlayers[i]);
+        } else {
+            displayPlayers.push({ name: "", handicap: 0, team: "B", flight: null, label: "" });
+        }
+    }
     
     var playersHtml = '';
+    
+    var headerHtml = `
+        <div class="player-header-row">
+            <span class="header-player">Player</span>
+            <span class="header-label">Label</span>
+            <span class="header-hcp">Hcp</span>
+            <span class="header-team">Team</span>
+            <span class="header-flight">Flight</span>
+        </div>
+    `;
+    playersHtml += headerHtml;
+    
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
-        var originalIdx = state.players.findIndex(function(orig) { 
-            return orig.name === p.name && orig.flight === p.flight && orig.team === p.team; 
+        var originalIdx = state.players.findIndex(function(orig) {
+            return orig.name === p.name && orig.team === p.team;
         });
         if (originalIdx === -1) originalIdx = idx;
+        
+        var playerOptions = '<option value="">— Select player —</option>';
+        for (var i = 0; i < playerList.length; i++) {
+            var pl = playerList[i];
+            var isSelected = (pl.name === p.name) ? ' selected' : '';
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
+        }
+        
+        var flightVal = p.flight !== null && p.flight !== undefined ? p.flight : '';
+        var f1Selected = (flightVal === 1) ? 'selected' : '';
+        var f2Selected = (flightVal === 2) ? 'selected' : '';
         
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
-                    <div class="player-name-group">
-                        <input type="text" class="player-name-input" value="${escapeHtml(p.name)}" data-idx="${originalIdx}" placeholder="Name">
-                        <span class="player-label-display">${escapeHtml(p.label)}</span>
+                    <div class="player-name-wrapper">
+                        <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
+                            ${playerOptions}
+                        </select>
+                        <span class="arrow">▼</span>
                     </div>
-                    <div class="player-hcp-group">
-                        <span class="hcp-label">Hcp</span>
+                    <span class="label-display" data-idx="${originalIdx}">${escapeHtml(p.label || '')}</span>
+                    <div class="hcp-group">
+                        <label>Hcp</label>
                         <input type="number" class="player-hcp-input" value="${p.handicap}" data-idx="${originalIdx}" step="1" min="0" max="54">
                     </div>
+                    <div class="team-wrapper">
+                        <select class="team-display" data-idx="${originalIdx}" onchange="updatePlayerTeam(${originalIdx}, this.value)">
+                            <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
+                            <option value="B" ${p.team === "B" ? "selected" : ""}>B</option>
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="flight-wrapper">
+                        <select class="flight-display" data-idx="${originalIdx}" onchange="updatePlayerFlight(${originalIdx}, this.value)">
+                            <option value="">—</option>
+                            <option value="1" ${f1Selected}>F1</option>
+                            <option value="2" ${f2Selected}>F2</option>
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
-                <div class="player-line2">
-                    <select class="team-select" data-idx="${originalIdx}">
-                        <option value="A" ${p.team === "A" ? "selected" : ""}>Team A</option>
-                        <option value="B" ${p.team === "B" ? "selected" : ""}>Team B</option>
-                    </select>
-                    <select class="flight-select" data-idx="${originalIdx}">
-                        <option value="1" ${p.flight === 1 ? "selected" : ""}>Flight 1</option>
-                        <option value="2" ${p.flight === 2 ? "selected" : ""}>Flight 2</option>
-                    </select>
-                </div>
+                <div class="player-line2"></div>
             </div>
         `;
     }
     
-    var isValid = validateTeamFlight();
     var today = new Date().toISOString().split('T')[0];
     var maxDate = new Date();
     maxDate.setMonth(maxDate.getMonth() + 12);
     var maxDateStr = maxDate.toISOString().split('T')[0];
     
     var defaultDate;
-    if (state.userSelectedDate) {
-        defaultDate = state.userSelectedDate;
-    } else if (state.isEditMode && state.editDate) {
-        defaultDate = state.editDate;
-    } else {
-        defaultDate = today;
-    }
+    if (state.userSelectedDate) defaultDate = state.userSelectedDate;
+    else if (state.isEditMode && state.editDate) defaultDate = state.editDate;
+    else defaultDate = today;
     
-    var modeTitle = state.isEditMode ? 'EDIT SCHEDULED GAME' : 'SET UP NEW GAME';
-    var modeBadge = state.isEditMode ? '<span class="edit-badge">EDIT MODE</span>' : '';
-    
-    var hole1Class = "hole-toggle-btn" + (state.startingHoleType === "hole1" ? " active" : "");
-    var hole10Class = "hole-toggle-btn" + (state.startingHoleType === "hole10" ? " active" : "");
-    var shotgunClass = "hole-toggle-btn shotgun-btn" + (state.startingHoleType === "shotgun" ? " active" : "");
-    
-    var shotgunSelectValue = state.startingHole;
-    
-    var tournamentSelected = (state.teamGameFormat === "tournament");
-    var relativeSelected = (state.teamGameFormat === "relative");
+    var modeTitle = state.isEditMode ? 'Edit Scheduled Game' : 'Set Up New Game';
+    var modeBadge = state.isEditMode ? '<span class="edit-badge">Edit Mode</span>' : '';
     
     var html = `
         <div class="header">
-            <div class="title">📅 ${modeTitle} ${modeBadge}</div>
-            <div class="version">Version ${VERSION}</div>
+            <div class="title">${modeTitle} ${modeBadge}</div>
+            <div class="subtitle">Schedule</div>
         </div>
         
         <div class="card">
-            <div class="card-title">🎯 GAME DATE</div>
-            <div class="date-row">
-                <span class="date-label">Date of Game:</span>
-                <input type="date" id="datePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
+            <div class="card-title">Game Details</div>
+            <div class="form-row-compact">
+                <label>Game Date</label>
+                <input type="date" id="combinedDatePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
             </div>
-            ${state.dateError ? '<div class="error-msg">⚠️ ' + state.dateError + '</div>' : ''}
-        </div>
-        
-        <div class="card">
-            <div class="card-title">🏟️ COURSE SELECTION</div>
-            <select id="courseSelect" class="course-select">
-                ${courseOptions}
-            </select>
-        </div>
-        
-        <div class="card">
-            <div class="card-title">⛳ STARTING HOLE (SHOTGUN START)</div>
-            <div class="starting-hole-toggle">
-                <div class="${hole1Class}" data-type="hole1">Hole 1</div>
-                <div class="${hole10Class}" data-type="hole10">Hole 10</div>
-                <div class="${shotgunClass}" data-type="shotgun">
-                    Shotgun 
-                    <select id="shotgunHoleSelect" class="inline-shotgun-select">
-                        <option value="1" ${shotgunSelectValue === 1 ? 'selected' : ''}>1</option>
-                        <option value="2" ${shotgunSelectValue === 2 ? 'selected' : ''}>2</option>
-                        <option value="3" ${shotgunSelectValue === 3 ? 'selected' : ''}>3</option>
-                        <option value="4" ${shotgunSelectValue === 4 ? 'selected' : ''}>4</option>
-                        <option value="5" ${shotgunSelectValue === 5 ? 'selected' : ''}>5</option>
-                        <option value="6" ${shotgunSelectValue === 6 ? 'selected' : ''}>6</option>
-                        <option value="7" ${shotgunSelectValue === 7 ? 'selected' : ''}>7</option>
-                        <option value="8" ${shotgunSelectValue === 8 ? 'selected' : ''}>8</option>
-                        <option value="9" ${shotgunSelectValue === 9 ? 'selected' : ''}>9</option>
-                        <option value="10" ${shotgunSelectValue === 10 ? 'selected' : ''}>10</option>
-                        <option value="11" ${shotgunSelectValue === 11 ? 'selected' : ''}>11</option>
-                        <option value="12" ${shotgunSelectValue === 12 ? 'selected' : ''}>12</option>
-                        <option value="13" ${shotgunSelectValue === 13 ? 'selected' : ''}>13</option>
-                        <option value="14" ${shotgunSelectValue === 14 ? 'selected' : ''}>14</option>
-                        <option value="15" ${shotgunSelectValue === 15 ? 'selected' : ''}>15</option>
-                        <option value="16" ${shotgunSelectValue === 16 ? 'selected' : ''}>16</option>
-                        <option value="17" ${shotgunSelectValue === 17 ? 'selected' : ''}>17</option>
-                        <option value="18" ${shotgunSelectValue === 18 ? 'selected' : ''}>18</option>
+            <div class="form-row-compact">
+                <label>Course</label>
+                <div class="select-wrapper">
+                    <select id="combinedCourseSelect">
+                        ${courseOptions}
                     </select>
+                    <span class="arrow">▼</span>
                 </div>
             </div>
-            <div class="info-note">💡 Play will begin at selected hole. Scorecard will show holes in play order.</div>
+            ${state.dateError ? '<div class="error-msg">' + state.dateError + '</div>' : ''}
         </div>
         
         <div class="card">
-            <div class="card-title">👥 TEAM GAME FORMAT</div>
-            <div class="format-group">
-                <div class="format-option ${tournamentSelected ? 'selected' : ''}" data-format="tournament">
-                    <input type="radio" name="teamGameFormat" value="tournament" id="formatTournament" ${tournamentSelected ? 'checked' : ''}>
-                    <label for="formatTournament">
-                        <div class="format-title">🏆 Tournament Handicap (Recommended)</div>
-                        <div class="format-desc">Use raw handicaps. Higher handicap players receive more strokes.</div>
-                    </label>
+            <div class="card-title">Game Format Settings</div>
+            <div class="form-row-inline">
+                <div class="field-group">
+                    <label>Starting Hole</label>
+                    <div class="select-wrapper">
+                        <select id="combinedHoleSelect">
+                            ${[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
+                                return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>Hole ' + h + '</option>';
+                            }).join('')}
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
-                <div class="format-option ${relativeSelected ? 'selected' : ''}" data-format="relative">
-                    <input type="radio" name="teamGameFormat" value="relative" id="formatRelative" ${relativeSelected ? 'checked' : ''}>
-                    <label for="formatRelative">
-                        <div class="format-title">📊 Relative Handicap (Zero-Rise)</div>
-                        <div class="format-desc">Lowest handicap becomes zero. All others adjust accordingly.</div>
-                    </label>
+                <div class="field-group">
+                    <label>Team Game</label>
+                    <div class="select-wrapper">
+                        <select id="combinedFormatSelect">
+                            <option value="tournament" ${state.teamGameFormat === 'tournament' ? 'selected' : ''}>Tournament</option>
+                            <option value="relative" ${state.teamGameFormat === 'relative' ? 'selected' : ''}>Relative</option>
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
             </div>
         </div>
         
         <div class="card">
-            <div class="card-title">👥 PLAYER SETUP (8 Players)</div>
-            ${playersHtml}
-            ${!isValid ? '<div class="error-msg">⚠️ Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
+            <div class="card-title">Players (8)</div>
+            <div class="table-scroll">
+                <div class="table-container">
+                    ${playersHtml}
+                </div>
+            </div>
         </div>
         
         <div class="button-group">
-            <button class="btn btn-secondary" id="cancelBtn">← Cancel</button>
-            <button class="btn btn-primary" id="commitBtn">✓ ${state.isEditMode ? 'UPDATE GAME' : 'COMMIT GAME'}</button>
+            <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            <button class="btn btn-primary" id="commitBtn">${state.isEditMode ? 'Update' : 'Commit'}</button>
         </div>
         
-        <div id="successMsg" style="display:none;" class="success-msg"></div>
+        <div id="successMsg" class="success-msg"></div>
         
-        <div class="back-link" id="backLink">← Back to Game Settings</div>
+        <div class="back-link" id="backLink">Back to Game Settings</div>
     `;
     
     document.getElementById("app").innerHTML = html;
@@ -1417,7 +1858,7 @@ function render() {
         attachBeforeUnloadHandler();
     }
     
-    var datePicker = document.getElementById("datePicker");
+    var datePicker = document.getElementById("combinedDatePicker");
     if (datePicker) {
         datePicker.addEventListener("change", function() {
             state.userSelectedDate = this.value;
@@ -1425,138 +1866,110 @@ function render() {
         });
     }
     
-    var courseSelect = document.getElementById("courseSelect");
+    var courseSelect = document.getElementById("combinedCourseSelect");
     if (courseSelect) {
         courseSelect.addEventListener("change", function() {
             onCourseChange(this.value);
         });
     }
     
-    document.querySelectorAll(".hole-toggle-btn").forEach(function(btn) {
-        btn.addEventListener("click", function(e) {
-            if (e.target.tagName === 'SELECT') return;
-            var type = this.dataset.type;
-            if (type === "shotgun") {
-                var select = document.getElementById("shotgunHoleSelect");
-                var holeValue = select ? parseInt(select.value) : 1;
-                setStartingHole("shotgun", holeValue);
-                if (state.isEditMode) onStartingHoleChange();
-            } else if (type === "hole1") {
-                setStartingHole("hole1", 1);
-                if (state.isEditMode) onStartingHoleChange();
-            } else if (type === "hole10") {
-                setStartingHole("hole10", 10);
-                if (state.isEditMode) onStartingHoleChange();
-            }
-        });
-    });
-    
-    var shotgunSelect = document.getElementById("shotgunHoleSelect");
-    if (shotgunSelect) {
-        shotgunSelect.addEventListener("change", function() {
-            if (state.startingHoleType === "shotgun") {
-                state.startingHole = parseInt(this.value);
-            } else {
-                setStartingHole("shotgun", parseInt(this.value));
-            }
-            if (state.isEditMode) onStartingHoleChange();
+    var holeSelect = document.getElementById("combinedHoleSelect");
+    if (holeSelect) {
+        holeSelect.addEventListener("change", function() {
+            setStartingHole(this.value);
         });
     }
     
-    document.querySelectorAll(".format-option").forEach(function(opt) {
-        opt.addEventListener("click", function() {
-            var format = this.dataset.format;
-            onTeamGameFormatChange(format);
+    var formatSelect = document.getElementById("combinedFormatSelect");
+    if (formatSelect) {
+        formatSelect.addEventListener("change", function() {
+            state.teamGameFormat = this.value;
+            if (state.isEditMode) checkForChanges();
+            render();
         });
-    });
+    }
     
-    document.querySelectorAll("input[name='teamGameFormat']").forEach(function(radio) {
-        radio.addEventListener("change", function() {
-            if (this.checked) {
-                onTeamGameFormatChange(this.value);
-            }
-        });
-    });
-    
-    document.querySelectorAll(".player-name-input").forEach(function(el) {
+    document.querySelectorAll(".player-name-select").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
-            updatePlayerName(idx, this.value);
+            populatePlayerFields(idx);
+            if (state.isEditMode) checkForChanges();
         });
     });
     
     document.querySelectorAll(".player-hcp-input").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
-            updatePlayerHandicap(idx, this.value);
+            state.players[idx].handicap = parseInt(this.value) || 0;
+            if (state.isEditMode) checkForChanges();
+            render();
         });
     });
     
-    document.querySelectorAll(".team-select").forEach(function(el) {
+    document.querySelectorAll(".team-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
-            updatePlayerTeam(idx, this.value);
+            state.players[idx].team = this.value;
+            if (state.isEditMode) checkForChanges();
+            render();
         });
     });
     
-    document.querySelectorAll(".flight-select").forEach(function(el) {
+    document.querySelectorAll(".flight-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
-            updatePlayerFlight(idx, this.value);
+            var val = this.value;
+            state.players[idx].flight = val === '' ? null : parseInt(val);
+            if (state.isEditMode) checkForChanges();
         });
     });
     
     var commitBtn = document.getElementById("commitBtn");
     if (commitBtn) {
-        commitBtn.onclick = function() {
-            commitGame();
-        };
+        commitBtn.onclick = function() { commitGame(); };
     }
     
     var cancelBtn = document.getElementById("cancelBtn");
     if (cancelBtn) {
-        cancelBtn.onclick = function() {
-            goBack();
-        };
+        cancelBtn.onclick = function() { goBack(); };
     }
     
     var backLink = document.getElementById("backLink");
     if (backLink) {
-        backLink.onclick = function() {
-            goBack();
-        };
+        backLink.onclick = function() { goBack(); };
     }
 }
 
 window.changeCourse = onCourseChange;
 window.goBack = goBack;
 window.commitGame = commitGame;
+window.populatePlayerFields = populatePlayerFields;
+window.updatePlayerTeam = updatePlayerTeam;
+window.updatePlayerFlight = updatePlayerFlight;
+window.setStartingHole = setStartingHole;
 
 function escapeHtml(str) {
     if (!str) return "";
     return str.replace(/[&<>]/g, function(m) {
-        if (m === "&") return "&amp;";
-        if (m === "<") return "&lt;";
-        if (m === ">") return "&gt;";
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
         return m;
     });
 }
-
-// ============================================================
-// v1.38: Initialize - waiting screen stays visible until redirect
-// ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
     
-    // Archive old games (90+ days to trash, 180+ days permanently deleted)
     archiveOldGames();
     
-    loadEditMode(function() {
-        loadCourses(function() {
-            render();
+    loadPlayerList(function() {
+        loadEditMode(function() {
+            loadCourses(function() {
+                render();
+            });
         });
     });
 });
@@ -1566,13 +1979,16 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.37
+VERSION: 1.59
+KEY CHANGES from v1.58:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18).fill(null))
+     - f1IntraMatches: {} (was new Array(18).fill(null))
+     - f2IntraMatches: {} (was new Array(18).fill(null))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: All UI styling and layout from v1.58 unchanged
+   - PRESERVED: All functionality from v1.58 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
