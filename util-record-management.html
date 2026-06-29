@@ -1,12 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: Added log function fallback (util-logger.js not loaded)
-   - ADDED: logStep() fallback for compatibility with copy-record.js
-   - ADDED: window._log registration for external access
-   - PRESERVED: All UI structure, CSS, and functionality from v1.18
-DEPENDS ON: js/firebase-config.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Removed imaginary util-firebase.js and util-logger.js references
+   - FIXED: Removed initFirebase() call (function never existed)
+   - FIXED: Firebase now initialized inline (was already working in v1.17)
+   - PRESERVED: All UI structure, CSS, and functionality from v1.19
+DEPENDS ON: js/firebase-config.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -26,7 +26,6 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
     <!-- Utility JS Files -->
-    <script src="js/util-firebase.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
     <script src="js/util-copy-record.js"></script>
@@ -830,18 +829,18 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.19</div>
+<div class="version-tag">v1.20</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.19
+// VERSION: 1.20
 // ============================================================
 
-var APP_VERSION = "1.19";
+var APP_VERSION = "1.20";
 
 // ============================================================
-// LOGGING FALLBACK - In case util-logger.js is not loaded
+// LOGGING
 // ============================================================
 
 function log(message, type) {
@@ -857,7 +856,6 @@ function log(message, type) {
         console.log('[REC-MGMT] ℹ️', message);
     }
     
-    // Try to write to the log div if it exists
     var logDiv = document.getElementById('log');
     if (logDiv) {
         var entry = document.createElement('div');
@@ -873,8 +871,33 @@ function logStep(step, message, type) {
     log(message, type);
 }
 
-// Register log globally
 window._log = log;
+
+// ============================================================
+// FIREBASE INITIALIZATION - Inline (no imaginary files)
+// ============================================================
+
+try {
+    var PROD_CONFIG = {
+        apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+        authDomain: "sicc-ryder-cup.firebaseapp.com",
+        projectId: "sicc-ryder-cup"
+    };
+    var DEV_CONFIG = {
+        apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
+        authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
+        projectId: "sicc-ryder-cup-dev"
+    };
+    var existingProd = firebase.apps.find(function(app) { return app.name === "prod"; });
+    var existingDev = firebase.apps.find(function(app) { return app.name === "dev"; });
+    if (!existingProd) { firebase.initializeApp(PROD_CONFIG, "prod"); }
+    if (!existingDev) { firebase.initializeApp(DEV_CONFIG, "dev"); }
+    window.prodDb = firebase.firestore(firebase.apps.find(function(app) { return app.name === "prod"; }));
+    window.devDb = firebase.firestore(firebase.apps.find(function(app) { return app.name === "dev"; }));
+    console.log('[REC-MGMT] Firebase initialized');
+} catch(e) {
+    console.error('[REC-MGMT] Firebase init error:', e);
+}
 
 // ============================================================
 // TAB SWITCHING - UI ONLY
@@ -907,7 +930,6 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 // ============================================================
 
 // These functions are defined in their respective .js files:
-// - initFirebase(), prodDb, devDb are in util-firebase.js
 // - COPY tab functions are in util-copy-record.js
 // - COMPARE tab functions are in util-compare-record.js
 // - VALIDATE tab functions are in util-validate-record.js
@@ -1024,11 +1046,9 @@ function loadAndValidate() {
         return;
     }
     
-    // Parse data strings
     var f1DataString = data.f1?.d || data.f1DataString || '';
     var f2DataString = data.f2?.d || data.f2DataString || '';
     
-    // Build a clean record object for validation
     var cleanRecord = {
         id: record.id,
         f1DataString: f1DataString,
@@ -1046,11 +1066,9 @@ function loadAndValidate() {
         createdAt: data.createdAt || null
     };
     
-    // Validate
     var validation = UtilValidate.validateRecord(cleanRecord);
     validateCurrentValidation = validation;
     
-    // Render results
     renderValidateResults(cleanRecord, validation);
     
     if (validation.valid) {
@@ -1079,10 +1097,8 @@ function renderValidateResults(recordData, validation) {
         return;
     }
     
-    // 1. Game Info
     UtilValidateUI.renderGameInfo(recordData, 'validateGameInfo');
     
-    // 2. Photo Status
     var photoStatus = validation.photoStatus || { hasPhoto: false, path: null, url: null };
     var isCompleted = validation.isCompletedGame || false;
     
@@ -1131,7 +1147,6 @@ function renderValidateResults(recordData, validation) {
         photoContainer.innerHTML = html;
     }
     
-    // 3. Flight Tables
     var f1Scores = validation.f1Scores || [];
     var f2Scores = validation.f2Scores || [];
     var players = validation.players || [];
@@ -1139,7 +1154,6 @@ function renderValidateResults(recordData, validation) {
     UtilValidateUI.renderFlightTable(f1Scores, players, 1, 'validateFlight1');
     UtilValidateUI.renderFlightTable(f2Scores, players, 2, 'validateFlight2');
     
-    // 4. T-1, T-2, Strk
     var recalculated = validation.recalculated || {};
     
     var t1Calc = UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
@@ -1150,17 +1164,14 @@ function renderValidateResults(recordData, validation) {
     UtilValidateUI.renderTeamGameTable(t2Calc, 'validateT2', 'T-2');
     UtilValidateUI.renderStrkTable(strkCalc, 'validateStrk');
     
-    // 5. Match Game
     var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || []);
     var orderedPlayers = matchData.orderedPlayers || [];
     var matchResults = matchData.results || [];
     UtilValidateUI.renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
     
-    // 6. TR Table
     var matchPointsPerHole = matchData.matchPointsPerHole || [];
     UtilValidateUI.renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
     
-    // 7. Validation Summary
     var summaryContainer = document.getElementById('validateSummary');
     var summary = validation.summary || { totalFields: 0, mismatched: 0, matched: 0 };
     var status = validation.status || 'unknown';
@@ -1809,9 +1820,8 @@ function initDateToggle() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.19...');
+console.log('[REC-MGMT] Initializing v1.20...');
 
-initFirebase();
 initDateToggle();
 
 // Set default environments
@@ -1878,7 +1888,7 @@ setTimeout(function() {
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
 }, 500);
 
-log('Record Management v1.19 ready', 'success');
+log('Record Management v1.20 ready', 'success');
 log('=== TABS ===', 'info');
 log('📝 COPY    - Copy records between collections/environments', 'info');
 log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1905,12 +1915,12 @@ window.renderValidateResults = renderValidateResults;
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: Added log function fallback (util-logger.js not loaded)
-   - ADDED: logStep() fallback for compatibility with copy-record.js
-   - ADDED: window._log registration for external access
-   - PRESERVED: All UI structure, CSS, and functionality from v1.18
-DEPENDS ON: js/firebase-config.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Removed imaginary util-firebase.js and util-logger.js references
+   - FIXED: Removed initFirebase() call (function never existed)
+   - FIXED: Firebase now initialized inline (was already working in v1.17)
+   - PRESERVED: All UI structure, CSS, and functionality from v1.19
+DEPENDS ON: js/firebase-config.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
