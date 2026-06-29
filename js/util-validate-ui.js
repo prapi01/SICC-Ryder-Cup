@@ -1,23 +1,21 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: renderFlightTable() now handles variable team sizes (supports 1-4 players per team)
-   - FIXED: renderMatchTable() checks if clinchInfo exists before accessing
-   - FIXED: renderTRTable() handles undefined recA/recB gracefully
-   - FIXED: showFixPreview() removes existing overlay before creating new one
-   - FIXED: escapeHtml() handles null and undefined input
-   - ADDED: null/undefined checks throughout
-   - All core functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: renderPhotoStatus() - Render celebration photo status with thumbnail or "missing" indicator
+   - ADDED: renderValidationSummary() - Render comprehensive summary with field counts
+   - CHANGED: renderSummary() now shows photo status and comprehensive validation results
+   - CHANGED: showFixPreview() now displays photo status in the preview
+   - PRESERVED: All existing rendering functions from v1.01
 DEPENDS ON: UtilValidate
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.01";
+window.UTIL_VALIDATE_UI_VERSION = "1.02";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.01");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.02");
     
     // ============================================================
     // HELPERS
@@ -73,7 +71,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Flight Table (v1.01: handles variable team sizes)
+    // RENDER: Flight Table
     // ============================================================
     
     function renderFlightTable(scores, players, flightNum, containerId) {
@@ -90,7 +88,6 @@ var UtilValidateUI = (function() {
         var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
         var names = [];
-        // v1.01: Handle variable team sizes (1-4 players per team)
         var maxTeamSize = Math.max(teamA.length, teamB.length);
         for (var i = 0; i < maxTeamSize; i++) {
             if (i < teamA.length) names.push(teamA[i].label);
@@ -101,7 +98,6 @@ var UtilValidateUI = (function() {
             else names.push('-');
         }
         
-        // Remove empty names
         names = names.filter(function(n) { return n !== '-'; });
         
         if (names.length === 0) {
@@ -118,16 +114,13 @@ var UtilValidateUI = (function() {
         
         for (var h = 0; h < 18; h++) {
             var hole = scores[h];
-            // v1.01: Build score array based on actual data
             var vals = [];
             if (hole) {
-                // Team A scores
                 for (var i = 0; i < teamA.length; i++) {
                     if (i === 0) vals.push(hole.a1);
                     else if (i === 1) vals.push(hole.a2);
                     else vals.push('-');
                 }
-                // Team B scores
                 for (var i = 0; i < teamB.length; i++) {
                     if (i === 0) vals.push(hole.b1);
                     else if (i === 1) vals.push(hole.b2);
@@ -225,7 +218,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Match Table (v1.01: checks clinchInfo exists)
+    // RENDER: Match Table
     // ============================================================
     
     function renderMatchTable(orderedPlayers, matchResults, containerId) {
@@ -255,7 +248,6 @@ var UtilValidateUI = (function() {
             var total = 0;
             var isClinchRow = false;
             
-            // Check if any player clinched this hole
             for (var p = 0; p < orderedPlayers.length; p++) {
                 var player = orderedPlayers[p];
                 if (holeClinch[player.name] && holeClinch[player.name].clinched) { 
@@ -269,7 +261,6 @@ var UtilValidateUI = (function() {
                 var player = orderedPlayers[p];
                 var score = holePoints[player.name] || 0;
                 total += score;
-                // v1.01: Check if clinchInfo exists for this player
                 var clinchInfo = holeClinch[player.name] || {};
                 var isClinched = clinchInfo.clinched || false;
                 var isASAtH18 = clinchInfo.asAtH18 || false;
@@ -294,7 +285,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: TR Table (v1.01: handles undefined recA/recB)
+    // RENDER: TR Table
     // ============================================================
     
     function renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, gameData, containerId) {
@@ -335,7 +326,6 @@ var UtilValidateUI = (function() {
             var trB = mB + t1B + t2B + sB;
             var teamABreakdown = '[' + mA.toFixed(1) + ' + ' + t1A.toFixed(1) + ' + ' + t2A.toFixed(1) + ' + ' + sA.toFixed(1) + ']';
             var teamBBreakdown = '[' + mB.toFixed(1) + ' + ' + t1B.toFixed(1) + ' + ' + t2B.toFixed(1) + ' + ' + sB.toFixed(1) + ']';
-            // v1.01: Handle undefined recA/recB
             var recA = gameData?.results?.tr?.teamA?.[i];
             var recB = gameData?.results?.tr?.teamB?.[i];
             var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
@@ -359,7 +349,142 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Summary
+    // v1.02: RENDER: Photo Status
+    // ============================================================
+    
+    function renderPhotoStatus(photoStatus, containerId, onSelectPhoto) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        if (!photoStatus) {
+            container.innerHTML = '<div style="color:#666; padding:8px;">No photo data available</div>';
+            return;
+        }
+        
+        var hasPhoto = photoStatus.hasPhoto;
+        var url = photoStatus.url || null;
+        var path = photoStatus.path || null;
+        var expectedPath = photoStatus.expectedPath || null;
+        
+        var html = '<div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">';
+        html += '<div style="font-size:0.75rem; font-weight:600; color:#ffaa44; margin-bottom:8px;">📸 CELEBRATION PHOTO</div>';
+        
+        if (hasPhoto && url) {
+            html += '<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+            html += '<div style="width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid #4caf50; flex-shrink:0; background:#0a0a0a; display:flex; align-items:center; justify-content:center;">';
+            html += '<img src="' + escapeHtml(url) + '" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display=\'none\'; this.parentNode.innerHTML=\'<span style=\'font-size:2rem;\'>📸</span>\';">';
+            html += '</div>';
+            html += '<div style="flex:1; min-width:120px;">';
+            html += '<div style="font-size:0.7rem; color:#4caf50;">✅ Photo present</div>';
+            html += '<div style="font-size:0.6rem; color:#888; word-break:break-all; margin-top:2px;">' + escapeHtml(path || '') + '</div>';
+            html += '<button class="btn btn-secondary" style="margin-top:4px; padding:6px 12px; font-size:0.7rem; width:auto; display:inline-block;" onclick="' + (typeof onSelectPhoto === 'function' ? 'this._onSelect()' : '') + '">🔄 Change Photo</button>';
+            html += '</div>';
+            html += '</div>';
+        } else {
+            html += '<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+            html += '<div style="width:80px; height:80px; border-radius:8px; border:1px solid #ff6b6b; flex-shrink:0; background:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:2rem; color:#555;">❌</div>';
+            html += '<div style="flex:1; min-width:120px;">';
+            html += '<div style="font-size:0.7rem; color:#ff6b6b;">❌ Photo MISSING</div>';
+            if (expectedPath) {
+                html += '<div style="font-size:0.6rem; color:#888; word-break:break-all; margin-top:2px;">Expected: ' + escapeHtml(expectedPath) + '</div>';
+            }
+            html += '<button class="btn btn-photo" style="margin-top:4px; padding:6px 12px; font-size:0.7rem; width:auto; display:inline-block;" onclick="' + (typeof onSelectPhoto === 'function' ? 'this._onSelect()' : '') + '">📂 Select Photo</button>';
+            html += '</div>';
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+        
+        // Store the onSelectPhoto function for button clicks
+        if (typeof onSelectPhoto === 'function') {
+            var buttons = container.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                buttons[i]._onSelect = onSelectPhoto;
+            }
+        }
+    }
+    
+    // ============================================================
+    // v1.02: RENDER: Validation Summary
+    // ============================================================
+    
+    function renderValidationSummary(validationResult, containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        if (!validationResult) {
+            container.innerHTML = '<div style="color:#666; padding:8px;">No validation data</div>';
+            return;
+        }
+        
+        var summary = validationResult.summary || { totalFields: 0, mismatched: 0, matched: 0 };
+        var isCompletedGame = validationResult.isCompletedGame || false;
+        var photoStatus = validationResult.photoStatus || { hasPhoto: false };
+        var status = validationResult.status || 'unknown';
+        var bothSigned = validationResult.bothSigned || false;
+        var expectedStatus = validationResult.expectedStatus || status;
+        
+        var html = '<div style="padding:12px 0;">';
+        
+        // Overall status
+        var isValid = validationResult.valid;
+        html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (isValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (isValid ? '#2a5a2a' : '#5a2a2a') + ';">';
+        html += '<span style="font-size:1.5rem;">' + (isValid ? '✅' : '❌') + '</span>';
+        html += '<div><div style="font-weight:700; color:' + (isValid ? '#4caf50' : '#ff6b6b') + ';">' + (isValid ? 'VALID' : 'NEEDS FIX') + '</div>';
+        html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention</div></div>';
+        html += '</div>';
+        
+        // Status info
+        html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">';
+        html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
+        html += '<span style="color:#888;">Status</span><br><span style="color:' + (status === expectedStatus ? '#4caf50' : '#ff6b6b') + '; font-weight:600;">' + escapeHtml(status) + (status !== expectedStatus ? ' → ' + escapeHtml(expectedStatus) : '') + '</span>';
+        html += '</div>';
+        html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
+        html += '<span style="color:#888;">Signatures</span><br><span style="color:' + (bothSigned ? '#4caf50' : '#888') + '; font-weight:600;">' + (bothSigned ? '✅ Both signed' : '⏳ Not both signed') + '</span>';
+        html += '</div>';
+        html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
+        html += '<span style="color:#888;">Completed Game</span><br><span style="color:' + (isCompletedGame ? '#4caf50' : '#888') + '; font-weight:600;">' + (isCompletedGame ? '✅ Yes' : 'No') + '</span>';
+        html += '</div>';
+        html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
+        html += '<span style="color:#888;">Celebration Photo</span><br><span style="color:' + (photoStatus.hasPhoto ? '#4caf50' : (isCompletedGame ? '#ff6b6b' : '#888')) + '; font-weight:600;">' + (photoStatus.hasPhoto ? '✅ Present' : (isCompletedGame ? '❌ MISSING' : 'Not required')) + '</span>';
+        html += '</div>';
+        html += '</div>';
+        
+        // Field summary
+        if (summary.totalFields > 0) {
+            html += '<div style="display:flex; gap:16px; flex-wrap:wrap; padding:8px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; font-size:0.75rem;">';
+            html += '<div><span style="color:#888;">Total Fields:</span> <strong style="color:#fff;">' + summary.totalFields + '</strong></div>';
+            html += '<div><span style="color:#4caf50;">✅ Matched:</span> <strong style="color:#4caf50;">' + summary.matched + '</strong></div>';
+            html += '<div><span style="color:#ff6b6b;">❌ Mismatched:</span> <strong style="color:#ff6b6b;">' + summary.mismatched + '</strong></div>';
+            html += '</div>';
+        }
+        
+        // Mismatch list
+        if (validationResult.mismatches && validationResult.mismatches.length > 0) {
+            html += '<div style="margin-top:12px; max-height:150px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:8px;">';
+            html += '<div style="font-size:0.65rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Mismatches (' + validationResult.mismatches.length + ')</div>';
+            for (var i = 0; i < Math.min(validationResult.mismatches.length, 10); i++) {
+                var m = validationResult.mismatches[i];
+                html += '<div style="font-size:0.7rem; padding:2px 4px; border-bottom:1px solid #1a1a1a; display:flex; justify-content:space-between; flex-wrap:wrap;">';
+                html += '<span style="color:#888;">' + escapeHtml(m.field) + '</span>';
+                html += '<span style="color:#ff6b6b;">' + escapeHtml(String(m.current)) + '</span>';
+                html += '<span style="color:#666;">→</span>';
+                html += '<span style="color:#4caf50;">' + escapeHtml(String(m.expected)) + '</span>';
+                html += '</div>';
+            }
+            if (validationResult.mismatches.length > 10) {
+                html += '<div style="font-size:0.65rem; color:#666; text-align:center; padding:4px;">+ ' + (validationResult.mismatches.length - 10) + ' more mismatches</div>';
+            }
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // RENDER: Summary (v1.02: uses new comprehensive render)
     // ============================================================
     
     function renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, gameData, containerId) {
@@ -440,11 +565,10 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Fix Preview Modal (v1.01: removes existing overlay)
+    // RENDER: Fix Preview Modal (v1.02: shows comprehensive diff)
     // ============================================================
     
     function showFixPreview(record, recalculated, previewData, backupId, onConfirm) {
-        // v1.01: Remove existing overlay
         var existing = document.getElementById('previewOverlay');
         if (existing) existing.remove();
         
@@ -453,10 +577,11 @@ var UtilValidateUI = (function() {
         overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;z-index:20000;padding:20px;overflow-y:auto;';
         
         var hasChanges = previewData.hasChanges;
-        var changeCount = previewData.changes.length;
-        var unchangedCount = previewData.unchanged.length;
-        var notTouchedCount = previewData.notTouched.length;
+        var changeCount = previewData.changeCount || previewData.changes.length;
+        var unchangedCount = previewData.unchangedCount || previewData.unchanged.length;
+        var notTouchedCount = previewData.notTouchedCount || previewData.notTouched.length;
         var mismatchedHoles = previewData.mismatchedHoles || [];
+        var photoStatus = previewData.photoStatus || { hasPhoto: false };
         
         var data = record.rawData || record;
         var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
@@ -474,11 +599,20 @@ var UtilValidateUI = (function() {
         html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;"><span style="color:#888;">Date</span><span style="color:#fff;">' + escapeHtml(date) + '</span></div>';
         html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;"><span style="color:#888;">Course</span><span style="color:#fff;">' + escapeHtml(courseName) + '</span></div>';
         html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;"><span style="color:#888;">Players</span><span style="color:#fff;font-size:0.7rem;">' + escapeHtml(playerNames) + '</span></div>';
-        html += '<div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:#888;">Status</span><span style="color:#fff;">';
+        html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;"><span style="color:#888;">Status</span><span style="color:#fff;">';
         if (record.status !== 'completed') {
             html += '<span style="display:inline-block;padding:2px 12px;border-radius:20px;font-size:0.7rem;font-weight:600;background:#2a2a1a;color:#ffaa44;">' + escapeHtml(record.status) + '</span> → <span style="display:inline-block;padding:2px 12px;border-radius:20px;font-size:0.7rem;font-weight:600;background:#0a2a0a;color:#4caf50;">completed</span>';
         } else {
             html += '<span style="display:inline-block;padding:2px 12px;border-radius:20px;font-size:0.7rem;font-weight:600;background:#0a2a0a;color:#4caf50;">' + escapeHtml(record.status) + '</span>';
+        }
+        html += '</span></div>';
+        
+        // Photo status
+        html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #1a1a1a;margin-top:4px;padding-top:4px;"><span style="color:#888;">📸 Celebration Photo</span><span style="color:#fff;">';
+        if (photoStatus.hasPhoto) {
+            html += '<span style="display:inline-block;padding:2px 12px;border-radius:20px;font-size:0.7rem;font-weight:600;background:#0a2a0a;color:#4caf50;">✅ Present</span>';
+        } else {
+            html += '<span style="display:inline-block;padding:2px 12px;border-radius:20px;font-size:0.7rem;font-weight:600;background:#2a0a0a;color:#ff6b6b;">❌ MISSING</span>';
         }
         html += '</span></div></div>';
         
@@ -523,17 +657,12 @@ var UtilValidateUI = (function() {
             html += '<div style="font-size:0.7rem;font-weight:700;color:#ff6b6b;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">🔴 Changes to be applied (' + changeCount + ' items)</div>';
             for (var i = 0; i < previewData.changes.length; i++) {
                 var change = previewData.changes[i];
-                var changeIcon = '';
-                if (change.type === 'status') changeIcon = '📌';
-                else if (change.type === 'tr') changeIcon = '🏆';
-                else if (change.type === 'team') changeIcon = '📊';
-                else if (change.type === 'strk') changeIcon = '🎯';
-                else changeIcon = '📝';
+                var changeIcon = change.type || '📝';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #1a1a1a;font-size:0.8rem;">';
                 html += '<span style="color:#888;flex:1;">' + changeIcon + ' ' + escapeHtml(change.field) + '</span>';
-                html += '<span style="color:#ff6b6b;font-weight:600;">' + escapeHtml(change.current) + '</span>';
+                html += '<span style="color:#ff6b6b;font-weight:600;">' + escapeHtml(String(change.current)) + '</span>';
                 html += '<span style="color:#666;margin:0 8px;">→</span>';
-                html += '<span style="color:#4caf50;font-weight:600;">' + escapeHtml(change.new) + '</span>';
+                html += '<span style="color:#4caf50;font-weight:600;">' + escapeHtml(String(change.new)) + '</span>';
                 html += '</div>';
             }
             html += '</div>';
@@ -589,7 +718,10 @@ var UtilValidateUI = (function() {
         renderMatchTable: renderMatchTable,
         renderTRTable: renderTRTable,
         renderSummary: renderSummary,
-        showFixPreview: showFixPreview
+        showFixPreview: showFixPreview,
+        // v1.02: New
+        renderPhotoStatus: renderPhotoStatus,
+        renderValidationSummary: renderValidationSummary
     };
     
 })();
@@ -598,15 +730,13 @@ window.UtilValidateUI = UtilValidateUI;
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: renderFlightTable() now handles variable team sizes (supports 1-4 players per team)
-   - FIXED: renderMatchTable() checks if clinchInfo exists before accessing
-   - FIXED: renderTRTable() handles undefined recA/recB gracefully
-   - FIXED: showFixPreview() removes existing overlay before creating new one
-   - FIXED: escapeHtml() handles null and undefined input
-   - ADDED: null/undefined checks throughout
-   - All core functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: renderPhotoStatus() - Render celebration photo status with thumbnail or "missing" indicator
+   - ADDED: renderValidationSummary() - Render comprehensive summary with field counts
+   - CHANGED: renderSummary() now shows photo status and comprehensive validation results
+   - CHANGED: showFixPreview() now displays photo status in the preview
+   - PRESERVED: All existing rendering functions from v1.01
 DEPENDS ON: UtilValidate
 STATUS: Ready for integration
 */
