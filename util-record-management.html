@@ -1,13 +1,19 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: Photo delete section in DELETE tab (list photos, select, batch delete)
-   - ADDED: Photo list refresh, select all, deselect all functionality
-   - ADDED: Photo delete progress tracking
-   - FIXED: Photo tab information button now shows showPhotoInfoGuide()
-   - PRESERVED: All existing functionality from v1.14
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - REMOVED: All inline JavaScript handlers (moved to .js files)
+   - REMOVED: initPhotoTab stub (now in util-photo.js)
+   - REMOVED: COPY tab handlers (now in util-copy-record.js)
+   - REMOVED: COMPARE tab handlers (now in util-compare-record.js)
+   - REMOVED: VALIDATE tab handlers (now in util-validate-record.js)
+   - REMOVED: DELETE tab handlers (now in util-delete-record.js)
+   - REMOVED: DELETE photo handlers (now in util-photo.js)
+   - REMOVED: Firebase init (now in util-firebase.js - to be created)
+   - REMOVED: Logging functions (now in util-logger.js - to be created)
+   - PRESERVED: All UI structure and CSS
+   - PRESERVED: Tab switching logic (UI-only)
+DEPENDS ON: js/firebase-config.js, js/util-logger.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -24,6 +30,8 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
     <!-- Utility JS Files -->
+    <script src="js/util-logger.js"></script>
+    <script src="js/util-firebase.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
     <script src="js/util-copy-record.js"></script>
@@ -32,111 +40,24 @@ STATUS: Ready for integration
     <script src="js/util-photo.js"></script>
     
     <style>
+        /* ===== ALL CSS STYLES ===== */
+        /* (Keep all existing CSS from v1.15) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            background: #000000;
-            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif;
-            color: #ffffff;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-            min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 900px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 20px 16px;
-        }
-        
-        .version-tag {
-            position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            right: max(8px, env(safe-area-inset-right));
-            font-size: 0.65rem;
-            color: #4caf50;
-            background: rgba(0,0,0,0.6);
-            padding: 2px 10px;
-            border-radius: 16px;
-            font-family: monospace;
-            z-index: 1000;
-        }
-        
-        .device-tag {
-            position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            left: max(8px, env(safe-area-inset-left));
-            font-size: 0.55rem;
-            color: #4caf50;
-            background: rgba(0,0,0,0.4);
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-family: monospace;
-            z-index: 1000;
-            opacity: 0.6;
-        }
-        
-        h1 {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: #4caf50;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        .card {
-            background: #111111;
-            border: 1px solid #333333;
-            border-radius: 20px;
-            padding: 16px;
-            margin-bottom: 16px;
-            overflow: hidden;
-        }
-        
-        .card-title {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #4caf50;
-            margin-bottom: 12px;
-            border-left: 2px solid #4caf50;
-            padding-left: 10px;
-        }
-        
+        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); min-height: 100vh; }
+        .container { max-width: 900px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        .version-tag { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); font-size: 0.65rem; color: #4caf50; background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 16px; font-family: monospace; z-index: 1000; }
+        .device-tag { position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); font-size: 0.55rem; color: #4caf50; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 12px; font-family: monospace; z-index: 1000; opacity: 0.6; }
+        h1 { font-size: 1.4rem; font-weight: 700; color: #4caf50; text-align: center; margin-bottom: 20px; }
+        .card { background: #111111; border: 1px solid #333333; border-radius: 20px; padding: 16px; margin-bottom: 16px; overflow: hidden; }
+        .card-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; margin-bottom: 12px; border-left: 2px solid #4caf50; padding-left: 10px; }
         .card-title.danger { border-left-color: #ff6b6b; color: #ff6b6b; }
         .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
         
-        .tab-nav {
-            display: flex;
-            gap: 0;
-            margin-bottom: 16px;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid #2a2a2a;
-            background: #0a0a0a;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        
+        /* Tab Navigation */
+        .tab-nav { display: flex; gap: 0; margin-bottom: 16px; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a2a; background: #0a0a0a; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .tab-nav::-webkit-scrollbar { height: 2px; }
         .tab-nav::-webkit-scrollbar-thumb { background: #4caf50; border-radius: 2px; }
-        
-        .tab-btn {
-            flex: 0 0 auto;
-            padding: 14px 16px;
-            font-size: 0.8rem;
-            font-weight: 700;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            background: transparent;
-            color: #666;
-            transition: all 0.3s ease;
-            border-right: 1px solid #1a1a1a;
-            white-space: nowrap;
-            min-width: 70px;
-        }
-        
+        .tab-btn { flex: 0 0 auto; padding: 14px 16px; font-size: 0.8rem; font-weight: 700; text-align: center; cursor: pointer; border: none; background: transparent; color: #666; transition: all 0.3s ease; border-right: 1px solid #1a1a1a; white-space: nowrap; min-width: 70px; }
         .tab-btn:last-child { border-right: none; }
         .tab-btn:hover { color: #aaa; background: #111; }
         .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
@@ -146,355 +67,27 @@ STATUS: Ready for integration
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
-        /* INFO BUTTON & OVERLAY STYLES */
-        .tab-header-with-info {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
+        /* Tab Header with Info Button */
+        .tab-header-with-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+        .tab-header-with-info .tab-title { font-size: 1rem; font-weight: 700; color: #4caf50; }
+        .tab-header-with-info .tab-title.danger { color: #ff6b6b; }
+        .tab-header-with-info .tab-title.photo { color: #ffaa44; }
+        .btn-info-guide { padding: 6px 16px; border-radius: 30px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4a8af4; background: rgba(74, 138, 244, 0.1); color: #4a8af4; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; }
+        .btn-info-guide:hover { background: rgba(74, 138, 244, 0.2); border-color: #4a8af4; }
+        .btn-info-guide:active { transform: scale(0.95); }
         
-        .tab-header-with-info .tab-title {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #4caf50;
-        }
-        
-        .tab-header-with-info .tab-title.danger {
-            color: #ff6b6b;
-        }
-        
-        .tab-header-with-info .tab-title.photo {
-            color: #ffaa44;
-        }
-        
-        .btn-info-guide {
-            padding: 6px 16px;
-            border-radius: 30px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: 1px solid #4a8af4;
-            background: rgba(74, 138, 244, 0.1);
-            color: #4a8af4;
-            transition: all 0.2s ease;
-            white-space: nowrap;
-            font-family: inherit;
-        }
-        
-        .btn-info-guide:hover {
-            background: rgba(74, 138, 244, 0.2);
-            border-color: #4a8af4;
-        }
-        
-        .btn-info-guide:active {
-            transform: scale(0.95);
-        }
-        
-        /* Info Overlay */
-        .info-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 50000;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-            animation: infoFadeIn 0.3s ease-out;
-        }
-        
-        .info-card {
-            background: #1a1a1a;
-            border-radius: 28px;
-            padding: 32px;
-            max-width: 750px;
-            width: 95%;
-            max-height: 90vh;
-            overflow-y: auto;
-            border: 2px solid #4caf50;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
-            animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        
-        .info-card::-webkit-scrollbar {
-            width: 4px;
-        }
-        
-        .info-card::-webkit-scrollbar-track {
-            background: #0a0a0a;
-        }
-        
-        .info-card::-webkit-scrollbar-thumb {
-            background: #2a5a2a;
-            border-radius: 4px;
-        }
-        
-        .info-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #2a2a2a;
-            padding-bottom: 12px;
-        }
-        
-        .info-title {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #4caf50;
-        }
-        
-        .info-close-btn {
-            padding: 8px 28px;
-            border-radius: 30px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: 1px solid #4caf50;
-            background: rgba(76, 175, 80, 0.1);
-            color: #4caf50;
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-        
-        .info-close-btn:hover {
-            background: rgba(76, 175, 80, 0.2);
-        }
-        
-        .info-section {
-            margin-bottom: 16px;
-        }
-        
-        .info-section-title {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #4caf50;
-            margin-bottom: 4px;
-        }
-        
-        .info-section-title.danger {
-            color: #ff6b6b;
-        }
-        
-        .info-text {
-            font-size: 0.85rem;
-            color: #ccc;
-            line-height: 1.6;
-        }
-        
-        .info-text strong {
-            color: #4caf50;
-        }
-        
-        .info-text .highlight {
-            color: #ffaa44;
-        }
-        
-        .info-text .danger-text {
-            color: #ff6b6b;
-        }
-        
-        .info-steps {
-            padding-left: 20px;
-            margin: 4px 0 8px 0;
-        }
-        
-        .info-steps li {
-            font-size: 0.85rem;
-            color: #ccc;
-            line-height: 1.6;
-            margin-bottom: 2px;
-        }
-        
-        .info-steps li code {
-            background: #0a0a0a;
-            padding: 1px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            color: #4caf50;
-            font-family: monospace;
-        }
-        
-        .info-warnings {
-            padding-left: 20px;
-            margin: 4px 0 8px 0;
-        }
-        
-        .info-warnings li {
-            font-size: 0.85rem;
-            color: #ff6b6b;
-            line-height: 1.6;
-            margin-bottom: 2px;
-        }
-        
-        .info-divider {
-            border: none;
-            border-top: 1px solid #2a2a2a;
-            margin: 16px 0;
-        }
-        
-        .info-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-            margin: 8px 0;
-        }
-        
-        .info-table th {
-            text-align: left;
-            color: #4caf50;
-            padding: 6px 8px;
-            border-bottom: 1px solid #2a2a2a;
-            font-weight: 600;
-        }
-        
-        .info-table td {
-            color: #ccc;
-            padding: 6px 8px;
-            border-bottom: 1px solid #1a1a1a;
-        }
-        
-        .info-table .field-name {
-            color: #ffaa44;
-            font-family: monospace;
-        }
-        
-        .info-table .field-desc {
-            color: #aaa;
-        }
-        
-        .info-badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 0.65rem;
-            font-weight: 600;
-        }
-        
-        .info-badge.green {
-            background: #0a2a0a;
-            color: #4caf50;
-            border: 1px solid #2a5a2a;
-        }
-        
-        .info-badge.red {
-            background: #2a0a0a;
-            color: #ff6b6b;
-            border: 1px solid #5a2a2a;
-        }
-        
-        .info-badge.blue {
-            background: #0a1a2a;
-            color: #4a8af4;
-            border: 1px solid #2a4a6a;
-        }
-        
-        .info-badge.gold {
-            background: #2a2a0a;
-            color: #ffaa44;
-            border: 1px solid #5a5a2a;
-        }
-        
-        @keyframes infoFadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        @keyframes infoSlideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px) scale(0.97);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-        
-        /* Environment selector buttons */
-        .env-selector {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-        
-        .env-btn-small {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.65rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: 2px solid #333;
-            background: #1a1a1a;
-            color: #555;
-            transition: all 0.2s ease;
-        }
-        
-        .env-btn-small.active-prod {
-            background: #1a3a1a;
-            border-color: #4caf50;
-            color: #4caf50;
-        }
-        
-        .env-btn-small.active-dev {
-            background: #1a3a1a;
-            border-color: #4caf50;
-            color: #4caf50;
-        }
-        
+        /* Environment Selector */
+        .env-selector { display: flex; gap: 6px; align-items: center; }
+        .env-btn-small { padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; cursor: pointer; border: 2px solid #333; background: #1a1a1a; color: #555; transition: all 0.2s ease; }
+        .env-btn-small.active-prod { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        .env-btn-small.active-dev { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
         .env-btn-small:active { transform: scale(0.95); }
-        
-        .env-indicator-small {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.55rem;
-            font-weight: 600;
-            margin-left: 6px;
-        }
-        
-        .env-indicator-small.prod {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        
-        .env-indicator-small.dev {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        
-        .env-indicator-small.none {
-            background: #1a1a1a;
-            color: #555;
-            border: 1px solid #333;
-        }
-        
-        .env-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 8px;
-            padding: 6px 10px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            border: 1px solid #2a2a2a;
-        }
-        
-        .env-row .env-side-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            min-width: 60px;
-        }
-        
+        .env-indicator-small { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.55rem; font-weight: 600; margin-left: 6px; }
+        .env-indicator-small.prod { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .env-indicator-small.dev { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .env-indicator-small.none { background: #1a1a1a; color: #555; border: 1px solid #333; }
+        .env-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; padding: 6px 10px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; }
+        .env-row .env-side-label { font-size: 0.7rem; font-weight: 600; min-width: 60px; }
         .env-row .env-side-label.source { color: #4caf50; }
         .env-row .env-side-label.dest { color: #ffaa44; }
         .env-row .env-side-label.left { color: #4caf50; }
@@ -502,186 +95,50 @@ STATUS: Ready for integration
         .env-row .env-side-label.delete { color: #ff6b6b; }
         .env-row .env-side-label.photo { color: #ffaa44; }
         
-        .collection-select {
-            width: 100%;
-            background: #0a0a0a;
-            border: 1px solid #4caf50;
-            border-radius: 30px;
-            padding: 12px 16px;
-            color: #fff;
-            font-size: 0.9rem;
-            margin-bottom: 8px;
-            cursor: pointer;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        
-        .collection-select option {
-            background: #1a1a1a;
-            color: #fff;
-            padding: 8px;
-        }
-        
-        .game-select {
-            width: 100%;
-            background: #0a0a0a;
-            border: 1px solid #4caf50;
-            border-radius: 30px;
-            padding: 12px 16px;
-            color: #fff;
-            font-size: 0.85rem;
-            margin-bottom: 8px;
-            cursor: pointer;
-            -webkit-appearance: none;
-            appearance: none;
-            word-break: break-all;
-        }
-        
-        .game-select option {
-            background: #1a1a1a;
-            color: #fff;
-            padding: 8px;
-            word-break: break-all;
-            white-space: normal;
-        }
-        
-        .game-info {
-            background: #0a0a0a;
-            border-radius: 12px;
-            padding: 12px;
-            margin: 8px 0;
-            font-size: 0.75rem;
-            font-family: monospace;
-            overflow: hidden;
-            word-break: break-all;
-        }
-        
-        .game-info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
-            flex-wrap: wrap;
-            gap: 4px;
-            padding: 2px 0;
-        }
-        
+        /* Form Elements */
+        .collection-select { width: 100%; background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.9rem; margin-bottom: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; }
+        .collection-select option { background: #1a1a1a; color: #fff; padding: 8px; }
+        .game-select { width: 100%; background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; word-break: break-all; }
+        .game-select option { background: #1a1a1a; color: #fff; padding: 8px; word-break: break-all; white-space: normal; }
+        .game-info { background: #0a0a0a; border-radius: 12px; padding: 12px; margin: 8px 0; font-size: 0.75rem; font-family: monospace; overflow: hidden; word-break: break-all; }
+        .game-info-row { display: flex; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 4px; padding: 2px 0; }
         .game-info-label { color: #888; flex-shrink: 0; }
         .game-info-value { color: #4caf50; font-weight: 600; word-break: break-all; text-align: right; flex: 1; min-width: 80px; }
         .game-info-value.gold { color: #ffaa44; }
-        
-        input, textarea {
-            background: #0a0a0a;
-            border: 1px solid #4caf50;
-            border-radius: 30px;
-            padding: 12px 16px;
-            color: #fff;
-            font-size: 0.9rem;
-            width: 100%;
-            margin-bottom: 8px;
-        }
-        
+        input, textarea { background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.9rem; width: 100%; margin-bottom: 8px; }
         input:focus, textarea:focus { outline: none; border-color: #ffaa44; }
-        
         .input-with-datalist { position: relative; width: 100%; }
         .input-with-datalist input { width: 100%; }
         .input-with-datalist datalist { display: none; }
+        .select-wrapper { position: relative; width: 100%; }
+        .select-wrapper select { width: 100%; padding-right: 32px; }
+        .select-wrapper::after { content: "▼"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: #4caf50; font-size: 0.6rem; pointer-events: none; }
+        select option { white-space: normal !important; word-break: break-all !important; padding: 4px 8px !important; }
         
-        .date-row {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        
-        .date-row .radio-group {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        
-        .radio-group label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            color: #aaa;
-        }
-        
-        .radio-group label.active { color: #4caf50; }
-        
-        .btn {
-            padding: 14px 20px;
-            border-radius: 40px;
-            font-weight: 700;
-            font-size: 1rem;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            width: 100%;
-            margin-top: 8px;
-            transition: transform 0.1s;
-        }
-        
+        /* Buttons */
+        .btn { padding: 14px 20px; border-radius: 40px; font-weight: 700; font-size: 1rem; text-align: center; cursor: pointer; border: none; width: 100%; margin-top: 8px; transition: transform 0.1s; }
         .btn:active { transform: scale(0.97); }
+        .btn-primary { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .btn-secondary { background: #1a1a1a; border: 1px solid #333; color: #ccc; }
+        .btn-danger { background: #3a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-compare { background: #1a2a3a; border: 1px solid #4a8af4; color: #4a8af4; }
+        .btn-load { background: #1a2a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .btn-photo { background: #2a2a0a; border: 1px solid #ffaa44; color: #ffaa44; }
+        .btn-photo:hover { background: #3a3a0a; }
+        .button-group { display: flex; gap: 12px; margin-top: 12px; }
+        .button-group .btn { flex: 1; margin-top: 0; }
         
-        .btn-primary {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-        }
+        /* Date Row */
+        .date-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .date-row .radio-group { display: flex; gap: 16px; flex-wrap: wrap; }
+        .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; color: #aaa; }
+        .radio-group label.active { color: #4caf50; }
+        .existing-hint { font-size: 0.65rem; color: #666; margin-top: -4px; margin-bottom: 8px; }
+        .existing-hint strong { color: #ffaa44; }
         
-        .btn-secondary {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #ccc;
-        }
-        
-        .btn-danger {
-            background: #3a1a1a;
-            border: 1px solid #ff6b6b;
-            color: #ff6b6b;
-        }
-        
-        .btn-danger:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        
-        .btn-compare {
-            background: #1a2a3a;
-            border: 1px solid #4a8af4;
-            color: #4a8af4;
-        }
-        
-        .btn-load {
-            background: #1a2a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-        }
-        
-        .btn-photo {
-            background: #2a2a0a;
-            border: 1px solid #ffaa44;
-            color: #ffaa44;
-        }
-        
-        .btn-photo:hover {
-            background: #3a3a0a;
-        }
-        
-        .log {
-            background: #0a0a0a;
-            border-radius: 12px;
-            padding: 12px;
-            margin-top: 16px;
-            font-size: 0.7rem;
-            font-family: monospace;
-            max-height: 300px;
-            overflow-y: auto;
-            word-break: break-all;
-        }
-        
+        /* Log */
+        .log { background: #0a0a0a; border-radius: 12px; padding: 12px; margin-top: 16px; font-size: 0.7rem; font-family: monospace; max-height: 300px; overflow-y: auto; word-break: break-all; }
         .log-entry { padding: 4px 0; border-bottom: 1px solid #1a1a1a; }
         .log-error { color: #ff6b6b; }
         .log-success { color: #4caf50; }
@@ -690,548 +147,114 @@ STATUS: Ready for integration
         .log-match { color: #4caf50; }
         .log-warning { color: #ffaa44; }
         
-        .button-group {
-            display: flex;
-            gap: 12px;
-            margin-top: 12px;
-        }
-        
-        .button-group .btn { flex: 1; margin-top: 0; }
-        
-        .existing-hint {
-            font-size: 0.65rem;
-            color: #666;
-            margin-top: -4px;
-            margin-bottom: 8px;
-        }
-        
-        .existing-hint strong { color: #ffaa44; }
-        
-        .select-wrapper {
-            position: relative;
-            width: 100%;
-        }
-        
-        .select-wrapper select {
-            width: 100%;
-            padding-right: 32px;
-        }
-        
-        .select-wrapper::after {
-            content: "▼";
-            position: absolute;
-            right: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #4caf50;
-            font-size: 0.6rem;
-            pointer-events: none;
-        }
-        
-        select option {
-            white-space: normal !important;
-            word-break: break-all !important;
-            padding: 4px 8px !important;
-        }
-        
-        .compare-layout {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-        
-        @media (max-width: 600px) {
-            .compare-layout { grid-template-columns: 1fr; }
-        }
-        
-        .compare-side {
-            background: #0a0a0a;
-            border-radius: 12px;
-            padding: 12px;
-            border: 1px solid #2a2a2a;
-            overflow: hidden;
-            min-width: 0;
-        }
-        
-        .compare-side-title {
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-            text-align: center;
-        }
-        
+        /* Compare Layout */
+        .compare-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .compare-layout { grid-template-columns: 1fr; } }
+        .compare-side { background: #0a0a0a; border-radius: 12px; padding: 12px; border: 1px solid #2a2a2a; overflow: hidden; min-width: 0; }
+        .compare-side-title { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; text-align: center; }
         .compare-side-title.left { color: #4caf50; }
         .compare-side-title.right { color: #4a8af4; }
-        
-        .diff-item {
-            padding: 6px 8px;
-            border-radius: 6px;
-            margin: 3px 0;
-            font-size: 0.7rem;
-            font-family: monospace;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 4px;
-            word-break: break-all;
-            overflow: hidden;
-        }
-        
-        .diff-item.diff {
-            background: #2a0a0a;
-            border: 1px solid #5a2a2a;
-            color: #ff6b6b;
-        }
-        
-        .diff-item.match {
-            background: #0a1a0a;
-            border: 1px solid #1a3a1a;
-            color: #4caf50;
-        }
-        
+        .compare-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        .compare-actions .btn { margin-top: 0; }
+        .compare-result-box { max-height: 400px; overflow-y: auto; margin-top: 8px; overflow-x: hidden; }
+        .diff-item { padding: 6px 8px; border-radius: 6px; margin: 3px 0; font-size: 0.7rem; font-family: monospace; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; word-break: break-all; overflow: hidden; }
+        .diff-item.diff { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
+        .diff-item.match { background: #0a1a0a; border: 1px solid #1a3a1a; color: #4caf50; }
         .diff-item .field-name { color: #888; font-weight: 400; word-break: break-all; }
         .diff-item .field-value-left { color: #4caf50; }
         .diff-item .field-value-right { color: #4a8af4; }
         .diff-item .field-value-diff { color: #ff6b6b; }
-        
-        .diff-summary {
-            display: flex;
-            gap: 16px;
-            justify-content: center;
-            padding: 8px;
-            margin: 8px 0;
-            background: #0a0a0a;
-            border-radius: 8px;
-            border: 1px solid #2a2a2a;
-            flex-wrap: wrap;
-        }
-        
-        .diff-summary-item {
-            text-align: center;
-            font-size: 0.7rem;
-        }
-        
-        .diff-summary-item .count {
-            font-weight: 700;
-            font-size: 1.2rem;
-            display: block;
-        }
-        
+        .diff-summary { display: flex; gap: 16px; justify-content: center; padding: 8px; margin: 8px 0; background: #0a0a0a; border-radius: 8px; border: 1px solid #2a2a2a; flex-wrap: wrap; }
+        .diff-summary-item { text-align: center; font-size: 0.7rem; }
+        .diff-summary-item .count { font-weight: 700; font-size: 1.2rem; display: block; }
         .diff-summary-item .count.match { color: #4caf50; }
         .diff-summary-item .count.diff { color: #ff6b6b; }
         .diff-summary-item .count.total { color: #ffaa44; }
         .diff-summary-item .label { color: #888; font-size: 0.6rem; }
         
-        .compare-result-box {
-            max-height: 400px;
-            overflow-y: auto;
-            margin-top: 8px;
-            overflow-x: hidden;
-        }
+        /* Validate Tab */
+        .validate-results { display: none; margin-top: 16px; }
+        .validate-results.active { display: block; }
+        .validate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 600px) { .validate-grid { grid-template-columns: 1fr; } }
+        .validate-section { background: #0a0a0a; border-radius: 12px; padding: 12px; border: 1px solid #2a2a2a; overflow: hidden; min-width: 0; }
+        .validate-section-title { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: #4caf50; }
+        .validate-status { padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 0.8rem; }
+        .validate-status.success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #4caf50; }
+        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
+        .validate-status.info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #4a8af4; }
+        .validate-status.warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffaa44; }
+        .validate-fix-btn-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .validate-fix-btn { padding: 12px 24px; border-radius: 40px; font-weight: 700; font-size: 0.85rem; cursor: pointer; border: 2px solid; transition: all 0.2s; flex: 1; min-width: 120px; }
+        .validate-fix-btn:active { transform: scale(0.97); }
+        .validate-fix-btn-fix { background: #1a3a1a; border-color: #ffaa44; color: #ffaa44; }
+        .validate-fix-btn-fix:hover { background: #2a4a2a; }
+        .validate-fix-btn-backup { background: #1a2a3a; border-color: #4a8af4; color: #4a8af4; }
+        .validate-fix-btn-backup:hover { background: #2a3a4a; }
+        .validate-fix-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .validate-progress { margin-top: 12px; padding: 12px; border-radius: 8px; background: #0a0a0a; font-size: 0.75rem; color: #888; display: none; max-height: 300px; overflow-y: auto; }
+        .validate-progress.active { display: block; }
+        .validate-progress .step { padding: 2px 0; }
+        .validate-progress .step.done { color: #4caf50; }
+        .validate-progress .step.error { color: #ff6b6b; }
+        .validate-progress .step.info { color: #4a8af4; }
+        .validate-progress .step.warning { color: #ffaa44; }
+        .validate-hole-list { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 4px; }
+        .validate-hole-item { padding: 4px 6px; border-radius: 4px; text-align: center; font-size: 0.65rem; font-weight: 600; }
+        .validate-hole-item.ok { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .validate-hole-item.fix { background: #2a0a0a; color: #ff6b6b; border: 1px solid #5a2a2a; }
+        .validate-hole-item.unknown { background: #1a1a1a; color: #555; border: 1px solid #333; }
+        .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.8rem; }
+        .game-info-grid .label { color: #666; }
+        .game-info-grid .value { color: #e0e0e0; }
         
-        .compare-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        
-        .compare-actions .btn { margin-top: 0; }
-        
-        .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 0.6rem;
-            font-weight: 600;
-        }
-        
+        /* Badges */
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.6rem; font-weight: 600; }
         .badge-sched { background: #1a2a3a; color: #4a8af4; border: 1px solid #2a4a5a; }
         .badge-history { background: #1a3a2a; color: #4caf50; border: 1px solid #2a5a3a; }
         .badge-backup { background: #3a2a1a; color: #ffaa44; border: 1px solid #5a4a2a; }
         
-        /* PHOTO Tab Styles */
-        .photo-viewer {
-            width: 100%;
-            height: 300px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            border: 1px solid #2a2a2a;
-            overflow: hidden;
-            position: relative;
-            margin-bottom: 12px;
-        }
+        /* Photo Tab */
+        .photo-viewer { width: 100%; height: 300px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; overflow: hidden; position: relative; margin-bottom: 12px; }
+        .photo-viewer .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #555; font-size: 1rem; }
+        .photo-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+        .photo-controls .btn { flex: 1; min-width: 80px; margin-top: 0; }
+        .photo-status { padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 8px; background: #0a0a0a; border: 1px solid #2a2a2a; min-height: 40px; }
+        .photo-uploaded-preview { margin-top: 12px; padding: 12px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; text-align: center; }
+        .photo-uploaded-preview img { max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; border: 1px solid #4caf50; }
+        .photo-progress { display: none; margin: 8px 0; }
+        .photo-progress .progress-bar { height: 4px; background: #2a5a2a; border-radius: 2px; transition: width 0.3s; width: 0%; }
+        .photo-firestore-ref { margin-top: 12px; padding: 12px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; display: none; }
+        .photo-firestore-ref .row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .photo-firestore-ref .row input, .photo-firestore-ref .row select { flex: 1; min-width: 100px; margin-bottom: 4px; }
+        .photo-info-panel { display: none; margin-top: 12px; }
         
-        .photo-viewer .placeholder {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #555;
-            font-size: 1rem;
-        }
-        
-        .photo-controls {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 12px;
-        }
-        
-        .photo-controls .btn {
-            flex: 1;
-            min-width: 80px;
-            margin-top: 0;
-        }
-        
-        .photo-status {
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 0.8rem;
-            margin-bottom: 8px;
-            background: #0a0a0a;
-            border: 1px solid #2a2a2a;
-            min-height: 40px;
-        }
-        
-        .photo-uploaded-preview {
-            margin-top: 12px;
-            padding: 12px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            border: 1px solid #2a2a2a;
-            text-align: center;
-        }
-        
-        .photo-uploaded-preview img {
-            max-width: 100%;
-            max-height: 200px;
-            object-fit: contain;
-            border-radius: 8px;
-            border: 1px solid #4caf50;
-        }
-        
-        .photo-url-display {
-            word-break: break-all;
-            font-size: 0.7rem;
-            color: #888;
-            padding: 8px;
-            background: #0a0a0a;
-            border-radius: 8px;
-            margin-top: 8px;
-        }
-        
-        .photo-url-display .url-value {
-            color: #ffaa44;
-            font-family: monospace;
-        }
-        
-        .photo-progress {
-            display: none;
-            margin: 8px 0;
-        }
-        
-        .photo-progress .progress-bar {
-            height: 4px;
-            background: #2a5a2a;
-            border-radius: 2px;
-            transition: width 0.3s;
-            width: 0%;
-        }
-        
-        .photo-firestore-ref {
-            margin-top: 12px;
-            padding: 12px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            border: 1px solid #2a2a2a;
-            display: none;
-        }
-        
-        .photo-firestore-ref .row {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        
-        .photo-firestore-ref .row input,
-        .photo-firestore-ref .row select {
-            flex: 1;
-            min-width: 100px;
-            margin-bottom: 4px;
-        }
-        
-        .photo-info-panel {
-            display: none;
-            margin-top: 12px;
-        }
-        
-        .photo-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.6rem;
-            font-weight: 600;
-            background: #2a2a0a;
-            color: #ffaa44;
-            border: 1px solid #5a5a2a;
-            margin-left: 6px;
-        }
-        
-        /* DELETE Tab - Photo List Styles */
-        #photoListContainer table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.75rem;
-        }
-        
-        #photoListContainer th {
-            padding: 8px 6px;
-            text-align: left;
-            background: #0a0a0a;
-            border-bottom: 2px solid #333;
-            font-weight: 600;
-            color: #888;
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background: #111;
-        }
-        
-        #photoListContainer td {
-            padding: 6px 6px;
-            border-bottom: 1px solid #1a1a1a;
-            vertical-align: middle;
-        }
-        
-        #photoListContainer tr:hover {
-            background: #1a1a1a;
-            cursor: pointer;
-        }
-        
-        #photoListContainer .checkbox-col {
-            width: 32px;
-            text-align: center;
-        }
-        
-        #photoListContainer input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: #ffaa44;
-            cursor: pointer;
-            margin: 0;
-            padding: 0;
-            background: #1a1a1a;
-            border: 2px solid #ffaa44;
-            border-radius: 4px;
-            appearance: none;
-            -webkit-appearance: none;
-            position: relative;
-            flex-shrink: 0;
-        }
-        
-        #photoListContainer input[type="checkbox"]:checked {
-            background: #ffaa44;
-        }
-        
-        #photoListContainer input[type="checkbox"]:checked::after {
-            content: "✓";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #000;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        
-        /* DELETE Tab - Existing Styles */
-        .delete-records-container {
-            max-height: 400px;
-            overflow-y: auto;
-            margin-top: 8px;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            background: #0a0a0a;
-        }
-        
-        .delete-records-container table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.75rem;
-        }
-        
-        .delete-records-container th {
-            padding: 8px 6px;
-            text-align: left;
-            background: #0a0a0a;
-            border-bottom: 2px solid #333;
-            font-weight: 600;
-            color: #888;
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background: #111;
-        }
-        
-        .delete-records-container td {
-            padding: 6px 6px;
-            border-bottom: 1px solid #1a1a1a;
-            vertical-align: middle;
-        }
-        
-        .delete-records-container tr:hover {
-            background: #1a1a1a;
-            cursor: pointer;
-        }
-        
-        .delete-records-container tr.selected {
-            background: #1a2a1a;
-        }
-        
-        .delete-records-container .checkbox-col {
-            width: 32px;
-            text-align: center;
-        }
-        
-        .delete-records-container input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: #4caf50;
-            cursor: pointer;
-            margin: 0;
-            padding: 0;
-            background: #1a1a1a;
-            border: 2px solid #4caf50;
-            border-radius: 4px;
-            appearance: none;
-            -webkit-appearance: none;
-            position: relative;
-            flex-shrink: 0;
-        }
-        
-        .delete-records-container input[type="checkbox"]:checked {
-            background: #4caf50;
-        }
-        
-        .delete-records-container input[type="checkbox"]:checked::after {
-            content: "✓";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #000;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        
-        .delete-records-container .status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.6rem;
-            font-weight: 600;
-        }
-        
-        .delete-records-container .status-badge.completed {
-            background: #0a2a0a;
-            color: #4caf50;
-            border: 1px solid #2a5a2a;
-        }
-        
-        .delete-records-container .status-badge.pending {
-            background: #2a2a0a;
-            color: #ffaa44;
-            border: 1px solid #5a5a2a;
-        }
-        
-        .delete-records-container .status-badge.unknown {
-            background: #1a1a1a;
-            color: #555;
-            border: 1px solid #333;
-        }
-        
-        .delete-count {
-            font-size: 0.75rem;
-            color: #888;
-            margin-left: 8px;
-        }
-        
-        .delete-toolbar {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 8px;
-            padding: 8px 0;
-        }
-        
-        .delete-toolbar .btn-small {
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: 1px solid #4caf50;
-            background: #1a3a1a;
-            color: #4caf50;
-            transition: all 0.2s;
-        }
-        
-        .delete-toolbar .btn-small:hover {
-            background: #2a4a2a;
-        }
-        
-        .delete-toolbar .btn-small:active {
-            transform: scale(0.95);
-        }
-        
-        .delete-toolbar .btn-small.danger {
-            border-color: #ff6b6b;
-            color: #ff6b6b;
-            background: #3a1a1a;
-        }
-        
-        .delete-toolbar .btn-small.danger:hover {
-            background: #4a2a2a;
-        }
-        
-        .delete-toolbar .btn-small:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        
-        .delete-toolbar .btn-small.photo-toolbar {
-            border-color: #ffaa44;
-            color: #ffaa44;
-            background: #2a2a0a;
-        }
-        
-        .delete-toolbar .btn-small.photo-toolbar:hover {
-            background: #3a3a0a;
-        }
-        
-        .delete-progress {
-            display: none;
-            margin-top: 12px;
-            padding: 12px;
-            border-radius: 8px;
-            background: #0a0a0a;
-            font-size: 0.75rem;
-            color: #888;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
+        /* Delete Tab - Records */
+        .delete-records-container { max-height: 400px; overflow-y: auto; margin-top: 8px; border: 1px solid #2a2a2a; border-radius: 12px; background: #0a0a0a; }
+        .delete-records-container table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        .delete-records-container th { padding: 8px 6px; text-align: left; background: #0a0a0a; border-bottom: 2px solid #333; font-weight: 600; color: #888; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 10; background: #111; }
+        .delete-records-container td { padding: 6px 6px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
+        .delete-records-container tr:hover { background: #1a1a1a; cursor: pointer; }
+        .delete-records-container tr.selected { background: #1a2a1a; }
+        .delete-records-container .checkbox-col { width: 32px; text-align: center; }
+        .delete-records-container input[type="checkbox"] { width: 16px; height: 16px; accent-color: #4caf50; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #4caf50; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
+        .delete-records-container input[type="checkbox"]:checked { background: #4caf50; }
+        .delete-records-container input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #000; font-size: 12px; font-weight: 700; }
+        .delete-records-container .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.6rem; font-weight: 600; }
+        .delete-records-container .status-badge.completed { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .delete-records-container .status-badge.pending { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
+        .delete-records-container .status-badge.unknown { background: #1a1a1a; color: #555; border: 1px solid #333; }
+        .delete-count { font-size: 0.75rem; color: #888; margin-left: 8px; }
+        .delete-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; padding: 8px 0; }
+        .delete-toolbar .btn-small { padding: 6px 16px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4caf50; background: #1a3a1a; color: #4caf50; transition: all 0.2s; }
+        .delete-toolbar .btn-small:hover { background: #2a4a2a; }
+        .delete-toolbar .btn-small:active { transform: scale(0.95); }
+        .delete-toolbar .btn-small.danger { border-color: #ff6b6b; color: #ff6b6b; background: #3a1a1a; }
+        .delete-toolbar .btn-small.danger:hover { background: #4a2a2a; }
+        .delete-toolbar .btn-small:disabled { opacity: 0.4; cursor: not-allowed; }
+        .delete-toolbar .btn-small.photo-toolbar { border-color: #ffaa44; color: #ffaa44; background: #2a2a0a; }
+        .delete-toolbar .btn-small.photo-toolbar:hover { background: #3a3a0a; }
+        .delete-progress { display: none; margin-top: 12px; padding: 12px; border-radius: 8px; background: #0a0a0a; font-size: 0.75rem; color: #888; max-height: 200px; overflow-y: auto; }
         .delete-progress.active { display: block; }
         .delete-progress .step { padding: 2px 0; }
         .delete-progress .step.done { color: #4caf50; }
@@ -1239,22 +262,61 @@ STATUS: Ready for integration
         .delete-progress .step.info { color: #4a8af4; }
         .delete-progress .step.warning { color: #ffaa44; }
         
-        /* Fix for scrollable tab nav on mobile */
+        /* Delete Tab - Photo List */
+        #photoListContainer table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        #photoListContainer th { padding: 8px 6px; text-align: left; background: #0a0a0a; border-bottom: 2px solid #333; font-weight: 600; color: #888; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 10; background: #111; }
+        #photoListContainer td { padding: 6px 6px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
+        #photoListContainer tr:hover { background: #1a1a1a; cursor: pointer; }
+        #photoListContainer .checkbox-col { width: 32px; text-align: center; }
+        #photoListContainer input[type="checkbox"] { width: 16px; height: 16px; accent-color: #ffaa44; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #ffaa44; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
+        #photoListContainer input[type="checkbox"]:checked { background: #ffaa44; }
+        #photoListContainer input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #000; font-size: 12px; font-weight: 700; }
+        
+        /* Info Overlay */
+        .info-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 50000; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); animation: infoFadeIn 0.3s ease-out; }
+        .info-card { background: #1a1a1a; border-radius: 28px; padding: 32px; max-width: 750px; width: 95%; max-height: 90vh; overflow-y: auto; border: 2px solid #4caf50; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9); animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .info-card::-webkit-scrollbar { width: 4px; }
+        .info-card::-webkit-scrollbar-track { background: #0a0a0a; }
+        .info-card::-webkit-scrollbar-thumb { background: #2a5a2a; border-radius: 4px; }
+        .info-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px; }
+        .info-title { font-size: 1.2rem; font-weight: 700; color: #4caf50; }
+        .info-close-btn { padding: 8px 28px; border-radius: 30px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: 1px solid #4caf50; background: rgba(76, 175, 80, 0.1); color: #4caf50; transition: all 0.2s ease; font-family: inherit; }
+        .info-close-btn:hover { background: rgba(76, 175, 80, 0.2); }
+        .info-section { margin-bottom: 16px; }
+        .info-section-title { font-size: 0.85rem; font-weight: 700; color: #4caf50; margin-bottom: 4px; }
+        .info-section-title.danger { color: #ff6b6b; }
+        .info-text { font-size: 0.85rem; color: #ccc; line-height: 1.6; }
+        .info-text strong { color: #4caf50; }
+        .info-text .highlight { color: #ffaa44; }
+        .info-text .danger-text { color: #ff6b6b; }
+        .info-steps { padding-left: 20px; margin: 4px 0 8px 0; }
+        .info-steps li { font-size: 0.85rem; color: #ccc; line-height: 1.6; margin-bottom: 2px; }
+        .info-steps li code { background: #0a0a0a; padding: 1px 8px; border-radius: 4px; font-size: 0.75rem; color: #4caf50; font-family: monospace; }
+        .info-warnings { padding-left: 20px; margin: 4px 0 8px 0; }
+        .info-warnings li { font-size: 0.85rem; color: #ff6b6b; line-height: 1.6; margin-bottom: 2px; }
+        .info-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
+        .info-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 8px 0; }
+        .info-table th { text-align: left; color: #4caf50; padding: 6px 8px; border-bottom: 1px solid #2a2a2a; font-weight: 600; }
+        .info-table td { color: #ccc; padding: 6px 8px; border-bottom: 1px solid #1a1a1a; }
+        .info-table .field-name { color: #ffaa44; font-family: monospace; }
+        .info-table .field-desc { color: #aaa; }
+        .info-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.65rem; font-weight: 600; }
+        .info-badge.green { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .info-badge.red { background: #2a0a0a; color: #ff6b6b; border: 1px solid #5a2a2a; }
+        .info-badge.blue { background: #0a1a2a; color: #4a8af4; border: 1px solid #2a4a6a; }
+        .info-badge.gold { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
+        @keyframes infoFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes infoSlideUp { from { opacity: 0; transform: translateY(20px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        
+        .empty-state { text-align: center; padding: 20px; color: #666; }
+        
+        /* Mobile fixes */
         @media (max-width: 500px) {
-            .tab-btn {
-                padding: 10px 12px;
-                font-size: 0.7rem;
-                min-width: 55px;
-            }
+            .tab-btn { padding: 10px 12px; font-size: 0.7rem; min-width: 55px; }
             .tab-btn .tab-icon { margin-right: 4px; }
         }
-        
         @media (max-width: 380px) {
-            .tab-btn {
-                padding: 8px 8px;
-                font-size: 0.6rem;
-                min-width: 45px;
-            }
+            .tab-btn { padding: 8px 8px; font-size: 0.6rem; min-width: 45px; }
         }
     </style>
 </head>
@@ -1286,13 +348,11 @@ STATUS: Ready for integration
     <!-- TAB: COPY -->
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
-        
-        <!-- INFO BUTTON - COPY -->
         <div class="tab-header-with-info">
             <span class="tab-title">📝 COPY</span>
             <button class="btn-info-guide" onclick="showCopyInfoGuide()">ℹ️ Information</button>
         </div>
-        
+        <!-- All COPY tab HTML (unchanged) -->
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1312,7 +372,6 @@ STATUS: Ready for integration
                 <span id="copyDestIndicator" class="env-indicator-small none">Not connected</span>
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title">📂 STEP 1: COLLECTIONS</div>
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
@@ -1340,7 +399,6 @@ STATUS: Ready for integration
             <button id="loadSourceBtn" class="btn btn-secondary" style="margin-top:8px;">🔄 Load Source Records</button>
             <button id="loadDestBtn" class="btn btn-secondary" style="margin-top:8px;">📥 Load Destination Records</button>
         </div>
-        
         <div class="card">
             <div class="card-title">📄 STEP 2: SOURCE RECORD</div>
             <div class="select-wrapper">
@@ -1350,7 +408,6 @@ STATUS: Ready for integration
             </div>
             <div id="gameInfo" style="display:none;"></div>
         </div>
-        
         <div class="card">
             <div class="card-title">📅 STEP 3: DATE SETTING</div>
             <div class="date-row">
@@ -1362,7 +419,6 @@ STATUS: Ready for integration
             </div>
             <input type="date" id="customDate" style="display:none; margin-top:8px;">
         </div>
-        
         <div class="card">
             <div class="card-title">📝 STEP 4: DESTINATION DOCUMENT NAME</div>
             <div class="input-with-datalist">
@@ -1382,7 +438,6 @@ STATUS: Ready for integration
                 ⚠️ If document exists, you will be prompted to confirm replacement.
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title">🚀 STEP 5: EXECUTE</div>
             <div class="button-group">
@@ -1397,13 +452,10 @@ STATUS: Ready for integration
     <!-- TAB: COMPARE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabCompare">
-        
-        <!-- INFO BUTTON - COMPARE -->
         <div class="tab-header-with-info">
             <span class="tab-title">🔍 COMPARE</span>
             <button class="btn-info-guide" onclick="showCompareInfoGuide()">ℹ️ Information</button>
         </div>
-        
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1423,13 +475,11 @@ STATUS: Ready for integration
                 <span id="compareRightIndicator" class="env-indicator-small none">Not connected</span>
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title">🔍 COMPARE TWO RECORDS</div>
             <div style="font-size:0.7rem; color:#888; margin-bottom:12px;">
                 Select two records from any collections. The tool will perform a field-by-field comparison.
             </div>
-            
             <div class="compare-layout">
                 <div class="compare-side">
                     <div class="compare-side-title left">📤 LEFT RECORD</div>
@@ -1447,7 +497,6 @@ STATUS: Ready for integration
                     </div>
                     <div id="compareLeftInfo" style="display:none; margin-top:8px;"></div>
                 </div>
-                
                 <div class="compare-side">
                     <div class="compare-side-title right">📥 RIGHT RECORD</div>
                     <div class="select-wrapper">
@@ -1465,13 +514,11 @@ STATUS: Ready for integration
                     <div id="compareRightInfo" style="display:none; margin-top:8px;"></div>
                 </div>
             </div>
-            
             <div class="compare-actions">
                 <button id="compareLoadBtn" class="btn btn-load">🔄 Load Records</button>
                 <button id="compareBtn" class="btn btn-compare">🔍 COMPARE</button>
             </div>
         </div>
-        
         <div id="compareResults" style="display:none;">
             <div class="card">
                 <div class="card-title">📊 COMPARISON SUMMARY</div>
@@ -1488,13 +535,10 @@ STATUS: Ready for integration
     <!-- TAB: VALIDATE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabValidate">
-        
-        <!-- INFO BUTTON - VALIDATE -->
         <div class="tab-header-with-info">
             <span class="tab-title">🔬 VALIDATE</span>
             <button class="btn-info-guide" onclick="showValidateInfoGuide()">ℹ️ Information</button>
         </div>
-        
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1506,7 +550,6 @@ STATUS: Ready for integration
                 <span id="validateIndicator" class="env-indicator-small none">Not connected</span>
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title">📥 SELECT RECORD</div>
             <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
@@ -1529,21 +572,17 @@ STATUS: Ready for integration
                     </div>
                 </div>
             </div>
-            
             <div class="button-group">
                 <button id="validateLoadBtn" class="btn btn-load">🔄 Load & Validate</button>
                 <button id="validateRefreshBtn" class="btn btn-secondary">↻ Refresh</button>
             </div>
-            
             <div id="validateStatus" class="validate-status" style="display:none;"></div>
         </div>
-        
         <div id="validateResults" class="validate-results">
             <div class="card">
                 <div class="card-title">📋 Game Info</div>
                 <div id="validateGameInfo"></div>
             </div>
-            
             <div class="validate-grid">
                 <div class="validate-section">
                     <div class="validate-section-title">✈️ Flight 1</div>
@@ -1554,7 +593,6 @@ STATUS: Ready for integration
                     <div id="validateFlight2"></div>
                 </div>
             </div>
-            
             <div class="validate-grid">
                 <div class="validate-section">
                     <div class="validate-section-title">📊 T-1</div>
@@ -1569,22 +607,18 @@ STATUS: Ready for integration
                     <div id="validateStrk"></div>
                 </div>
             </div>
-            
             <div class="card">
                 <div class="card-title">🏅 Match Game</div>
                 <div id="validateMatch"></div>
             </div>
-            
             <div class="card">
                 <div class="card-title">🏆 TR — Per Hole</div>
                 <div id="validateTR"></div>
             </div>
-            
             <div class="card" style="border-color: #4caf50;">
                 <div class="card-title">✅ Summary</div>
                 <div id="validateSummary"></div>
             </div>
-            
             <div class="card" style="border-color: #ffaa44; display:none;" id="validateFixCard">
                 <div class="card-title">🔧 Fix Record</div>
                 <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
@@ -1606,13 +640,10 @@ STATUS: Ready for integration
     <!-- TAB: PHOTO -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabPhoto">
-        
-        <!-- INFO BUTTON - PHOTO -->
         <div class="tab-header-with-info">
             <span class="tab-title photo">🖼️ PHOTO</span>
             <button class="btn-info-guide" onclick="showPhotoInfoGuide()">ℹ️ Information</button>
         </div>
-        
         <div class="card">
             <div class="card-title photo">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1627,7 +658,6 @@ STATUS: Ready for integration
                 📸 Source image: <a href="https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg" target="_blank" style="color:#ffaa44;">C.jpg</a> (Cloudflare Pages)
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title photo">📥 STEP 1: LOAD IMAGE</div>
             <div class="photo-controls">
@@ -1642,7 +672,6 @@ STATUS: Ready for integration
                 <span class="log-info">Ready. Select PROD/DEV and load an image.</span>
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title photo">📤 STEP 2: UPLOAD TO STORAGE</div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
@@ -1659,7 +688,6 @@ STATUS: Ready for integration
             <button id="photoUploadBtn" class="btn btn-photo" style="display:none;">📤 Upload to Firebase Storage</button>
             <div class="photo-status" id="photoUploadStatus" style="margin-top:8px;"></div>
         </div>
-        
         <div class="card" id="uploadedPhotoCard" style="display:none;">
             <div class="card-title photo">✅ UPLOADED</div>
             <div class="photo-uploaded-preview" id="uploadedPhotoViewer"></div>
@@ -1668,10 +696,7 @@ STATUS: Ready for integration
                 <button id="copyUrlBtn" class="btn btn-secondary" style="display:none;">📋 Copy URL</button>
             </div>
         </div>
-        
-        <!-- Photo Info Panel -->
         <div id="photoInfoPanel" class="photo-info-panel"></div>
-        
         <div class="card photo-firestore-ref" id="firestoreRefSection" style="display:none;">
             <div class="card-title photo">💾 SAVE TO FIRESTORE</div>
             <div style="font-size:0.7rem; color:#888; margin-bottom:8px;">
@@ -1695,13 +720,10 @@ STATUS: Ready for integration
     <!-- TAB: DELETE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabDelete">
-        
-        <!-- INFO BUTTON - DELETE -->
         <div class="tab-header-with-info">
             <span class="tab-title danger">🗑️ DELETE</span>
             <button class="btn-info-guide" onclick="showDeleteInfoGuide()">ℹ️ Information</button>
         </div>
-        
         <div class="card">
             <div class="card-title danger">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1716,7 +738,6 @@ STATUS: Ready for integration
                 ⚠️ Deleting records is permanent and cannot be undone.
             </div>
         </div>
-        
         <div class="card">
             <div class="card-title danger">📂 SELECT COLLECTION</div>
             <div class="select-wrapper">
@@ -1728,22 +749,18 @@ STATUS: Ready for integration
             </div>
             <button id="deleteRefreshBtn" class="btn btn-secondary" style="margin-top:8px;">↻ Refresh Records</button>
         </div>
-        
         <div class="card">
             <div class="card-title danger">📋 DOCUMENTS <span class="delete-count" id="deleteCount">Loading...</span></div>
-            
             <div class="delete-toolbar">
                 <button class="btn-small" id="deleteSelectAllBtn" onclick="selectAllDeleteRecords()">☑ Select All</button>
                 <button class="btn-small" id="deleteDeselectAllBtn" onclick="deselectAllDeleteRecords()">☐ Deselect All</button>
                 <span style="flex:1;"></span>
                 <span id="deleteSelectedCount" style="font-size:0.7rem; color:#888;">0 selected</span>
             </div>
-            
             <div class="delete-records-container" id="deleteRecordsContainer">
                 <div style="text-align:center; padding:20px; color:#555;">Loading records...</div>
             </div>
         </div>
-        
         <div class="card" style="border-color:#ff6b6b;">
             <div class="card-title danger">🗑️ DELETE RECORDS</div>
             <div style="font-size:0.8rem; color:#ff6b6b; margin-bottom:12px;">
@@ -1756,32 +773,26 @@ STATUS: Ready for integration
             </button>
         </div>
         
-        <!-- ============================================================ -->
         <!-- DELETE TAB: PHOTOS SECTION -->
-        <!-- ============================================================ -->
         <div class="card" style="border-color:#ffaa44; margin-top:16px;">
             <div class="card-title photo">🖼️ PHOTOS IN STORAGE</div>
             <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
                 Manage photos stored in Firebase Storage. Select photos to delete.
                 <br><strong style="color:#ffaa44;">Note:</strong> This deletes the photo file. To also remove Firestore references, use the PHOTO tab's "Show Info" to see where the photo is referenced.
             </div>
-            
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                 <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebrations/)" value="celebrations/" style="flex:2; min-width:150px;">
                 <button id="photoListRefreshBtn" class="btn btn-secondary" style="flex:0 0 auto; width:auto; padding:12px 24px;">🔄 List Photos</button>
             </div>
-            
             <div class="delete-toolbar">
                 <button class="btn-small photo-toolbar" id="photoSelectAllBtn">☑ Select All</button>
                 <button class="btn-small photo-toolbar" id="photoDeselectAllBtn">☐ Deselect All</button>
                 <span style="flex:1;"></span>
                 <span id="photoSelectedCount" style="font-size:0.7rem; color:#888;">0 selected</span>
             </div>
-            
             <div class="delete-records-container" id="photoListContainer" style="max-height:300px;">
                 <div style="text-align:center; padding:20px; color:#555;">Click "List Photos" to load</div>
             </div>
-            
             <button id="photoDeleteSelectedBtn" class="btn btn-danger" disabled style="margin-top:8px;">
                 🗑️ DELETE SELECTED PHOTOS (0)
             </button>
@@ -1797,134 +808,18 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.15</div>
+<div class="version-tag">v1.16</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.15
+// VERSION: 1.16
 // ============================================================
 
-var APP_VERSION = "1.15";
-
-// Firebase Configurations
-var PROD_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup"
-};
-
-var DEV_CONFIG = {
-    apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
-    authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
-    projectId: "sicc-ryder-cup-dev"
-};
-
-// Firebase instances
-var prodDb = null;
-var devDb = null;
+var APP_VERSION = "1.16";
 
 // ============================================================
-// FIREBASE INITIALIZATION
-// ============================================================
-
-function initFirebase() {
-    try {
-        var existingProd = firebase.apps.find(function(app) { return app.name === "prod"; });
-        var existingDev = firebase.apps.find(function(app) { return app.name === "dev"; });
-        
-        if (existingProd) {
-            prodDb = firebase.firestore(existingProd);
-        } else {
-            var prodApp = firebase.initializeApp(PROD_CONFIG, "prod");
-            prodDb = firebase.firestore(prodApp);
-        }
-        
-        if (existingDev) {
-            devDb = firebase.firestore(existingDev);
-        } else {
-            var devApp = firebase.initializeApp(DEV_CONFIG, "dev");
-            devDb = firebase.firestore(devApp);
-        }
-        
-        console.log("[REC-MGMT] Firebase initialized");
-    } catch(e) {
-        console.error("[REC-MGMT] Firebase init error:", e);
-    }
-}
-
-// ============================================================
-// LOGGING
-// ============================================================
-
-function log(message, type) {
-    var logDiv = document.getElementById('log');
-    if (!logDiv) return;
-    
-    var entry = document.createElement('div');
-    entry.className = 'log-entry';
-    var timestamp = new Date().toLocaleTimeString();
-    
-    if (type === 'error') {
-        entry.innerHTML = `<span class="log-error">[${timestamp}] ❌ ${message}</span>`;
-    } else if (type === 'success') {
-        entry.innerHTML = `<span class="log-success">[${timestamp}] ✅ ${message}</span>`;
-    } else if (type === 'info') {
-        entry.innerHTML = `<span class="log-info">[${timestamp}] ℹ️ ${message}</span>`;
-    } else if (type === 'diff') {
-        entry.innerHTML = `<span class="log-diff">[${timestamp}] 🔴 ${message}</span>`;
-    } else if (type === 'match') {
-        entry.innerHTML = `<span class="log-match">[${timestamp}] 🟢 ${message}</span>`;
-    } else if (type === 'warning') {
-        entry.innerHTML = `<span class="log-warning">[${timestamp}] ⚠️ ${message}</span>`;
-    } else {
-        entry.innerHTML = `<span class="log-info">[${timestamp}] ${message}</span>`;
-    }
-    
-    logDiv.appendChild(entry);
-    logDiv.scrollTop = logDiv.scrollHeight;
-}
-
-// ============================================================
-// logStep - FIX: This was missing and breaking COPY tab
-// ============================================================
-
-function logStep(step, message, type) {
-    log(message, type);
-}
-
-// ============================================================
-// escapeHtml
-// ============================================================
-
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function formatDate(dateStr) {
-    if (!dateStr) return 'Unknown';
-    var parts = dateStr.split('-');
-    if (parts.length === 3) {
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0];
-    }
-    return dateStr;
-}
-
-function getDbForEnv(env) {
-    if (env === 'PROD') return prodDb;
-    if (env === 'DEV') return devDb;
-    return prodDb;
-}
-
-// ============================================================
-// TAB SWITCHING
+// TAB SWITCHING - UI ONLY
 // ============================================================
 
 document.querySelectorAll('.tab-btn').forEach(function(btn) {
@@ -1946,501 +841,84 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         if (tabId === 'tabPhoto') {
             this.classList.add('photo-active');
         }
-        
-        if (tabId === 'tabCompare') {
-            loadCompareRecords();
-        }
-        if (tabId === 'tabValidate') {
-            loadValidateRecords();
-        }
-        if (tabId === 'tabDelete') {
-            if (typeof deleteDb !== 'undefined' && deleteDb) {
-                loadDeleteRecords();
-            }
-        }
-        if (tabId === 'tabPhoto') {
-            // Photo tab initialized on load
-        }
     });
 });
 
 // ============================================================
-// COPY TAB: ENVIRONMENT HANDLERS (delegates to util-copy-record.js)
+// GLOBAL FUNCTIONS - EXTERNAL REFERENCES
 // ============================================================
 
-document.getElementById('copySourceProdBtn').onclick = function() {
-    setCopySourceEnvironment('PROD');
-};
-
-document.getElementById('copySourceDevBtn').onclick = function() {
-    setCopySourceEnvironment('DEV');
-};
-
-document.getElementById('copyDestProdBtn').onclick = function() {
-    setCopyDestEnvironment('PROD');
-};
-
-document.getElementById('copyDestDevBtn').onclick = function() {
-    setCopyDestEnvironment('DEV');
-};
-
-document.getElementById('loadSourceBtn').onclick = function() {
-    loadSourceRecords();
-};
-
-document.getElementById('loadDestBtn').onclick = function() {
-    loadDestinationRecords();
-};
-
-document.getElementById('copyBtn').onclick = function() {
-    copyRecord();
-};
-
-document.getElementById('checkBtn').onclick = function() {
-    checkDestination();
-};
-
-document.getElementById('deleteCopyDestBtn').onclick = function() {
-    deleteDestination();
-};
-
-document.getElementById('sourceCollection').onchange = function() {
-    loadSourceRecords();
-    document.getElementById('gameInfo').style.display = 'none';
-    currentGameData = null;
-    currentGameId = null;
-};
-
-document.getElementById('destCollection').onchange = function() {
-    loadDestinationRecords();
-    document.getElementById('destDocId').value = '';
-};
-
-document.getElementById('gameSelect').onchange = function() {
-    var idx = this.value;
-    if (idx !== '') {
-        loadGameData(idx);
-    } else {
-        document.getElementById('gameInfo').style.display = 'none';
-        currentGameData = null;
-        currentGameId = null;
-    }
-};
-
-function onDestExistingSelect() {
-    var select = document.getElementById('destExistingSelect');
-    var destDocId = document.getElementById('destDocId');
-    if (select.value) {
-        destDocId.value = select.value;
-    }
-}
+// These functions are defined in their respective .js files:
+// - log(), logStep(), escapeHtml() are in util-logger.js
+// - initFirebase(), prodDb, devDb are in util-firebase.js
+// - COPY tab functions are in util-copy-record.js
+// - COMPARE tab functions are in util-compare-record.js
+// - VALIDATE tab functions are in util-validate-record.js
+// - DELETE tab functions are in util-delete-record.js
+// - PHOTO tab functions are in util-photo.js
 
 // ============================================================
-// COMPARE TAB: ENVIRONMENT HANDLERS (delegates to util-compare-record.js)
+// INFO GUIDE FUNCTIONS - Callbacks from .js files
 // ============================================================
 
-document.getElementById('compareLeftProdBtn').onclick = function() {
-    setCompareLeftEnvironment('PROD');
-};
-
-document.getElementById('compareLeftDevBtn').onclick = function() {
-    setCompareLeftEnvironment('DEV');
-};
-
-document.getElementById('compareRightProdBtn').onclick = function() {
-    setCompareRightEnvironment('PROD');
-};
-
-document.getElementById('compareRightDevBtn').onclick = function() {
-    setCompareRightEnvironment('DEV');
-};
-
-document.getElementById('compareLoadBtn').onclick = function() {
-    loadCompareRecords();
-};
-
-document.getElementById('compareBtn').onclick = function() {
-    performCompare();
-};
-
-document.getElementById('compareLeftCollection').onchange = function() {
-    loadCompareRecordsLeft();
-};
-
-document.getElementById('compareRightCollection').onchange = function() {
-    loadCompareRecordsRight();
-};
-
-document.getElementById('compareLeftRecord').onchange = function() {
-    loadCompareRecordData('left');
-};
-
-document.getElementById('compareRightRecord').onchange = function() {
-    loadCompareRecordData('right');
-};
-
-// ============================================================
-// VALIDATE TAB: ENVIRONMENT HANDLERS (delegates to util-validate-record.js)
-// ============================================================
-
-document.getElementById('validateProdBtn').onclick = function() {
-    var indicator = document.getElementById('validateIndicator');
-    indicator.textContent = 'PROD';
-    indicator.className = 'env-indicator-small prod';
-    log('Validate environment set to: PROD', 'success');
-    loadValidateRecords();
-};
-
-document.getElementById('validateDevBtn').onclick = function() {
-    var indicator = document.getElementById('validateIndicator');
-    indicator.textContent = 'DEV';
-    indicator.className = 'env-indicator-small dev';
-    log('Validate environment set to: DEV', 'success');
-    loadValidateRecords();
-};
-
-document.getElementById('validateLoadBtn').onclick = function() {
-    loadAndValidate();
-};
-
-document.getElementById('validateRefreshBtn').onclick = function() {
-    loadValidateRecords();
-};
-
-document.getElementById('validateBackupBtn').onclick = function() {
-    validateBackupOnly();
-};
-
-document.getElementById('validateFixBtn').onclick = function() {
-    validateFixRecord();
-};
-
-document.getElementById('validateCollection').onchange = function() {
-    loadValidateRecords();
-};
-
-document.getElementById('validateRecordSelect').onchange = function() {
-    var index = parseInt(this.value);
-    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
-        validateCurrentIndex = index;
-        validateGameData = validateRecords[index].rawData;
-        validateGameData.id = validateRecords[index].id;
-        clearValidateResults();
-        validateProcessGameData(validateGameData);
-    } else {
-        validateCurrentIndex = -1;
-        validateGameData = null;
-        clearValidateResults();
-    }
-};
-
-// ============================================================
-// DELETE TAB: ENVIRONMENT HANDLERS (delegates to util-delete-record.js)
-// ============================================================
-
-document.getElementById('deleteProdBtn').onclick = function() {
-    setDeleteEnvironment('PROD');
-};
-
-document.getElementById('deleteDevBtn').onclick = function() {
-    setDeleteEnvironment('DEV');
-};
-
-document.getElementById('deleteRefreshBtn').onclick = function() {
-    if (typeof deleteDb !== 'undefined' && deleteDb) {
-        loadDeleteRecords();
-    } else {
-        log('Select Delete environment first', 'error');
-    }
-};
-
-document.getElementById('deleteSelectAllBtn').onclick = function() {
-    selectAllDeleteRecords();
-};
-
-document.getElementById('deleteDeselectAllBtn').onclick = function() {
-    deselectAllDeleteRecords();
-};
-
-document.getElementById('deleteExecuteBtn').onclick = function() {
-    deleteSelectedRecords();
-};
-
-document.getElementById('deleteCollection').onchange = function() {
-    if (typeof deleteDb !== 'undefined' && deleteDb) {
-        loadDeleteRecords();
-    }
-};
-
-// ============================================================
-// DELETE TAB: PHOTO DELETE HANDLERS
-// ============================================================
-
-// List photos in Storage
-document.getElementById('photoListRefreshBtn').onclick = function() {
-    var folder = document.getElementById('photoListFolder').value.trim() || 'celebrations/';
-    if (typeof listPhotosInStorage === 'function') {
-        listPhotosInStorage(folder, function(err, photos) {
-            if (err) {
-                log('❌ Failed to list photos: ' + err.message, 'error');
-                return;
-            }
-            displayPhotoList(photos);
-        });
-    } else {
-        log('⚠️ listPhotosInStorage not available. Make sure util-photo.js is loaded.', 'warning');
-    }
-};
-
-// Select/deselect all photos
-document.getElementById('photoSelectAllBtn').onclick = function() {
-    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]');
-    checkboxes.forEach(function(cb) { cb.checked = true; });
-    updatePhotoDeleteButton();
-};
-
-document.getElementById('photoDeselectAllBtn').onclick = function() {
-    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]');
-    checkboxes.forEach(function(cb) { cb.checked = false; });
-    updatePhotoDeleteButton();
-};
-
-// Delete selected photos
-document.getElementById('photoDeleteSelectedBtn').onclick = function() {
-    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]:checked');
-    var paths = [];
-    checkboxes.forEach(function(cb) {
-        paths.push(cb.dataset.path);
-    });
-    
-    if (paths.length === 0) {
-        log('No photos selected', 'warning');
-        return;
-    }
-    
-    if (confirm('Delete ' + paths.length + ' photos from Firebase Storage?\n\nThis action cannot be undone.')) {
-        var progress = document.getElementById('photoDeleteProgress');
-        progress.className = 'delete-progress active';
-        progress.innerHTML = '<div class="step info">🗑️ Deleting ' + paths.length + ' photos...</div>';
-        
-        if (typeof deletePhotosFromStorage === 'function') {
-            deletePhotosFromStorage(paths, function(err, results) {
-                if (err) {
-                    progress.innerHTML += '<div class="step error">❌ Failed: ' + err.message + '</div>';
-                    return;
-                }
-                progress.innerHTML += '<div class="step done">✅ ' + results.deleted + ' deleted</div>';
-                if (results.notFound > 0) {
-                    progress.innerHTML += '<div class="step warning">⚠️ ' + results.notFound + ' not found</div>';
-                }
-                if (results.failed > 0) {
-                    progress.innerHTML += '<div class="step error">❌ ' + results.failed + ' failed</div>';
-                }
-                // Refresh the list
-                var folder = document.getElementById('photoListFolder').value.trim() || 'celebrations/';
-                if (typeof listPhotosInStorage === 'function') {
-                    listPhotosInStorage(folder, function(err, photos) {
-                        if (!err) displayPhotoList(photos);
-                    });
-                }
-            });
-        } else {
-            progress.innerHTML += '<div class="step error">❌ deletePhotosFromStorage not available</div>';
-            log('⚠️ deletePhotosFromStorage not available', 'warning');
-        }
-    }
-};
-
-function displayPhotoList(photos) {
-    var container = document.getElementById('photoListContainer');
-    var deleteBtn = document.getElementById('photoDeleteSelectedBtn');
-    
-    if (!photos || photos.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">📸 No photos found</div>';
-        deleteBtn.disabled = true;
-        deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (0)';
-        document.getElementById('photoSelectedCount').textContent = '0 selected';
-        return;
-    }
-    
-    var html = '<table><thead><tr><th class="checkbox-col"><input type="checkbox" id="photoSelectAllCheckbox" onchange="toggleAllPhotos(this)"></th><th>Filename</th><th>Size</th><th>Modified</th></tr></thead><tbody>';
-    
-    photos.forEach(function(photo) {
-        var size = photo.size > 1024 * 1024 ? (photo.size / (1024 * 1024)).toFixed(1) + ' MB' : 
-                   photo.size > 1024 ? (photo.size / 1024).toFixed(0) + ' KB' : 
-                   photo.size + ' B';
-        var date = new Date(photo.updated).toLocaleString();
-        var displayName = photo.name.length > 30 ? photo.name.substring(0, 27) + '...' : photo.name;
-        html += '<tr>' +
-            '<td class="checkbox-col"><input type="checkbox" data-path="' + escapeHtml(photo.fullPath) + '" onchange="updatePhotoDeleteButton()"></td>' +
-            '<td title="' + escapeHtml(photo.name) + '">' + escapeHtml(displayName) + '</td>' +
-            '<td>' + size + '</td>' +
-            '<td>' + date + '</td>' +
-            '</tr>';
-    });
-    
-    html += '</tbody></table>';
-    container.innerHTML = html;
-    deleteBtn.disabled = true;
-    deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (0)';
-    document.getElementById('photoSelectedCount').textContent = '0 selected';
-}
-
-function updatePhotoDeleteButton() {
-    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]:checked');
-    var count = checkboxes.length;
-    var deleteBtn = document.getElementById('photoDeleteSelectedBtn');
-    
-    if (count > 0) {
-        deleteBtn.disabled = false;
-        deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (' + count + ')';
-    } else {
-        deleteBtn.disabled = true;
-        deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (0)';
-    }
-    document.getElementById('photoSelectedCount').textContent = count + ' selected';
-}
-
-function toggleAllPhotos(checkbox) {
-    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]');
-    checkboxes.forEach(function(cb) {
-        if (cb !== checkbox) cb.checked = checkbox.checked;
-    });
-    updatePhotoDeleteButton();
-}
-
-// Make functions globally accessible
-window.updatePhotoDeleteButton = updatePhotoDeleteButton;
-window.toggleAllPhotos = toggleAllPhotos;
-window.displayPhotoList = displayPhotoList;
-
-// ============================================================
-// PHOTO TAB: ENVIRONMENT HANDLERS
-// ============================================================
-
-// These are set up in initPhotoTab from util-photo.js
-
-// ============================================================
-// DATE TOGGLE
-// ============================================================
-
-function initDateToggle() {
-    var radios = document.querySelectorAll('input[name="dateOption"]');
-    var customDateInput = document.getElementById('customDate');
-    
-    radios.forEach(function(radio) {
-        radio.addEventListener('change', function() {
-            var labels = document.querySelectorAll('.radio-group label');
-            labels.forEach(function(l) { l.classList.remove('active'); });
-            this.closest('label').classList.add('active');
-            
-            if (this.value === 'custom') {
-                customDateInput.style.display = 'block';
-                if (!customDateInput.value) {
-                    var today = new Date().toISOString().split('T')[0];
-                    customDateInput.value = today;
-                }
-            } else {
-                customDateInput.style.display = 'none';
-            }
-        });
-    });
-}
-
-// ============================================================
-// PHOTO TAB INITIALIZATION (called from util-photo.js)
-// ============================================================
-
-function initPhotoTab() {
-    // This function is now defined in util-photo.js
-    // The main HTML will call it after loading the script
-    console.log('[REC-MGMT] Photo tab initialization delegated to util-photo.js');
-}
+// These functions are defined in their respective .js files:
+// - showCopyInfoGuide() in util-copy-record.js
+// - showCompareInfoGuide() in util-compare-record.js
+// - showValidateInfoGuide() in util-validate-record.js
+// - showDeleteInfoGuide() in util-delete-record.js
+// - showPhotoInfoGuide() in util-photo.js
 
 // ============================================================
 // INIT
 // ============================================================
 
-initFirebase();
-initDateToggle();
+console.log('[REC-MGMT] Initializing v1.16...');
 
-// Set default environments
-document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
-document.getElementById('copyDestProdBtn').className = 'env-btn-small active-prod';
-document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
-document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
-document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
-document.getElementById('photoProdBtn').className = 'env-btn-small active-prod';
-document.getElementById('deleteProdBtn').className = 'env-btn-small active-prod';
-
-document.getElementById('copySourceIndicator').textContent = 'PROD';
-document.getElementById('copySourceIndicator').className = 'env-indicator-small prod';
-document.getElementById('copyDestIndicator').textContent = 'PROD';
-document.getElementById('copyDestIndicator').className = 'env-indicator-small prod';
-document.getElementById('compareLeftIndicator').textContent = 'PROD';
-document.getElementById('compareLeftIndicator').className = 'env-indicator-small prod';
-document.getElementById('compareRightIndicator').textContent = 'PROD';
-document.getElementById('compareRightIndicator').className = 'env-indicator-small prod';
-document.getElementById('validateIndicator').textContent = 'PROD';
-document.getElementById('validateIndicator').className = 'env-indicator-small prod';
-document.getElementById('photoIndicator').textContent = 'PROD';
-document.getElementById('photoIndicator').className = 'env-indicator-small prod';
-document.getElementById('deleteIndicator').textContent = 'PROD';
-document.getElementById('deleteIndicator').className = 'env-indicator-small prod';
-
-// Set up COPY tab environment
-if (typeof setCopySourceEnvironment === 'function') {
-    setCopySourceEnvironment('PROD');
-}
-if (typeof setCopyDestEnvironment === 'function') {
-    setCopyDestEnvironment('PROD');
-}
-
-// Set up COMPARE tab environment
-if (typeof setCompareLeftEnvironment === 'function') {
-    setCompareLeftEnvironment('PROD');
-}
-if (typeof setCompareRightEnvironment === 'function') {
-    setCompareRightEnvironment('PROD');
-}
-
-// Set up DELETE tab environment
-if (typeof setDeleteEnvironment === 'function') {
-    setDeleteEnvironment('PROD');
-}
-
-// Set up PHOTO tab environment
-if (typeof setPhotoEnvironment === 'function') {
-    setPhotoEnvironment('PROD');
-}
-
-// Initialize Photo tab (from util-photo.js)
-if (typeof initPhotoTab === 'function') {
-    initPhotoTab();
+// Initialize Firebase (from util-firebase.js)
+if (typeof initFirebase === 'function') {
+    initFirebase();
 } else {
-    // Local fallback
-    console.log('[REC-MGMT] initPhotoTab not loaded, using local fallback');
-    setTimeout(function() {
-        if (typeof setPhotoEnvironment === 'function') {
-            setPhotoEnvironment('PROD');
-        }
-        if (typeof initPhotoTab === 'function') {
-            initPhotoTab();
-        }
-    }, 1000);
+    console.warn('[REC-MGMT] initFirebase not found - using inline fallback');
+    // Inline fallback
+    try {
+        var PROD_CONFIG = {
+            apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+            authDomain: "sicc-ryder-cup.firebaseapp.com",
+            projectId: "sicc-ryder-cup"
+        };
+        var DEV_CONFIG = {
+            apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
+            authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
+            projectId: "sicc-ryder-cup-dev"
+        };
+        var existingProd = firebase.apps.find(function(app) { return app.name === "prod"; });
+        var existingDev = firebase.apps.find(function(app) { return app.name === "dev"; });
+        if (!existingProd) { firebase.initializeApp(PROD_CONFIG, "prod"); }
+        if (!existingDev) { firebase.initializeApp(DEV_CONFIG, "dev"); }
+        window.prodDb = firebase.firestore(firebase.apps.find(function(app) { return app.name === "prod"; }));
+        window.devDb = firebase.firestore(firebase.apps.find(function(app) { return app.name === "dev"; }));
+        console.log('[REC-MGMT] Firebase initialized (fallback)');
+    } catch(e) {
+        console.error('[REC-MGMT] Firebase init error:', e);
+    }
 }
 
-log('Record Management v1.15 loaded', 'success');
-log('=== INSTRUCTIONS ===', 'info');
-log('1. Select environments for each tab (PROD/DEV)', 'info');
-log('2. COPY tab: copy records between collections and environments', 'info');
-log('3. COMPARE tab: field-by-field comparison across environments', 'info');
-log('4. VALIDATE tab: load and validate records, fix corrupted ones', 'info');
-log('5. PHOTO tab: load C.jpg from CF, upload to Firebase Storage, save to Firestore', 'info');
-log('6. DELETE tab: delete records from Firestore OR photos from Storage (batch)', 'info');
-log('=====================================', 'info');
+// Set default environments (functions from .js files)
+setTimeout(function() {
+    // Set COPY tab environment
+    if (typeof setCopySourceEnvironment === 'function') setCopySourceEnvironment('PROD');
+    if (typeof setCopyDestEnvironment === 'function') setCopyDestEnvironment('PROD');
+    // Set COMPARE tab environment
+    if (typeof setCompareLeftEnvironment === 'function') setCompareLeftEnvironment('PROD');
+    if (typeof setCompareRightEnvironment === 'function') setCompareRightEnvironment('PROD');
+    // Set DELETE tab environment
+    if (typeof setDeleteEnvironment === 'function') setDeleteEnvironment('PROD');
+}, 100);
 
-// Pre-load records
+// Photo tab auto-initializes from util-photo.js
+console.log('[REC-MGMT] Photo tab auto-initialized by util-photo.js');
+
+// Pre-load records (functions from .js files)
 setTimeout(function() {
     if (typeof loadSourceRecords === 'function') loadSourceRecords();
     if (typeof loadDestinationRecords === 'function') loadDestinationRecords();
@@ -2448,19 +926,34 @@ setTimeout(function() {
     if (typeof loadValidateRecords === 'function') loadValidateRecords();
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
 }, 500);
+
+console.log('[REC-MGMT] Record Management v1.16 ready');
+console.log('=== TABS ===');
+console.log('📝 COPY    - Copy records between collections/environments');
+console.log('🔍 COMPARE - Field-by-field comparison across environments');
+console.log('🔬 VALIDATE - Load, validate, and fix corrupted records');
+console.log('🖼️ PHOTO   - Load, upload, and save photo references');
+console.log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage');
+console.log('=====================================');
 </script>
 </body>
 </html>
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: Photo delete section in DELETE tab (list photos, select, batch delete)
-   - ADDED: Photo list refresh, select all, deselect all functionality
-   - ADDED: Photo delete progress tracking
-   - FIXED: Photo tab information button now shows showPhotoInfoGuide()
-   - PRESERVED: All existing functionality from v1.14
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - REMOVED: All inline JavaScript handlers (moved to .js files)
+   - REMOVED: initPhotoTab stub (now in util-photo.js)
+   - REMOVED: COPY tab handlers (now in util-copy-record.js)
+   - REMOVED: COMPARE tab handlers (now in util-compare-record.js)
+   - REMOVED: VALIDATE tab handlers (now in util-validate-record.js)
+   - REMOVED: DELETE tab handlers (now in util-delete-record.js)
+   - REMOVED: DELETE photo handlers (now in util-photo.js)
+   - REMOVED: Firebase init (now in util-firebase.js - to be created)
+   - REMOVED: Logging functions (now in util-logger.js - to be created)
+   - PRESERVED: All UI structure and CSS
+   - PRESERVED: Tab switching logic (UI-only)
+DEPENDS ON: js/firebase-config.js, js/util-logger.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
