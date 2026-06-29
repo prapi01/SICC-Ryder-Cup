@@ -1,21 +1,20 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - REMOVED: All delete-related functions (moved to DELETE tab)
-   - REMOVED: deletePhotoFromStorage, deletePhotosFromStorage, deletePhotoWithReferences
-   - REMOVED: deletePhotoStorageOnly, deletePhotoComplete, findPhotoReferences
-   - REMOVED: removeSingleReference, deleteCurrentPhoto
-   - PRESERVED: Load, upload, view, copy, save to Firestore functions
-   - PRESERVED: listPhotosInStorage (used by DELETE tab)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: showPhotoInfoGuide() now properly defines and exposes the info overlay
+   - FIXED: Added missing CSS for info overlay in the function itself
+   - ADDED: Better error handling for missing elements
+   - CHANGED: Info guide now includes all sections for clarity
+   - PRESERVED: All other functionality unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.06";
+window.PHOTO_UTIL_VERSION = "1.08";
 
-console.log('[PHOTO] Loading util-photo.js v1.06...');
+console.log('[PHOTO] Loading util-photo.js v1.08...');
 
 // ============================================================
 // STATE
@@ -439,7 +438,59 @@ function copyUrlFallback() {
 }
 
 // ============================================================
-// SHOW INFO (SIMPLIFIED - NO DELETE BUTTONS)
+// FIND PHOTO REFERENCES (USED BY INFO PANEL)
+// ============================================================
+
+function findPhotoReferences(photoUrl, callback) {
+    if (!photoUrl) {
+        var err = new Error("Photo URL is required");
+        if (callback) callback(err);
+        return;
+    }
+    
+    var db = photoStorageEnv === 'PROD' ? prodDb : devDb;
+    if (!db) {
+        var err = new Error("Database not available for " + photoStorageEnv);
+        if (callback) callback(err);
+        return;
+    }
+    
+    photoLog('🔍 Searching for references to photo...', 'info');
+    
+    var results = [];
+    var collections = ['scheduledGames', 'historyGames', 'backupFolder'];
+    var promises = collections.map(function(collection) {
+        return db.collection(collection)
+            .where('celebration', '==', photoUrl)
+            .get()
+            .then(function(snapshot) {
+                snapshot.forEach(function(doc) {
+                    results.push({
+                        collection: collection,
+                        docId: doc.id,
+                        fields: ['celebration']
+                    });
+                });
+            })
+            .catch(function(err) {
+                // Collection might not exist or field might not be indexed
+                console.warn('Error searching ' + collection + ':', err.message);
+                return Promise.resolve();
+            });
+    });
+    
+    Promise.all(promises)
+        .then(function() {
+            photoLog('🔍 Found ' + results.length + ' references', 'info');
+            if (callback) callback(null, results);
+        })
+        .catch(function(err) {
+            if (callback) callback(err);
+        });
+}
+
+// ============================================================
+// SHOW INFO (WITH REFERENCES, NO DELETE BUTTONS)
 // ============================================================
 
 function showPhotoInfo() {
@@ -465,12 +516,19 @@ function showPhotoInfo() {
                      onerror="this.style.display='none';">
             </div>
             
-            <div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
+            <div style="background:#0a0a0a; border-radius:8px; padding:12px; margin-bottom:12px; border:1px solid #2a2a2a;">
                 <div style="display:grid; grid-template-columns:auto 1fr; gap:2px 16px; font-size:0.75rem;">
                     <span style="color:#888;">📍 Path:</span>
                     <span style="color:#e0e0e0; font-family:monospace; word-break:break-all;">${currentFullPath || 'Unknown'}</span>
                     <span style="color:#888;">🔗 URL:</span>
                     <span style="color:#ffaa44; font-family:monospace; font-size:0.65rem; word-break:break-all;">${currentDownloadUrl}</span>
+                </div>
+            </div>
+            
+            <div id="photoReferencesContainer" style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
+                <div style="font-size:0.75rem; font-weight:600; color:#4a8af4; margin-bottom:8px;">📚 FIRESTORE REFERENCES</div>
+                <div id="photoReferencesList" style="text-align:center; color:#555; padding:8px;">
+                    <span class="log-info">🔍 Searching for references...</span>
                 </div>
             </div>
             
@@ -486,8 +544,53 @@ function showPhotoInfo() {
                     🔄 Reset
                 </button>
             </div>
+            
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2a2a2a; text-align:center;">
+                <span style="font-size:0.65rem; color:#666;">
+                    💡 To delete this photo, go to the <strong style="color:#ff6b6b;">DELETE</strong> tab
+                </span>
+            </div>
         </div>
     `;
+    
+    // Load Firestore references
+    findPhotoReferences(currentDownloadUrl, function(err, references) {
+        var container = document.getElementById('photoReferencesList');
+        if (!container) return;
+        
+        if (err) {
+            container.innerHTML = `<span class="log-error">❌ Error: ${err.message}</span>`;
+            return;
+        }
+        
+        if (!references || references.length === 0) {
+            container.innerHTML = '<span style="color:#555;">📭 No Firestore references found</span>';
+            return;
+        }
+        
+        var html = '<div style="overflow-x:auto;">';
+        html += '<table style="width:100%; border-collapse:collapse; font-size:0.7rem;">';
+        html += '<thead><tr>';
+        html += '<th style="text-align:left; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Collection</th>';
+        html += '<th style="text-align:left; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Document ID</th>';
+        html += '<th style="text-align:left; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Field</th>';
+        html += '</tr></thead><tbody>';
+        
+        references.forEach(function(ref) {
+            var badgeClass = ref.collection === 'historyGames' ? 'badge-history' :
+                             ref.collection === 'scheduledGames' ? 'badge-sched' : 'badge-backup';
+            var fieldNames = ref.fields ? ref.fields.join(', ') : 'celebration';
+            html += '<tr>';
+            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a;"><span class="badge ${badgeClass}">${escapeHtml(ref.collection)}</span></td>`;
+            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; color:#e0e0e0;">${escapeHtml(ref.docId)}</td>`;
+            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; color:#ffaa44;">${escapeHtml(fieldNames)}</td>`;
+            html += '</tr>';
+        });
+        
+        html += '</tbody></table></div>';
+        html += `<div style="margin-top:8px; font-size:0.65rem; color:#888;">📚 ${references.length} reference${references.length > 1 ? 's' : ''} found</div>`;
+        container.innerHTML = html;
+    });
 }
 
 function closePhotoInfoPanel() {
@@ -664,6 +767,232 @@ function deletePhotosFromStorage(paths, callback) {
 }
 
 // ============================================================
+// PHOTO TAB INFORMATION GUIDE (ℹ️ Button) - FIXED
+// ============================================================
+
+function showPhotoInfoGuide() {
+    console.log('[PHOTO] showPhotoInfoGuide called');
+    
+    // Remove existing overlay if present
+    var existing = document.querySelector('.info-overlay');
+    if (existing) {
+        existing.remove();
+    }
+    
+    // Check if overlay styles exist, if not, add them
+    if (!document.getElementById('photoInfoGuideStyles')) {
+        var style = document.createElement('style');
+        style.id = 'photoInfoGuideStyles';
+        style.textContent = `
+            .info-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.95);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 50000;
+                padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+                animation: infoFadeIn 0.3s ease-out;
+            }
+            .info-card {
+                background: #1a1a1a;
+                border-radius: 28px;
+                padding: 32px;
+                max-width: 750px;
+                width: 95%;
+                max-height: 90vh;
+                overflow-y: auto;
+                border: 2px solid #ffaa44;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+                animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            }
+            .info-card::-webkit-scrollbar { width: 4px; }
+            .info-card::-webkit-scrollbar-track { background: #0a0a0a; }
+            .info-card::-webkit-scrollbar-thumb { background: #2a5a2a; border-radius: 4px; }
+            .info-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 20px;
+                border-bottom: 1px solid #2a2a2a;
+                padding-bottom: 12px;
+            }
+            .info-title { font-size: 1.2rem; font-weight: 700; color: #ffaa44; }
+            .info-close-btn {
+                padding: 8px 28px;
+                border-radius: 30px;
+                font-size: 0.85rem;
+                font-weight: 600;
+                cursor: pointer;
+                border: 1px solid #ffaa44;
+                background: rgba(255, 170, 68, 0.1);
+                color: #ffaa44;
+                transition: all 0.2s ease;
+                font-family: inherit;
+            }
+            .info-close-btn:hover { background: rgba(255, 170, 68, 0.2); }
+            .info-section { margin-bottom: 16px; }
+            .info-section-title {
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: #ffaa44;
+                margin-bottom: 4px;
+            }
+            .info-text {
+                font-size: 0.85rem;
+                color: #ccc;
+                line-height: 1.6;
+            }
+            .info-text strong { color: #ffaa44; }
+            .info-text .highlight { color: #ffaa44; }
+            .info-text .danger-text { color: #ff6b6b; }
+            .info-steps {
+                padding-left: 20px;
+                margin: 4px 0 8px 0;
+            }
+            .info-steps li {
+                font-size: 0.85rem;
+                color: #ccc;
+                line-height: 1.6;
+                margin-bottom: 2px;
+            }
+            .info-steps li code {
+                background: #0a0a0a;
+                padding: 1px 8px;
+                border-radius: 4px;
+                font-size: 0.75rem;
+                color: #ffaa44;
+                font-family: monospace;
+            }
+            .info-warnings {
+                padding-left: 20px;
+                margin: 4px 0 8px 0;
+            }
+            .info-warnings li {
+                font-size: 0.85rem;
+                color: #ff6b6b;
+                line-height: 1.6;
+                margin-bottom: 2px;
+            }
+            .info-divider {
+                border: none;
+                border-top: 1px solid #2a2a2a;
+                margin: 16px 0;
+            }
+            @keyframes infoFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes infoSlideUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px) scale(0.97);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    var overlay = document.createElement('div');
+    overlay.className = 'info-overlay';
+    overlay.innerHTML = `
+        <div class="info-card">
+            <div class="info-header">
+                <div class="info-title">🖼️ PHOTO TAB - Information & Guide</div>
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-section-title">🎯 What This Tab Does</div>
+                <div class="info-text">
+                    The <strong>PHOTO</strong> tab allows you to load images and upload them to Firebase Storage.
+                    This is useful for:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>📸 Uploading celebration photos to Firebase Storage</li>
+                        <li>🔗 Getting a permanent download URL for use in Firestore</li>
+                        <li>💾 Saving photo references to game records</li>
+                        <li>🔄 Moving images between PROD and DEV environments</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📖 How To Use</div>
+                <ol class="info-steps">
+                    <li><strong>Step 1 - Environment:</strong> Select <span class="highlight">PROD</span> or <span class="highlight">DEV</span> for Firebase Storage</li>
+                    <li><strong>Step 2 - Load Image:</strong> Enter a URL (default is C.jpg from Cloudflare) and click <span class="highlight">"Load Image"</span></li>
+                    <li><strong>Step 3 - View:</strong> The image will appear in the viewer for preview</li>
+                    <li><strong>Step 4 - Filename:</strong> Enter a custom filename (auto-generated with timestamp)</li>
+                    <li><strong>Step 5 - Upload:</strong> Click <span class="highlight">"Upload to Firebase Storage"</span> to upload the image</li>
+                    <li><strong>Step 6 - Copy URL:</strong> Use <span class="highlight">"Copy URL"</span> to copy the download URL to your clipboard</li>
+                    <li><strong>Step 7 - Save Reference:</strong> Optionally save the URL to a Firestore document field</li>
+                    <li><strong>Step 8 - Show Info:</strong> Click <span class="highlight">"Show Info"</span> to view the photo details and see which Firestore documents reference it</li>
+                </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 Information Panel</div>
+                <div class="info-text">
+                    The <strong>"Show Info"</strong> button displays:
+                    <ul style="padding-left:20px; margin:4px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>🖼️ <strong>Photo Preview</strong> - The uploaded image</li>
+                        <li>📍 <strong>Storage Path</strong> - Where the file is stored</li>
+                        <li>🔗 <strong>Download URL</strong> - The permanent URL</li>
+                        <li>📚 <strong>Firestore References</strong> - Which game records reference this photo</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">⚠️ Important Notes</div>
+                <ul class="info-warnings">
+                    <li><strong>CORS:</strong> The image URL must allow cross-origin access. Cloudflare Pages URLs work by default.</li>
+                    <li><strong>Image Size:</strong> Images are automatically resized to max 1200px to save storage space</li>
+                    <li><strong>File Format:</strong> Images are uploaded as JPEG with 85% quality</li>
+                    <li><strong>Storage Path:</strong> Default folder is <code>celebrations/</code> - can be changed</li>
+                    <li><strong>Environment:</strong> PROD and DEV have separate Firebase Storage buckets</li>
+                    <li><strong>Deleting Photos:</strong> To delete photos, go to the <strong style="color:#ff6b6b;">DELETE</strong> tab</li>
+                </ul>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📂 Firestore Reference</div>
+                <div class="info-text">
+                    You can save the uploaded photo URL to any Firestore document field:
+                    <ul style="padding-left:20px; margin:4px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li><strong>Collection:</strong> Select <code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code></li>
+                        <li><strong>Document ID:</strong> Enter the document ID (e.g., <code>GM_260624_0902_70_R</code>)</li>
+                        <li><strong>Field:</strong> Enter the field name (default is <code>celebration</code>)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px;">
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
 // INITIALIZE PHOTO TAB
 // ============================================================
 
@@ -755,6 +1084,8 @@ window.savePhotoToFirestore = savePhotoToFirestore;
 window.initPhotoTab = initPhotoTab;
 window.listPhotosInStorage = listPhotosInStorage;
 window.deletePhotosFromStorage = deletePhotosFromStorage;
+window.findPhotoReferences = findPhotoReferences;
+window.showPhotoInfoGuide = showPhotoInfoGuide;
 
 // ============================================================
 // AUTO-INIT ON LOAD
@@ -768,18 +1099,17 @@ if (document.readyState === 'loading') {
     setTimeout(initPhotoTab, 500);
 }
 
-console.log('[PHOTO-UTIL] v1.06 loaded (no delete functions)');
+console.log('[PHOTO-UTIL] v1.08 loaded (info guide fixed)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - REMOVED: All delete-related functions (moved to DELETE tab)
-   - REMOVED: deletePhotoFromStorage, deletePhotosFromStorage, deletePhotoWithReferences
-   - REMOVED: deletePhotoStorageOnly, deletePhotoComplete, findPhotoReferences
-   - REMOVED: removeSingleReference, deleteCurrentPhoto
-   - PRESERVED: Load, upload, view, copy, save to Firestore functions
-   - PRESERVED: listPhotosInStorage (used by DELETE tab)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: showPhotoInfoGuide() now properly defines and exposes the info overlay
+   - FIXED: Added missing CSS for info overlay in the function itself
+   - ADDED: Better error handling for missing elements
+   - CHANGED: Info guide now includes all sections for clarity
+   - PRESERVED: All other functionality unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
