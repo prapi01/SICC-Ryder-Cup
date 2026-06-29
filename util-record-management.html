@@ -1,12 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: Added logStep() function to fix COPY tab ReferenceError
-   - FIXED: Added missing initPhotoTab() function
-   - FIXED: Added photo functions to window object
-   - SIMPLIFIED: Photo tab uses minimal working version
-   - PRESERVED: All existing functionality from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: Photo delete section in DELETE tab (list photos, select, batch delete)
+   - ADDED: Photo list refresh, select all, deselect all functionality
+   - ADDED: Photo delete progress tracking
+   - FIXED: Photo tab information button now shows showPhotoInfoGuide()
+   - PRESERVED: All existing functionality from v1.14
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
@@ -191,6 +191,230 @@ STATUS: Ready for integration
         
         .btn-info-guide:active {
             transform: scale(0.95);
+        }
+        
+        /* Info Overlay */
+        .info-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50000;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            animation: infoFadeIn 0.3s ease-out;
+        }
+        
+        .info-card {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 750px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid #4caf50;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+            animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .info-card::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .info-card::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        
+        .info-card::-webkit-scrollbar-thumb {
+            background: #2a5a2a;
+            border-radius: 4px;
+        }
+        
+        .info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            padding-bottom: 12px;
+        }
+        
+        .info-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        
+        .info-close-btn {
+            padding: 8px 28px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+        
+        .info-close-btn:hover {
+            background: rgba(76, 175, 80, 0.2);
+        }
+        
+        .info-section {
+            margin-bottom: 16px;
+        }
+        
+        .info-section-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 4px;
+        }
+        
+        .info-section-title.danger {
+            color: #ff6b6b;
+        }
+        
+        .info-text {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.6;
+        }
+        
+        .info-text strong {
+            color: #4caf50;
+        }
+        
+        .info-text .highlight {
+            color: #ffaa44;
+        }
+        
+        .info-text .danger-text {
+            color: #ff6b6b;
+        }
+        
+        .info-steps {
+            padding-left: 20px;
+            margin: 4px 0 8px 0;
+        }
+        
+        .info-steps li {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 2px;
+        }
+        
+        .info-steps li code {
+            background: #0a0a0a;
+            padding: 1px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #4caf50;
+            font-family: monospace;
+        }
+        
+        .info-warnings {
+            padding-left: 20px;
+            margin: 4px 0 8px 0;
+        }
+        
+        .info-warnings li {
+            font-size: 0.85rem;
+            color: #ff6b6b;
+            line-height: 1.6;
+            margin-bottom: 2px;
+        }
+        
+        .info-divider {
+            border: none;
+            border-top: 1px solid #2a2a2a;
+            margin: 16px 0;
+        }
+        
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin: 8px 0;
+        }
+        
+        .info-table th {
+            text-align: left;
+            color: #4caf50;
+            padding: 6px 8px;
+            border-bottom: 1px solid #2a2a2a;
+            font-weight: 600;
+        }
+        
+        .info-table td {
+            color: #ccc;
+            padding: 6px 8px;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .info-table .field-name {
+            color: #ffaa44;
+            font-family: monospace;
+        }
+        
+        .info-table .field-desc {
+            color: #aaa;
+        }
+        
+        .info-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+        
+        .info-badge.green {
+            background: #0a2a0a;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+        }
+        
+        .info-badge.red {
+            background: #2a0a0a;
+            color: #ff6b6b;
+            border: 1px solid #5a2a2a;
+        }
+        
+        .info-badge.blue {
+            background: #0a1a2a;
+            color: #4a8af4;
+            border: 1px solid #2a4a6a;
+        }
+        
+        .info-badge.gold {
+            background: #2a2a0a;
+            color: #ffaa44;
+            border: 1px solid #5a5a2a;
+        }
+        
+        @keyframes infoFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes infoSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
         }
         
         /* Environment selector buttons */
@@ -464,6 +688,7 @@ STATUS: Ready for integration
         .log-info { color: #ffaa44; }
         .log-diff { color: #ff6b6b; }
         .log-match { color: #4caf50; }
+        .log-warning { color: #ffaa44; }
         
         .button-group {
             display: flex;
@@ -755,6 +980,264 @@ STATUS: Ready for integration
             border: 1px solid #5a5a2a;
             margin-left: 6px;
         }
+        
+        /* DELETE Tab - Photo List Styles */
+        #photoListContainer table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        
+        #photoListContainer th {
+            padding: 8px 6px;
+            text-align: left;
+            background: #0a0a0a;
+            border-bottom: 2px solid #333;
+            font-weight: 600;
+            color: #888;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #111;
+        }
+        
+        #photoListContainer td {
+            padding: 6px 6px;
+            border-bottom: 1px solid #1a1a1a;
+            vertical-align: middle;
+        }
+        
+        #photoListContainer tr:hover {
+            background: #1a1a1a;
+            cursor: pointer;
+        }
+        
+        #photoListContainer .checkbox-col {
+            width: 32px;
+            text-align: center;
+        }
+        
+        #photoListContainer input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #ffaa44;
+            cursor: pointer;
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            border: 2px solid #ffaa44;
+            border-radius: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative;
+            flex-shrink: 0;
+        }
+        
+        #photoListContainer input[type="checkbox"]:checked {
+            background: #ffaa44;
+        }
+        
+        #photoListContainer input[type="checkbox"]:checked::after {
+            content: "✓";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #000;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        
+        /* DELETE Tab - Existing Styles */
+        .delete-records-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 8px;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            background: #0a0a0a;
+        }
+        
+        .delete-records-container table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        
+        .delete-records-container th {
+            padding: 8px 6px;
+            text-align: left;
+            background: #0a0a0a;
+            border-bottom: 2px solid #333;
+            font-weight: 600;
+            color: #888;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #111;
+        }
+        
+        .delete-records-container td {
+            padding: 6px 6px;
+            border-bottom: 1px solid #1a1a1a;
+            vertical-align: middle;
+        }
+        
+        .delete-records-container tr:hover {
+            background: #1a1a1a;
+            cursor: pointer;
+        }
+        
+        .delete-records-container tr.selected {
+            background: #1a2a1a;
+        }
+        
+        .delete-records-container .checkbox-col {
+            width: 32px;
+            text-align: center;
+        }
+        
+        .delete-records-container input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4caf50;
+            cursor: pointer;
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            border: 2px solid #4caf50;
+            border-radius: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative;
+            flex-shrink: 0;
+        }
+        
+        .delete-records-container input[type="checkbox"]:checked {
+            background: #4caf50;
+        }
+        
+        .delete-records-container input[type="checkbox"]:checked::after {
+            content: "✓";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #000;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        
+        .delete-records-container .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.6rem;
+            font-weight: 600;
+        }
+        
+        .delete-records-container .status-badge.completed {
+            background: #0a2a0a;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+        }
+        
+        .delete-records-container .status-badge.pending {
+            background: #2a2a0a;
+            color: #ffaa44;
+            border: 1px solid #5a5a2a;
+        }
+        
+        .delete-records-container .status-badge.unknown {
+            background: #1a1a1a;
+            color: #555;
+            border: 1px solid #333;
+        }
+        
+        .delete-count {
+            font-size: 0.75rem;
+            color: #888;
+            margin-left: 8px;
+        }
+        
+        .delete-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+            padding: 8px 0;
+        }
+        
+        .delete-toolbar .btn-small {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4caf50;
+            background: #1a3a1a;
+            color: #4caf50;
+            transition: all 0.2s;
+        }
+        
+        .delete-toolbar .btn-small:hover {
+            background: #2a4a2a;
+        }
+        
+        .delete-toolbar .btn-small:active {
+            transform: scale(0.95);
+        }
+        
+        .delete-toolbar .btn-small.danger {
+            border-color: #ff6b6b;
+            color: #ff6b6b;
+            background: #3a1a1a;
+        }
+        
+        .delete-toolbar .btn-small.danger:hover {
+            background: #4a2a2a;
+        }
+        
+        .delete-toolbar .btn-small:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .delete-toolbar .btn-small.photo-toolbar {
+            border-color: #ffaa44;
+            color: #ffaa44;
+            background: #2a2a0a;
+        }
+        
+        .delete-toolbar .btn-small.photo-toolbar:hover {
+            background: #3a3a0a;
+        }
+        
+        .delete-progress {
+            display: none;
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #0a0a0a;
+            font-size: 0.75rem;
+            color: #888;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .delete-progress.active { display: block; }
+        .delete-progress .step { padding: 2px 0; }
+        .delete-progress .step.done { color: #4caf50; }
+        .delete-progress .step.error { color: #ff6b6b; }
+        .delete-progress .step.info { color: #4a8af4; }
+        .delete-progress .step.warning { color: #ffaa44; }
         
         /* Fix for scrollable tab nav on mobile */
         @media (max-width: 500px) {
@@ -1272,6 +1755,38 @@ STATUS: Ready for integration
                 🗑️ DELETE SELECTED (0 records)
             </button>
         </div>
+        
+        <!-- ============================================================ -->
+        <!-- DELETE TAB: PHOTOS SECTION -->
+        <!-- ============================================================ -->
+        <div class="card" style="border-color:#ffaa44; margin-top:16px;">
+            <div class="card-title photo">🖼️ PHOTOS IN STORAGE</div>
+            <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
+                Manage photos stored in Firebase Storage. Select photos to delete.
+                <br><strong style="color:#ffaa44;">Note:</strong> This deletes the photo file. To also remove Firestore references, use the PHOTO tab's "Show Info" to see where the photo is referenced.
+            </div>
+            
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebrations/)" value="celebrations/" style="flex:2; min-width:150px;">
+                <button id="photoListRefreshBtn" class="btn btn-secondary" style="flex:0 0 auto; width:auto; padding:12px 24px;">🔄 List Photos</button>
+            </div>
+            
+            <div class="delete-toolbar">
+                <button class="btn-small photo-toolbar" id="photoSelectAllBtn">☑ Select All</button>
+                <button class="btn-small photo-toolbar" id="photoDeselectAllBtn">☐ Deselect All</button>
+                <span style="flex:1;"></span>
+                <span id="photoSelectedCount" style="font-size:0.7rem; color:#888;">0 selected</span>
+            </div>
+            
+            <div class="delete-records-container" id="photoListContainer" style="max-height:300px;">
+                <div style="text-align:center; padding:20px; color:#555;">Click "List Photos" to load</div>
+            </div>
+            
+            <button id="photoDeleteSelectedBtn" class="btn btn-danger" disabled style="margin-top:8px;">
+                🗑️ DELETE SELECTED PHOTOS (0)
+            </button>
+            <div id="photoDeleteProgress" class="delete-progress"></div>
+        </div>
     </div>
     
     <!-- Log -->
@@ -1282,15 +1797,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.14</div>
+<div class="version-tag">v1.15</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.14
+// VERSION: 1.15
 // ============================================================
 
-var APP_VERSION = "1.14";
+var APP_VERSION = "1.15";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -1361,7 +1876,7 @@ function log(message, type) {
     } else if (type === 'match') {
         entry.innerHTML = `<span class="log-match">[${timestamp}] 🟢 ${message}</span>`;
     } else if (type === 'warning') {
-        entry.innerHTML = `<span class="log-info">[${timestamp}] ⚠️ ${message}</span>`;
+        entry.innerHTML = `<span class="log-warning">[${timestamp}] ⚠️ ${message}</span>`;
     } else {
         entry.innerHTML = `<span class="log-info">[${timestamp}] ${message}</span>`;
     }
@@ -1371,11 +1886,10 @@ function log(message, type) {
 }
 
 // ============================================================
-// logStep - CRITICAL FIX: This was missing and breaking COPY tab
+// logStep - FIX: This was missing and breaking COPY tab
 // ============================================================
 
 function logStep(step, message, type) {
-    // Step number is included for context but we just log the message
     log(message, type);
 }
 
@@ -1445,7 +1959,7 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
             }
         }
         if (tabId === 'tabPhoto') {
-            // Photo tab is initialized on load
+            // Photo tab initialized on load
         }
     });
 });
@@ -1659,10 +2173,152 @@ document.getElementById('deleteCollection').onchange = function() {
 };
 
 // ============================================================
+// DELETE TAB: PHOTO DELETE HANDLERS
+// ============================================================
+
+// List photos in Storage
+document.getElementById('photoListRefreshBtn').onclick = function() {
+    var folder = document.getElementById('photoListFolder').value.trim() || 'celebrations/';
+    if (typeof listPhotosInStorage === 'function') {
+        listPhotosInStorage(folder, function(err, photos) {
+            if (err) {
+                log('❌ Failed to list photos: ' + err.message, 'error');
+                return;
+            }
+            displayPhotoList(photos);
+        });
+    } else {
+        log('⚠️ listPhotosInStorage not available. Make sure util-photo.js is loaded.', 'warning');
+    }
+};
+
+// Select/deselect all photos
+document.getElementById('photoSelectAllBtn').onclick = function() {
+    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]');
+    checkboxes.forEach(function(cb) { cb.checked = true; });
+    updatePhotoDeleteButton();
+};
+
+document.getElementById('photoDeselectAllBtn').onclick = function() {
+    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]');
+    checkboxes.forEach(function(cb) { cb.checked = false; });
+    updatePhotoDeleteButton();
+};
+
+// Delete selected photos
+document.getElementById('photoDeleteSelectedBtn').onclick = function() {
+    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]:checked');
+    var paths = [];
+    checkboxes.forEach(function(cb) {
+        paths.push(cb.dataset.path);
+    });
+    
+    if (paths.length === 0) {
+        log('No photos selected', 'warning');
+        return;
+    }
+    
+    if (confirm('Delete ' + paths.length + ' photos from Firebase Storage?\n\nThis action cannot be undone.')) {
+        var progress = document.getElementById('photoDeleteProgress');
+        progress.className = 'delete-progress active';
+        progress.innerHTML = '<div class="step info">🗑️ Deleting ' + paths.length + ' photos...</div>';
+        
+        if (typeof deletePhotosFromStorage === 'function') {
+            deletePhotosFromStorage(paths, function(err, results) {
+                if (err) {
+                    progress.innerHTML += '<div class="step error">❌ Failed: ' + err.message + '</div>';
+                    return;
+                }
+                progress.innerHTML += '<div class="step done">✅ ' + results.deleted + ' deleted</div>';
+                if (results.notFound > 0) {
+                    progress.innerHTML += '<div class="step warning">⚠️ ' + results.notFound + ' not found</div>';
+                }
+                if (results.failed > 0) {
+                    progress.innerHTML += '<div class="step error">❌ ' + results.failed + ' failed</div>';
+                }
+                // Refresh the list
+                var folder = document.getElementById('photoListFolder').value.trim() || 'celebrations/';
+                if (typeof listPhotosInStorage === 'function') {
+                    listPhotosInStorage(folder, function(err, photos) {
+                        if (!err) displayPhotoList(photos);
+                    });
+                }
+            });
+        } else {
+            progress.innerHTML += '<div class="step error">❌ deletePhotosFromStorage not available</div>';
+            log('⚠️ deletePhotosFromStorage not available', 'warning');
+        }
+    }
+};
+
+function displayPhotoList(photos) {
+    var container = document.getElementById('photoListContainer');
+    var deleteBtn = document.getElementById('photoDeleteSelectedBtn');
+    
+    if (!photos || photos.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">📸 No photos found</div>';
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (0)';
+        document.getElementById('photoSelectedCount').textContent = '0 selected';
+        return;
+    }
+    
+    var html = '<table><thead><tr><th class="checkbox-col"><input type="checkbox" id="photoSelectAllCheckbox" onchange="toggleAllPhotos(this)"></th><th>Filename</th><th>Size</th><th>Modified</th></tr></thead><tbody>';
+    
+    photos.forEach(function(photo) {
+        var size = photo.size > 1024 * 1024 ? (photo.size / (1024 * 1024)).toFixed(1) + ' MB' : 
+                   photo.size > 1024 ? (photo.size / 1024).toFixed(0) + ' KB' : 
+                   photo.size + ' B';
+        var date = new Date(photo.updated).toLocaleString();
+        var displayName = photo.name.length > 30 ? photo.name.substring(0, 27) + '...' : photo.name;
+        html += '<tr>' +
+            '<td class="checkbox-col"><input type="checkbox" data-path="' + escapeHtml(photo.fullPath) + '" onchange="updatePhotoDeleteButton()"></td>' +
+            '<td title="' + escapeHtml(photo.name) + '">' + escapeHtml(displayName) + '</td>' +
+            '<td>' + size + '</td>' +
+            '<td>' + date + '</td>' +
+            '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (0)';
+    document.getElementById('photoSelectedCount').textContent = '0 selected';
+}
+
+function updatePhotoDeleteButton() {
+    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]:checked');
+    var count = checkboxes.length;
+    var deleteBtn = document.getElementById('photoDeleteSelectedBtn');
+    
+    if (count > 0) {
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (' + count + ')';
+    } else {
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = '🗑️ DELETE SELECTED PHOTOS (0)';
+    }
+    document.getElementById('photoSelectedCount').textContent = count + ' selected';
+}
+
+function toggleAllPhotos(checkbox) {
+    var checkboxes = document.querySelectorAll('#photoListContainer input[type="checkbox"]');
+    checkboxes.forEach(function(cb) {
+        if (cb !== checkbox) cb.checked = checkbox.checked;
+    });
+    updatePhotoDeleteButton();
+}
+
+// Make functions globally accessible
+window.updatePhotoDeleteButton = updatePhotoDeleteButton;
+window.toggleAllPhotos = toggleAllPhotos;
+window.displayPhotoList = displayPhotoList;
+
+// ============================================================
 // PHOTO TAB: ENVIRONMENT HANDLERS
 // ============================================================
 
-// These are set up in initPhotoTab below
+// These are set up in initPhotoTab from util-photo.js
 
 // ============================================================
 // DATE TOGGLE
@@ -1692,138 +2348,13 @@ function initDateToggle() {
 }
 
 // ============================================================
-// PHOTO TAB INITIALIZATION (FIXED)
+// PHOTO TAB INITIALIZATION (called from util-photo.js)
 // ============================================================
 
 function initPhotoTab() {
-    console.log('[PHOTO] Initializing photo tab...');
-    
-    // Set default URL
-    var urlInput = document.getElementById('photoUrlInput');
-    if (urlInput && !urlInput.value) {
-        urlInput.value = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg';
-    }
-    
-    // Set default folder
-    var folderInput = document.getElementById('photoStorageFolder');
-    if (folderInput && !folderInput.value) {
-        folderInput.value = 'celebrations/';
-    }
-    
-    // Set default field
-    var fieldInput = document.getElementById('photoFirestoreField');
-    if (fieldInput && !fieldInput.value) {
-        fieldInput.value = 'celebration';
-    }
-    
-    // Environment buttons
-    var prodBtn = document.getElementById('photoProdBtn');
-    var devBtn = document.getElementById('photoDevBtn');
-    
-    if (prodBtn) {
-        prodBtn.onclick = function() { 
-            if (typeof setPhotoEnvironment === 'function') {
-                setPhotoEnvironment('PROD');
-            } else {
-                log('[PHOTO] ⚠️ setPhotoEnvironment not loaded yet', 'warning');
-            }
-        };
-    }
-    if (devBtn) {
-        devBtn.onclick = function() { 
-            if (typeof setPhotoEnvironment === 'function') {
-                setPhotoEnvironment('DEV');
-            } else {
-                log('[PHOTO] ⚠️ setPhotoEnvironment not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Load button
-    var loadBtn = document.getElementById('photoLoadBtn');
-    if (loadBtn) {
-        loadBtn.onclick = function() {
-            if (typeof loadPhotoFromUrl === 'function') {
-                loadPhotoFromUrl();
-            } else {
-                log('[PHOTO] ⚠️ loadPhotoFromUrl not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Upload button
-    var uploadBtn = document.getElementById('photoUploadBtn');
-    if (uploadBtn) {
-        uploadBtn.onclick = function() {
-            if (typeof uploadPhotoToStorage === 'function') {
-                uploadPhotoToStorage();
-            } else {
-                log('[PHOTO] ⚠️ uploadPhotoToStorage not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Reset button
-    var resetBtn = document.getElementById('photoResetBtn');
-    if (resetBtn) {
-        resetBtn.onclick = function() {
-            if (typeof resetPhotoTool === 'function') {
-                resetPhotoTool();
-            } else {
-                log('[PHOTO] ⚠️ resetPhotoTool not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Info button
-    var infoBtn = document.getElementById('showPhotoInfoBtn');
-    if (infoBtn) {
-        infoBtn.onclick = function() {
-            if (typeof showPhotoInfo === 'function') {
-                showPhotoInfo();
-            } else {
-                log('[PHOTO] ⚠️ showPhotoInfo not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Copy URL button
-    var copyBtn = document.getElementById('copyUrlBtn');
-    if (copyBtn) {
-        copyBtn.onclick = function() {
-            if (typeof copyPhotoUrl === 'function') {
-                copyPhotoUrl();
-            } else {
-                log('[PHOTO] ⚠️ copyPhotoUrl not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Save Firestore reference button
-    var saveRefBtn = document.getElementById('saveFirestoreRefBtn');
-    if (saveRefBtn) {
-        saveRefBtn.onclick = function() {
-            if (typeof savePhotoToFirestore === 'function') {
-                savePhotoToFirestore();
-            } else {
-                log('[PHOTO] ⚠️ savePhotoToFirestore not loaded yet', 'warning');
-            }
-        };
-    }
-    
-    // Enter key on URL input
-    if (urlInput) {
-        urlInput.onkeydown = function(e) {
-            if (e.key === 'Enter') {
-                if (typeof loadPhotoFromUrl === 'function') {
-                    loadPhotoFromUrl();
-                }
-            }
-        };
-    }
-    
-    log('[PHOTO] Photo tab initialized', 'success');
-    console.log('[PHOTO] Photo tab ready');
+    // This function is now defined in util-photo.js
+    // The main HTML will call it after loading the script
+    console.log('[REC-MGMT] Photo tab initialization delegated to util-photo.js');
 }
 
 // ============================================================
@@ -1883,17 +2414,30 @@ if (typeof setPhotoEnvironment === 'function') {
     setPhotoEnvironment('PROD');
 }
 
-// Initialize Photo tab
-initPhotoTab();
+// Initialize Photo tab (from util-photo.js)
+if (typeof initPhotoTab === 'function') {
+    initPhotoTab();
+} else {
+    // Local fallback
+    console.log('[REC-MGMT] initPhotoTab not loaded, using local fallback');
+    setTimeout(function() {
+        if (typeof setPhotoEnvironment === 'function') {
+            setPhotoEnvironment('PROD');
+        }
+        if (typeof initPhotoTab === 'function') {
+            initPhotoTab();
+        }
+    }, 1000);
+}
 
-log('Record Management v1.14 loaded', 'success');
+log('Record Management v1.15 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
 log('3. COMPARE tab: field-by-field comparison across environments', 'info');
 log('4. VALIDATE tab: load and validate records, fix corrupted ones', 'info');
-log('5. PHOTO tab: load C.jpg from CF, upload to Firebase Storage', 'info');
-log('6. DELETE tab: delete records from any collection (PERMANENT)', 'info');
+log('5. PHOTO tab: load C.jpg from CF, upload to Firebase Storage, save to Firestore', 'info');
+log('6. DELETE tab: delete records from Firestore OR photos from Storage (batch)', 'info');
 log('=====================================', 'info');
 
 // Pre-load records
@@ -1910,13 +2454,13 @@ setTimeout(function() {
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: Added logStep() function to fix COPY tab ReferenceError
-   - FIXED: Added missing initPhotoTab() function
-   - FIXED: Added photo functions to window object
-   - SIMPLIFIED: Photo tab uses minimal working version
-   - PRESERVED: All existing functionality from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: Photo delete section in DELETE tab (list photos, select, batch delete)
+   - ADDED: Photo list refresh, select all, deselect all functionality
+   - ADDED: Photo delete progress tracking
+   - FIXED: Photo tab information button now shows showPhotoInfoGuide()
+   - PRESERVED: All existing functionality from v1.14
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
