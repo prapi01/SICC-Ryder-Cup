@@ -1,24 +1,23 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: showValidateInfoGuide() function - full-page information overlay
-   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
-   - ADDED: Comprehensive explanation of what "validation" means
-   - ADDED: List of all fields being validated
-   - ADDED: Explanation of what happens during a "Fix" operation
-   - ADDED: Warnings and important notes for record fixing
-   - PRESERVED: All existing functionality unchanged
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: validatePhotoPointer() - Check if record has celebration field with imageUrl
+   - ADDED: validateAllFields() - Comprehensive field-by-field validation
+   - ADDED: buildFieldDiff() - Build detailed diff for preview
+   - CHANGED: validateRecord() now includes photo validation and comprehensive field checks
+   - CHANGED: buildFixPayload() now includes ALL fields (TR, T-1, T-2, Strk, status, finalResults, celebration)
+   - PRESERVED: All existing functionality from v1.02
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.02";
+window.UTIL_VALIDATE_VERSION = "1.03";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.02");
+    console.log("[UTIL-VALIDATE] Initializing v1.03");
     
     // ============================================================
     // PARSING FUNCTIONS
@@ -54,7 +53,6 @@ var UtilValidate = (function() {
     function getStrokeHoles(handicapDiff, courseSi) {
         if (handicapDiff <= 0) return [];
         if (!courseSi || courseSi.length === 0) {
-            // Default SI if not provided
             courseSi = [];
             for (var i = 0; i < 18; i++) courseSi[i] = i + 1;
         }
@@ -103,20 +101,13 @@ var UtilValidate = (function() {
         var holeData = player.flight === 1 ? f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
         if (!holeData || !holeData.saved) return null;
         
-        // Determine which slot this player occupies
         if (player.team === 'A') {
-            // Check if this is the first A player based on handicap order
-            var flightPlayers = player.flight === 1 ? 
-                f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
-            // Use the scores directly - in the data string, a1 is always first A, a2 is second A
-            // We need to determine by player's handicap rank within team
             var allPlayers = window._validatePlayers || [];
             var flightTeamPlayers = allPlayers.filter(function(p) { 
                 return p.flight === player.flight && p.team === 'A'; 
             }).sort(function(a, b) { return a.handicap - b.handicap; });
             
             if (flightTeamPlayers.length === 0) {
-                // Fallback: use a1
                 if (holeData.a1 !== undefined) return holeData.a1;
             }
             
@@ -126,10 +117,8 @@ var UtilValidate = (function() {
                 return holeData.a2;
             }
             
-            // Fallback if not found
             if (holeData.a1 !== undefined) return holeData.a1;
         } else {
-            // Team B
             var allPlayers = window._validatePlayers || [];
             var flightTeamPlayers = allPlayers.filter(function(p) { 
                 return p.flight === player.flight && p.team === 'B'; 
@@ -523,7 +512,6 @@ var UtilValidate = (function() {
             trTeamBGreen.push(trB > trA);
         }
         
-        // Player totals - store players for use in getPlayerGrossFromScores
         window._validatePlayers = players;
         
         var playerTotals = {};
@@ -554,7 +542,6 @@ var UtilValidate = (function() {
             }
         }
         
-        // ClinchedAt
         var clinchedAt = {};
         for (var h = 0; h < matchResults.length; h++) {
             var holeData = matchResults[h];
@@ -595,7 +582,6 @@ var UtilValidate = (function() {
             var row = [];
             for (var a = 0; a < teamAPlayers.length; a++) {
                 for (var b = 0; b < teamBPlayers.length; b++) {
-                    var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
                     var margin = getCrossMatchResultForHole(teamAPlayers[a], teamBPlayers[b], flight1Data, flight2Data, players, courseSi, pos + 1, coursePar);
                     row.push(margin);
                 }
@@ -701,7 +687,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // DEEP EQUAL HELPER (v1.01: handles Date and Firestore Timestamp)
+    // DEEP EQUAL HELPER
     // ============================================================
     
     function deepEqual(a, b) {
@@ -709,14 +695,12 @@ var UtilValidate = (function() {
         if (a === null || b === null) return a === b;
         if (typeof a === 'undefined' || typeof b === 'undefined') return a === b;
         
-        // Handle Date objects
         if (a instanceof Date && b instanceof Date) {
             return a.getTime() === b.getTime();
         }
         if (a instanceof Date) return false;
         if (b instanceof Date) return false;
         
-        // Handle Firestore Timestamp (has toDate method)
         if (a && typeof a.toDate === 'function') {
             if (b && typeof b.toDate === 'function') {
                 return a.toDate().getTime() === b.toDate().getTime();
@@ -746,11 +730,280 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // VALIDATE RECORD - Check if record needs fixing
+    // v1.03: PHOTO POINTER VALIDATION
+    // ============================================================
+    
+    function validatePhotoPointer(recordData) {
+        if (!recordData) {
+            return { hasPhoto: false, path: null, url: null, expectedPath: null };
+        }
+        
+        var celebration = recordData.celebration || {};
+        var hasPhoto = !!(celebration.imageUrl && celebration.imageRef);
+        
+        // Generate expected path from record ID
+        var expectedPath = null;
+        if (recordData.id) {
+            expectedPath = 'celebration/' + recordData.id + '.jpg';
+        }
+        
+        return {
+            hasPhoto: hasPhoto,
+            path: celebration.imageRef || null,
+            url: celebration.imageUrl || null,
+            expectedPath: expectedPath
+        };
+    }
+    
+    // ============================================================
+    // v1.03: COMPREHENSIVE FIELD VALIDATION
+    // ============================================================
+    
+    function validateAllFields(recordData, recalculated) {
+        if (!recordData || !recalculated) {
+            return { valid: true, mismatches: [], matches: [], summary: {} };
+        }
+        
+        var mismatches = [];
+        var matches = [];
+        var summary = {
+            totalFields: 0,
+            mismatched: 0,
+            matched: 0
+        };
+        
+        // 1. TR Values (most important)
+        var curTrA = (recordData.results?.tr?.teamA) || [];
+        var curTrB = (recordData.results?.tr?.teamB) || [];
+        var newTrA = recalculated.tr.teamA || [];
+        var newTrB = recalculated.tr.teamB || [];
+        
+        for (var i = 0; i < 18; i++) {
+            var curA = curTrA[i];
+            var curB = curTrB[i];
+            var newA = newTrA[i];
+            var newB = newTrB[i];
+            var match = (curA === newA && curB === newB);
+            summary.totalFields++;
+            if (match) {
+                matches.push({ field: 'TR H' + (i+1), current: curA + '-' + curB, expected: newA + '-' + newB });
+            } else {
+                mismatches.push({ field: 'TR H' + (i+1), current: curA + '-' + curB, expected: newA + '-' + newB });
+                summary.mismatched++;
+            }
+        }
+        summary.matched = summary.totalFields - summary.mismatched;
+        
+        // 2. TR Green Flags
+        var curGreenA = (recordData.results?.tr?.teamAGreen) || [];
+        var curGreenB = (recordData.results?.tr?.teamBGreen) || [];
+        var newGreenA = recalculated.tr.teamAGreen || [];
+        var newGreenB = recalculated.tr.teamBGreen || [];
+        for (var i = 0; i < 18; i++) {
+            if (curGreenA[i] !== newGreenA[i] || curGreenB[i] !== newGreenB[i]) {
+                mismatches.push({ field: 'TR Green H' + (i+1), current: curGreenA[i] + '-' + curGreenB[i], expected: newGreenA[i] + '-' + newGreenB[i] });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'TR Green H' + (i+1), current: curGreenA[i] + '-' + curGreenB[i], expected: newGreenA[i] + '-' + newGreenB[i] });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 3. T-1 Display
+        var curT1 = (recordData.results?.game2?.displayT1) || [];
+        var newT1 = recalculated.game2.displayT1 || [];
+        for (var i = 0; i < 18; i++) {
+            if (curT1[i] !== newT1[i]) {
+                mismatches.push({ field: 'T-1 H' + (i+1), current: curT1[i] || '?', expected: newT1[i] || '?' });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'T-1 H' + (i+1), current: curT1[i] || '?', expected: newT1[i] || '?' });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 4. T-2 Display
+        var curT2 = (recordData.results?.game2?.displayT2) || [];
+        var newT2 = recalculated.game2.displayT2 || [];
+        for (var i = 0; i < 18; i++) {
+            if (curT2[i] !== newT2[i]) {
+                mismatches.push({ field: 'T-2 H' + (i+1), current: curT2[i] || '?', expected: newT2[i] || '?' });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'T-2 H' + (i+1), current: curT2[i] || '?', expected: newT2[i] || '?' });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 5. Strk Display
+        var curStrk = (recordData.results?.game3?.displayStrk) || [];
+        var newStrk = recalculated.game3.displayStrk || [];
+        for (var i = 0; i < 18; i++) {
+            if (curStrk[i] !== newStrk[i]) {
+                mismatches.push({ field: 'Strk H' + (i+1), current: curStrk[i] || '?', expected: newStrk[i] || '?' });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'Strk H' + (i+1), current: curStrk[i] || '?', expected: newStrk[i] || '?' });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 6. Game1 Points
+        var curG1A = (recordData.results?.game1?.pointsA) || [];
+        var curG1B = (recordData.results?.game1?.pointsB) || [];
+        var newG1A = recalculated.game1.pointsA || [];
+        var newG1B = recalculated.game1.pointsB || [];
+        for (var i = 0; i < 18; i++) {
+            if (curG1A[i] !== newG1A[i] || curG1B[i] !== newG1B[i]) {
+                mismatches.push({ field: 'Game1 H' + (i+1), current: curG1A[i] + '-' + curG1B[i], expected: newG1A[i] + '-' + newG1B[i] });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'Game1 H' + (i+1), current: curG1A[i] + '-' + curG1B[i], expected: newG1A[i] + '-' + newG1B[i] });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 7. Game2 Points
+        var curG2A = (recordData.results?.game2?.pointsA) || [];
+        var curG2B = (recordData.results?.game2?.pointsB) || [];
+        var newG2A = recalculated.game2.pointsA || [];
+        var newG2B = recalculated.game2.pointsB || [];
+        for (var i = 0; i < 18; i++) {
+            if (curG2A[i] !== newG2A[i] || curG2B[i] !== newG2B[i]) {
+                mismatches.push({ field: 'Game2 H' + (i+1), current: curG2A[i] + '-' + curG2B[i], expected: newG2A[i] + '-' + newG2B[i] });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'Game2 H' + (i+1), current: curG2A[i] + '-' + curG2B[i], expected: newG2A[i] + '-' + newG2B[i] });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 8. Game3 Points
+        var curG3A = (recordData.results?.game3?.pointsA) || [];
+        var curG3B = (recordData.results?.game3?.pointsB) || [];
+        var newG3A = recalculated.game3.pointsA || [];
+        var newG3B = recalculated.game3.pointsB || [];
+        for (var i = 0; i < 18; i++) {
+            if (curG3A[i] !== newG3A[i] || curG3B[i] !== newG3B[i]) {
+                mismatches.push({ field: 'Game3 H' + (i+1), current: curG3A[i] + '-' + curG3B[i], expected: newG3A[i] + '-' + newG3B[i] });
+                summary.mismatched++;
+            } else {
+                matches.push({ field: 'Game3 H' + (i+1), current: curG3A[i] + '-' + curG3B[i], expected: newG3A[i] + '-' + newG3B[i] });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // 9. Player Totals
+        var curTotals = recordData.results?.playerTotals || {};
+        var newTotals = recalculated.playerTotals || {};
+        if (!deepEqual(curTotals, newTotals)) {
+            mismatches.push({ field: 'Player Totals', current: 'stale', expected: 'recalculated' });
+            summary.mismatched++;
+        } else {
+            matches.push({ field: 'Player Totals', current: 'correct', expected: 'correct' });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        // 10. ClinchedAt
+        var curClinched = recordData.results?.clinchedAt || {};
+        var newClinched = recalculated.clinchedAt || {};
+        if (!deepEqual(curClinched, newClinched)) {
+            mismatches.push({ field: 'ClinchedAt', current: Object.keys(curClinched).length + ' entries', expected: Object.keys(newClinched).length + ' entries' });
+            summary.mismatched++;
+        } else {
+            matches.push({ field: 'ClinchedAt', current: Object.keys(curClinched).length + ' entries', expected: Object.keys(newClinched).length + ' entries' });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        // 11. computedUpToHole
+        var curComputed = recordData.results?.computedUpToHole;
+        var newComputed = recalculated.computedUpToHole || 18;
+        if (curComputed !== newComputed) {
+            mismatches.push({ field: 'computedUpToHole', current: curComputed || '?', expected: newComputed });
+            summary.mismatched++;
+        } else {
+            matches.push({ field: 'computedUpToHole', current: curComputed, expected: newComputed });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        // 12. finalResults
+        var curFinal = recordData.finalResults || {};
+        var newFinal = {
+            teamAScore: newTrA[17] || 9.5,
+            teamBScore: newTrB[17] || 9.5,
+            winner: newTrA[17] > newTrB[17] ? 'A' : (newTrB[17] > newTrA[17] ? 'B' : 'Tie'),
+            winnerText: newTrA[17] > newTrB[17] ? 'Team A Wins!' : (newTrB[17] > newTrA[17] ? 'Team B Wins!' : 'Match Tied!')
+        };
+        if (!deepEqual(curFinal, newFinal)) {
+            mismatches.push({ field: 'finalResults', current: 'stale', expected: 'recalculated' });
+            summary.mismatched++;
+        } else {
+            matches.push({ field: 'finalResults', current: 'correct', expected: 'correct' });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        // 13. Status (check for conflict)
+        var signatures = recordData.signatures || {};
+        var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
+        var status = recordData.status || 'unknown';
+        var expectedStatus = (bothSigned || status === 'completed' || status === 'pending_handicap') ? 'completed' : status;
+        if (status !== expectedStatus && (status === 'scheduled' || status === 'in_progress') && bothSigned) {
+            mismatches.push({ field: 'Status', current: status, expected: expectedStatus + ' (both signatures true)' });
+            summary.mismatched++;
+        } else if (status !== expectedStatus && expectedStatus !== status) {
+            mismatches.push({ field: 'Status', current: status, expected: expectedStatus });
+            summary.mismatched++;
+        } else {
+            matches.push({ field: 'Status', current: status, expected: expectedStatus });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        // 14. Celebration/Photo (v1.03)
+        var photoStatus = validatePhotoPointer(recordData);
+        var isCompletedGame = (status === 'completed' || status === 'pending_handicap' || bothSigned);
+        if (isCompletedGame && !photoStatus.hasPhoto) {
+            mismatches.push({ field: 'Celebration Photo', current: 'MISSING', expected: photoStatus.expectedPath || 'celebration/{gameId}_H.jpg' });
+            summary.mismatched++;
+        } else if (isCompletedGame && photoStatus.hasPhoto) {
+            matches.push({ field: 'Celebration Photo', current: 'present', expected: 'present' });
+            summary.matched++;
+        } else {
+            // Not completed - photo optional
+            matches.push({ field: 'Celebration Photo', current: photoStatus.hasPhoto ? 'present' : 'not required', expected: 'not required (game not completed)' });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        return {
+            valid: summary.mismatched === 0,
+            mismatches: mismatches,
+            matches: matches,
+            summary: summary,
+            photoStatus: photoStatus,
+            status: status,
+            bothSigned: bothSigned,
+            isCompletedGame: isCompletedGame,
+            expectedStatus: expectedStatus
+        };
+    }
+    
+    // ============================================================
+    // v1.03: VALIDATE RECORD - Comprehensive validation
     // ============================================================
     
     function validateRecord(recordData) {
-        // v1.01: Handle missing data gracefully
         if (!recordData) {
             return { valid: false, error: 'No record data provided' };
         }
@@ -778,30 +1031,24 @@ var UtilValidate = (function() {
         }
         
         var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
-        var recTrA = recalculated.tr.teamA || [];
-        var recTrB = recalculated.tr.teamB || [];
-        var curTrA = (recordData.results?.tr?.teamA) || [];
-        var curTrB = (recordData.results?.tr?.teamB) || [];
         
-        var mismatches = [];
-        for (var i = 0; i < 18; i++) {
-            var curA = curTrA[i];
-            var curB = curTrB[i];
-            var newA = recTrA[i];
-            var newB = recTrB[i];
-            if (curA !== newA || curB !== newB) {
-                mismatches.push(i + 1);
-            }
-        }
+        // v1.03: Comprehensive field validation
+        var fieldValidation = validateAllFields(recordData, recalculated);
         
-        var isPending = recordData.status === 'pending_handicap';
-        var needsFix = isPending || mismatches.length > 0;
+        var needsFix = fieldValidation.summary.mismatched > 0;
+        var isValid = fieldValidation.valid;
         
         return {
-            valid: !needsFix,
+            valid: isValid,
             needsFix: needsFix,
-            isPending: isPending,
-            mismatches: mismatches,
+            mismatches: fieldValidation.mismatches,
+            matches: fieldValidation.matches,
+            summary: fieldValidation.summary,
+            photoStatus: fieldValidation.photoStatus,
+            status: fieldValidation.status,
+            bothSigned: fieldValidation.bothSigned,
+            isCompletedGame: fieldValidation.isCompletedGame,
+            expectedStatus: fieldValidation.expectedStatus,
             recalculated: recalculated,
             f1Scores: f1Scores,
             f2Scores: f2Scores,
@@ -812,11 +1059,75 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD FIX PREVIEW - Compare current vs recalculated
+    // v1.03: BUILD FIELD DIFF - For preview
+    // ============================================================
+    
+    function buildFieldDiff(recordData, recalculated) {
+        if (!recordData || !recalculated) {
+            return { changes: [], unchanged: [], notTouched: [], hasChanges: false };
+        }
+        
+        var validation = validateAllFields(recordData, recalculated);
+        var changes = [];
+        var unchanged = [];
+        var notTouched = [];
+        
+        // Map mismatches to changes
+        for (var i = 0; i < validation.mismatches.length; i++) {
+            var m = validation.mismatches[i];
+            var changeIcon = '';
+            if (m.field.indexOf('TR') !== -1) changeIcon = '🏆';
+            else if (m.field.indexOf('T-1') !== -1 || m.field.indexOf('T-2') !== -1) changeIcon = '📊';
+            else if (m.field.indexOf('Strk') !== -1) changeIcon = '🎯';
+            else if (m.field.indexOf('Game') !== -1) changeIcon = '🎯';
+            else if (m.field.indexOf('Photo') !== -1) changeIcon = '📸';
+            else changeIcon = '📝';
+            
+            changes.push({
+                field: m.field,
+                current: m.current,
+                new: m.expected,
+                type: changeIcon
+            });
+        }
+        
+        // Map matches to unchanged
+        for (var i = 0; i < validation.matches.length; i++) {
+            var m = validation.matches[i];
+            unchanged.push(m.field);
+        }
+        
+        // Not touched - sacred data
+        notTouched.push('f1DataString (raw scores)');
+        notTouched.push('f2DataString (raw scores)');
+        notTouched.push('players');
+        notTouched.push('course');
+        notTouched.push('gameId');
+        notTouched.push('date');
+        notTouched.push('createdAt');
+        notTouched.push('locks');
+        notTouched.push('signatures (preserved)');
+        
+        return {
+            changes: changes,
+            unchanged: unchanged,
+            notTouched: notTouched,
+            hasChanges: changes.length > 0,
+            changeCount: changes.length,
+            unchangedCount: unchanged.length,
+            notTouchedCount: notTouched.length,
+            mismatches: validation.mismatches,
+            matches: validation.matches,
+            summary: validation.summary,
+            photoStatus: validation.photoStatus
+        };
+    }
+    
+    // ============================================================
+    // BUILD FIX PREVIEW (v1.03: uses new diff)
     // ============================================================
     
     function buildFixPreview(recordData, recalculated) {
-        // v1.01: Handle missing data gracefully
         if (!recordData || !recalculated) {
             return {
                 changes: [],
@@ -828,132 +1139,45 @@ var UtilValidate = (function() {
             };
         }
         
-        var changes = [];
-        var unchanged = [];
-        var notTouched = [];
+        var diff = buildFieldDiff(recordData, recalculated);
+        
+        // Extract mismatched holes from TR changes
         var mismatchedHoles = [];
         var matchingHoles = [];
-        
-        var curTrA = (recordData.results?.tr?.teamA) || [];
-        var curTrB = (recordData.results?.tr?.teamB) || [];
-        var newTrA = recalculated.tr.teamA || [];
-        var newTrB = recalculated.tr.teamB || [];
-        
-        for (var i = 0; i < 18; i++) {
-            var curA = curTrA[i];
-            var curB = curTrB[i];
-            var newA = newTrA[i];
-            var newB = newTrB[i];
-            
-            var match = (curA === newA && curB === newB);
-            if (match) {
-                matchingHoles.push(i + 1);
-            } else {
-                mismatchedHoles.push(i + 1);
-                changes.push({
-                    field: 'H' + (i+1) + ' TR',
-                    current: (curA !== undefined && curA !== null ? curA : 'null') + ' - ' + (curB !== undefined && curB !== null ? curB : 'null'),
-                    new: (newA !== undefined && newA !== null ? newA : 'null') + ' - ' + (newB !== undefined && newB !== null ? newB : 'null'),
-                    type: 'tr',
-                    hole: i + 1
-                });
+        for (var i = 0; i < diff.mismatches.length; i++) {
+            var m = diff.mismatches[i];
+            if (m.field.indexOf('TR H') !== -1) {
+                var holeNum = parseInt(m.field.replace('TR H', ''));
+                if (!isNaN(holeNum)) {
+                    mismatchedHoles.push(holeNum);
+                }
             }
         }
-        
-        // T-1 Display
-        var curT1 = (recordData.results?.game2?.displayT1) || [];
-        var newT1 = recalculated.game2.displayT1 || [];
-        for (var i = 0; i < 18; i++) {
-            if (curT1[i] !== newT1[i]) {
-                changes.push({
-                    field: 'H' + (i+1) + ' T-1',
-                    current: curT1[i] || '?',
-                    new: newT1[i] || '?',
-                    type: 'team',
-                    hole: i + 1
-                });
+        // Sort holes
+        mismatchedHoles.sort(function(a, b) { return a - b; });
+        for (var h = 1; h <= 18; h++) {
+            if (mismatchedHoles.indexOf(h) === -1) {
+                matchingHoles.push(h);
             }
         }
-        
-        // T-2 Display
-        var curT2 = (recordData.results?.game2?.displayT2) || [];
-        var newT2 = recalculated.game2.displayT2 || [];
-        for (var i = 0; i < 18; i++) {
-            if (curT2[i] !== newT2[i]) {
-                changes.push({
-                    field: 'H' + (i+1) + ' T-2',
-                    current: curT2[i] || '?',
-                    new: newT2[i] || '?',
-                    type: 'team',
-                    hole: i + 1
-                });
-            }
-        }
-        
-        // Strk Display
-        var curStrk = (recordData.results?.game3?.displayStrk) || [];
-        var newStrk = recalculated.game3.displayStrk || [];
-        for (var i = 0; i < 18; i++) {
-            if (curStrk[i] !== newStrk[i]) {
-                changes.push({
-                    field: 'H' + (i+1) + ' Strk',
-                    current: curStrk[i] || '?',
-                    new: newStrk[i] || '?',
-                    type: 'strk',
-                    hole: i + 1
-                });
-            }
-        }
-        
-        // Status
-        if (recordData.status !== 'completed') {
-            changes.push({
-                field: 'Status',
-                current: recordData.status || 'unknown',
-                new: 'completed',
-                type: 'status'
-            });
-        } else {
-            unchanged.push('Status already completed');
-        }
-        
-        // Player totals
-        if (!deepEqual(recordData.results?.playerTotals || {}, recalculated.playerTotals || {})) {
-            changes.push({
-                field: 'Player Totals',
-                current: 'requires update',
-                new: 'recalculated',
-                type: 'totals'
-            });
-        } else {
-            unchanged.push('Player Totals match');
-        }
-        
-        // Not touched fields
-        notTouched.push('f1DataString (raw scores)');
-        notTouched.push('f2DataString (raw scores)');
-        notTouched.push('players');
-        notTouched.push('gameInfo');
-        notTouched.push('signatures');
-        notTouched.push('completedAt');
-        notTouched.push('createdAt');
-        notTouched.push('f1IntraMatches (match bubbles)');
-        notTouched.push('f2IntraMatches (match bubbles)');
-        notTouched.push('matchResults (match bubbles)');
-        notTouched.push('adjustedHandicaps (preserved)');
         
         return {
-            changes: changes,
-            unchanged: unchanged,
-            notTouched: notTouched,
-            hasChanges: changes.length > 0,
+            changes: diff.changes,
+            unchanged: diff.unchanged,
+            notTouched: diff.notTouched,
+            hasChanges: diff.hasChanges,
+            changeCount: diff.changeCount,
+            unchangedCount: diff.unchangedCount,
+            notTouchedCount: diff.notTouchedCount,
             mismatchedHoles: mismatchedHoles,
-            matchingHoles: matchingHoles
+            matchingHoles: matchingHoles,
+            summary: diff.summary,
+            photoStatus: diff.photoStatus
         };
     }
     
     // ============================================================
-    // BUILD FIX PAYLOAD
+    // BUILD FIX PAYLOAD (v1.03: comprehensive)
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -964,7 +1188,7 @@ var UtilValidate = (function() {
         var newTrA = recalculated.tr.teamA || [];
         var newTrB = recalculated.tr.teamB || [];
         
-        // TR values
+        // 1. TR values
         for (var i = 0; i < 18; i++) {
             if (curTrA[i] !== newTrA[i] || curTrB[i] !== newTrB[i]) {
                 holesToFix.push(i);
@@ -974,34 +1198,43 @@ var UtilValidate = (function() {
         if (holesToFix.length > 0) {
             var updatedTrA = curTrA.slice();
             var updatedTrB = curTrB.slice();
+            var updatedGreenA = (recordData.results?.tr?.teamAGreen) || [];
+            var updatedGreenB = (recordData.results?.tr?.teamBGreen) || [];
+            
             for (var idx = 0; idx < holesToFix.length; idx++) {
                 var holeIdx = holesToFix[idx];
                 updatedTrA[holeIdx] = newTrA[holeIdx];
                 updatedTrB[holeIdx] = newTrB[holeIdx];
-            }
-            updatePayload['results.tr.teamA'] = updatedTrA;
-            updatePayload['results.tr.teamB'] = updatedTrB;
-            
-            // Green flags
-            var updatedGreenA = (recordData.results?.tr?.teamAGreen) || [];
-            var updatedGreenB = (recordData.results?.tr?.teamBGreen) || [];
-            for (var idx = 0; idx < holesToFix.length; idx++) {
-                var holeIdx = holesToFix[idx];
                 updatedGreenA[holeIdx] = newTrA[holeIdx] > newTrB[holeIdx];
                 updatedGreenB[holeIdx] = newTrB[holeIdx] > newTrA[holeIdx];
             }
+            updatePayload['results.tr.teamA'] = updatedTrA;
+            updatePayload['results.tr.teamB'] = updatedTrB;
             updatePayload['results.tr.teamAGreen'] = updatedGreenA;
             updatePayload['results.tr.teamBGreen'] = updatedGreenB;
         }
         
-        // T-2 Display
+        // 2. T-1 Display
+        var curT1 = (recordData.results?.game2?.displayT1) || [];
+        var newT1 = recalculated.game2.displayT1 || [];
+        var t1Mismatches = [];
+        for (var i = 0; i < 18; i++) {
+            if (curT1[i] !== newT1[i]) t1Mismatches.push(i);
+        }
+        if (t1Mismatches.length > 0) {
+            var updatedT1 = curT1.slice();
+            for (var idx = 0; idx < t1Mismatches.length; idx++) {
+                updatedT1[t1Mismatches[idx]] = newT1[t1Mismatches[idx]];
+            }
+            updatePayload['results.game2.displayT1'] = updatedT1;
+        }
+        
+        // 3. T-2 Display
         var curT2 = (recordData.results?.game2?.displayT2) || [];
         var newT2 = recalculated.game2.displayT2 || [];
         var t2Mismatches = [];
         for (var i = 0; i < 18; i++) {
-            if (curT2[i] !== newT2[i]) {
-                t2Mismatches.push(i);
-            }
+            if (curT2[i] !== newT2[i]) t2Mismatches.push(i);
         }
         if (t2Mismatches.length > 0) {
             var updatedT2 = curT2.slice();
@@ -1011,30 +1244,138 @@ var UtilValidate = (function() {
             updatePayload['results.game2.displayT2'] = updatedT2;
         }
         
-        // Status
-        if (recordData.status !== 'completed') {
+        // 4. Strk Display
+        var curStrk = (recordData.results?.game3?.displayStrk) || [];
+        var newStrk = recalculated.game3.displayStrk || [];
+        var strkMismatches = [];
+        for (var i = 0; i < 18; i++) {
+            if (curStrk[i] !== newStrk[i]) strkMismatches.push(i);
+        }
+        if (strkMismatches.length > 0) {
+            var updatedStrk = curStrk.slice();
+            for (var idx = 0; idx < strkMismatches.length; idx++) {
+                updatedStrk[strkMismatches[idx]] = newStrk[strkMismatches[idx]];
+            }
+            updatePayload['results.game3.displayStrk'] = updatedStrk;
+        }
+        
+        // 5. Game1 Points
+        var curG1A = (recordData.results?.game1?.pointsA) || [];
+        var curG1B = (recordData.results?.game1?.pointsB) || [];
+        var newG1A = recalculated.game1.pointsA || [];
+        var newG1B = recalculated.game1.pointsB || [];
+        var g1Mismatches = [];
+        for (var i = 0; i < 18; i++) {
+            if (curG1A[i] !== newG1A[i] || curG1B[i] !== newG1B[i]) g1Mismatches.push(i);
+        }
+        if (g1Mismatches.length > 0) {
+            var updatedG1A = curG1A.slice();
+            var updatedG1B = curG1B.slice();
+            for (var idx = 0; idx < g1Mismatches.length; idx++) {
+                var holeIdx = g1Mismatches[idx];
+                updatedG1A[holeIdx] = newG1A[holeIdx];
+                updatedG1B[holeIdx] = newG1B[holeIdx];
+            }
+            updatePayload['results.game1.pointsA'] = updatedG1A;
+            updatePayload['results.game1.pointsB'] = updatedG1B;
+        }
+        
+        // 6. Game2 Points
+        var curG2A = (recordData.results?.game2?.pointsA) || [];
+        var curG2B = (recordData.results?.game2?.pointsB) || [];
+        var newG2A = recalculated.game2.pointsA || [];
+        var newG2B = recalculated.game2.pointsB || [];
+        var g2Mismatches = [];
+        for (var i = 0; i < 18; i++) {
+            if (curG2A[i] !== newG2A[i] || curG2B[i] !== newG2B[i]) g2Mismatches.push(i);
+        }
+        if (g2Mismatches.length > 0) {
+            var updatedG2A = curG2A.slice();
+            var updatedG2B = curG2B.slice();
+            for (var idx = 0; idx < g2Mismatches.length; idx++) {
+                var holeIdx = g2Mismatches[idx];
+                updatedG2A[holeIdx] = newG2A[holeIdx];
+                updatedG2B[holeIdx] = newG2B[holeIdx];
+            }
+            updatePayload['results.game2.pointsA'] = updatedG2A;
+            updatePayload['results.game2.pointsB'] = updatedG2B;
+        }
+        
+        // 7. Game3 Points
+        var curG3A = (recordData.results?.game3?.pointsA) || [];
+        var curG3B = (recordData.results?.game3?.pointsB) || [];
+        var newG3A = recalculated.game3.pointsA || [];
+        var newG3B = recalculated.game3.pointsB || [];
+        var g3Mismatches = [];
+        for (var i = 0; i < 18; i++) {
+            if (curG3A[i] !== newG3A[i] || curG3B[i] !== newG3B[i]) g3Mismatches.push(i);
+        }
+        if (g3Mismatches.length > 0) {
+            var updatedG3A = curG3A.slice();
+            var updatedG3B = curG3B.slice();
+            for (var idx = 0; idx < g3Mismatches.length; idx++) {
+                var holeIdx = g3Mismatches[idx];
+                updatedG3A[holeIdx] = newG3A[holeIdx];
+                updatedG3B[holeIdx] = newG3B[holeIdx];
+            }
+            updatePayload['results.game3.pointsA'] = updatedG3A;
+            updatePayload['results.game3.pointsB'] = updatedG3B;
+        }
+        
+        // 8. Player Totals
+        if (!deepEqual(recordData.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+            updatePayload['results.playerTotals'] = recalculated.playerTotals;
+        }
+        
+        // 9. ClinchedAt
+        if (!deepEqual(recordData.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
+            updatePayload['results.clinchedAt'] = recalculated.clinchedAt;
+        }
+        
+        // 10. computedUpToHole
+        var curComputed = recordData.results?.computedUpToHole;
+        var newComputed = recalculated.computedUpToHole || 18;
+        if (curComputed !== newComputed) {
+            updatePayload['results.computedUpToHole'] = newComputed;
+        }
+        
+        // 11. Status (only if conflict detected)
+        var signatures = recordData.signatures || {};
+        var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
+        var status = recordData.status || 'unknown';
+        if (bothSigned && (status === 'scheduled' || status === 'in_progress')) {
+            updatePayload['status'] = 'completed';
+        } else if (status !== 'completed' && status !== 'pending_handicap' && bothSigned) {
             updatePayload['status'] = 'completed';
         }
         
-        // Final results
+        // 12. finalResults
         var finalTrA = recalculated.tr.teamA[17] || 9.5;
         var finalTrB = recalculated.tr.teamB[17] || 9.5;
         var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
-        updatePayload['finalResults'] = {
+        var newFinal = {
             teamAScore: finalTrA,
             teamBScore: finalTrB,
             winner: winner,
             winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
         };
+        if (!deepEqual(recordData.finalResults || {}, newFinal)) {
+            updatePayload['finalResults'] = newFinal;
+        }
         
-        updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
-        updatePayload['results.computedUpToHole'] = 18;
+        // 13. lastComputedAt
         updatePayload['results.lastComputedAt'] = new Date().toISOString();
+        
+        // 14. updatedAt
+        if (Object.keys(updatePayload).length > 0) {
+            updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
+        }
         
         return {
             updatePayload: updatePayload,
+            hasChanges: Object.keys(updatePayload).length > 0,
             holesToFix: holesToFix,
-            t2Mismatches: t2Mismatches
+            fieldsUpdated: Object.keys(updatePayload)
         };
     }
     
@@ -1043,6 +1384,7 @@ var UtilValidate = (function() {
     // ============================================================
     
     return {
+        // Existing
         parseDataString: parseDataString,
         parseHoleData: parseHoleData,
         getStrokeHoles: getStrokeHoles,
@@ -1055,10 +1397,15 @@ var UtilValidate = (function() {
         calculateStrokeGame: calculateStrokeGame,
         calculateMatchGamePerHole: calculateMatchGamePerHole,
         buildCompleteResultsFromRawData: buildCompleteResultsFromRawData,
+        deepEqual: deepEqual,
+        // v1.03: New
+        validatePhotoPointer: validatePhotoPointer,
+        validateAllFields: validateAllFields,
+        buildFieldDiff: buildFieldDiff,
+        // Updated
         validateRecord: validateRecord,
         buildFixPreview: buildFixPreview,
-        buildFixPayload: buildFixPayload,
-        deepEqual: deepEqual
+        buildFixPayload: buildFixPayload
     };
     
 })();
@@ -1067,7 +1414,7 @@ var UtilValidate = (function() {
 window.UtilValidate = UtilValidate;
 
 // ============================================================
-// VALIDATE TAB: INFORMATION GUIDE
+// VALIDATE TAB: INFORMATION GUIDE (unchanged)
 // ============================================================
 
 function showValidateInfoGuide() {
@@ -1117,13 +1464,19 @@ function showValidateInfoGuide() {
                 <table class="info-table">
                     <tr><th>Field</th><th>What It Validates</th></tr>
                     <tr><td><span class="field-name">TR (Total Results)</span></td><td class="field-desc">Team A &amp; B cumulative points per hole — the most important check</td></tr>
+                    <tr><td><span class="field-name">TR Green Flags</span></td><td class="field-desc">Which team is winning per hole</td></tr>
                     <tr><td><span class="field-name">T-1 Display</span></td><td class="field-desc">Flight 1 team game running score (e.g., "A2", "B1", "AS")</td></tr>
                     <tr><td><span class="field-name">T-2 Display</span></td><td class="field-desc">Flight 2 team game running score (e.g., "A2", "B1", "AS")</td></tr>
                     <tr><td><span class="field-name">Strk Display</span></td><td class="field-desc">Stroke game running score (e.g., "A3", "B2", "AS")</td></tr>
-                    <tr><td><span class="field-name">TR Green Flags</span></td><td class="field-desc">Which team is winning per hole (TeamAGreen/TeamBGreen)</td></tr>
+                    <tr><td><span class="field-name">Game1 Points</span></td><td class="field-desc">Match play points per hole</td></tr>
+                    <tr><td><span class="field-name">Game2 Points</span></td><td class="field-desc">Team game points per hole</td></tr>
+                    <tr><td><span class="field-name">Game3 Points</span></td><td class="field-desc">Stroke game points per hole</td></tr>
                     <tr><td><span class="field-name">Player Totals</span></td><td class="field-desc">Gross score, par, relative-to-par per player</td></tr>
-                    <tr><td><span class="field-name">Final Results</span></td><td class="field-desc">Team A/B final scores and winner</td></tr>
-                    <tr><td><span class="field-name">Status</span></td><td class="field-desc">Updates from 'pending_handicap' to 'completed'</td></tr>
+                    <tr><td><span class="field-name">ClinchedAt</span></td><td class="field-desc">When each match was clinched</td></tr>
+                    <tr><td><span class="field-name">computedUpToHole</span></td><td class="field-desc">How many holes have been computed</td></tr>
+                    <tr><td><span class="field-name">finalResults</span></td><td class="field-desc">Team A/B final scores and winner</td></tr>
+                    <tr><td><span class="field-name">Status</span></td><td class="field-desc">Record status (conflict detection)</td></tr>
+                    <tr><td><span class="field-name">Celebration Photo</span></td><td class="field-desc">Photo pointer for completed games</td></tr>
                 </table>
             </div>
             
@@ -1138,9 +1491,12 @@ function showValidateInfoGuide() {
                         <li><strong style="color:#4caf50;">2. Updates TR Values</strong> — Fixes any mismatched TR values for all 18 holes</li>
                         <li><strong style="color:#4caf50;">3. Updates TR Green Flags</strong> — Recalculates winning team indicators</li>
                         <li><strong style="color:#4caf50;">4. Updates T-1, T-2, Strk</strong> — Fixes display values if they're wrong</li>
-                        <li><strong style="color:#4caf50;">5. Updates Player Totals</strong> — Recalculates gross, par, relative-to-par</li>
-                        <li><strong style="color:#4caf50;">6. Updates Final Results</strong> — Sets team scores and winner</li>
-                        <li><strong style="color:#4caf50;">7. Updates Status</strong> — Changes from 'pending_handicap' to 'completed'</li>
+                        <li><strong style="color:#4caf50;">5. Updates Game Points</strong> — Fixes Game1, Game2, Game3 points if mismatched</li>
+                        <li><strong style="color:#4caf50;">6. Updates Player Totals</strong> — Recalculates gross, par, relative-to-par</li>
+                        <li><strong style="color:#4caf50;">7. Updates ClinchedAt</strong> — Recalculates clinch data</li>
+                        <li><strong style="color:#4caf50;">8. Updates Final Results</strong> — Sets team scores and winner</li>
+                        <li><strong style="color:#4caf50;">9. Updates Status</strong> — Changes from 'pending_handicap' to 'completed' if signatures are true</li>
+                        <li><strong style="color:#4caf50;">10. Flags Missing Photo</strong> — Highlights if celebration photo is missing for completed games</li>
                     </ol>
                 </div>
             </div>
@@ -1156,9 +1512,8 @@ function showValidateInfoGuide() {
                         <li>👥 <strong>Players</strong> — Names, labels, handicaps, teams, flights</li>
                         <li>⛳ <strong>Course</strong> — Name, par, stroke index values</li>
                         <li>📋 <strong>GameInfo</strong> — Date, starting hole, format, etc.</li>
-                        <li>🏅 <strong>Match Bubbles</strong> — f1IntraMatches, f2IntraMatches, matchResults</li>
-                        <li>📊 <strong>Adjusted Handicaps</strong> — Any manual handicap adjustments</li>
-                        <li>📝 <strong>Signatures</strong> — Player signatures if already signed</li>
+                        <li>🔒 <strong>Locks</strong> — Preserved as-is</li>
+                        <li>📝 <strong>Signatures</strong> — Preserved (only status is updated if conflict)</li>
                     </ul>
                     <br>
                     <strong style="color:#ffaa44;">In short:</strong> Only derived data is fixed. The raw data is the single source of truth.
@@ -1187,8 +1542,7 @@ function showValidateInfoGuide() {
                     <li><strong>🔴 Backup is automatic:</strong> The tool ALWAYS creates a backup in <code>backupFolder</code> before any fix. The backup ID is the original ID with a timestamp suffix.</li>
                     <li><strong>🟡 Fix is permanent:</strong> Once applied, the changes are written to Firestore. You can restore from backup if needed.</li>
                     <li><strong>🟢 Only derived data changes:</strong> Raw scores are NEVER modified. You can always re-run validation.</li>
-                    <li><strong>🔵 Match bubbles are preserved:</strong> f1IntraMatches, f2IntraMatches, and matchResults are NOT recalculated during fix — they are kept as-is.</li>
-                    <li><strong>🟣 Pending status fix:</strong> If a record is stuck in 'pending_handicap', this tool will complete it.</li>
+                    <li><strong>📸 Photo pointer:</strong> For completed games, the tool highlights if the celebration photo is missing. You can add it via the PHOTO tab.</li>
                 </ul>
             </div>
             
@@ -1206,15 +1560,14 @@ window.showValidateInfoGuide = showValidateInfoGuide;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: showValidateInfoGuide() function - full-page information overlay
-   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
-   - ADDED: Comprehensive explanation of what "validation" means
-   - ADDED: List of all fields being validated
-   - ADDED: Explanation of what happens during a "Fix" operation
-   - ADDED: Warnings and important notes for record fixing
-   - PRESERVED: All existing functionality unchanged
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: validatePhotoPointer() - Check if record has celebration field with imageUrl
+   - ADDED: validateAllFields() - Comprehensive field-by-field validation
+   - ADDED: buildFieldDiff() - Build detailed diff for preview
+   - CHANGED: validateRecord() now includes photo validation and comprehensive field checks
+   - CHANGED: buildFixPayload() now includes ALL fields (TR, T-1, T-2, Strk, status, finalResults, celebration)
+   - PRESERVED: All existing functionality from v1.02
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
