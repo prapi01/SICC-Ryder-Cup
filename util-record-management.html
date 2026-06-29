@@ -1,13 +1,14 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - ADDED: Info button in each tab header (COPY, COMPARE, VALIDATE, DELETE)
-   - ADDED: Full-page overlay CSS for information display
-   - ADDED: showCopyInfoGuide(), showCompareInfoGuide(), showValidateInfoGuide(), showDeleteInfoGuide() functions
-   - ADDED: Close button functionality for info overlays
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: PHOTO tab as the 4th tab (placed before DELETE)
+   - ADDED: Integration of util-photo.js for loading, viewing, and uploading images
+   - ADDED: Default image source set to CF URL: https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg
+   - ADDED: Photo delete functionality to remove images from Firebase Storage
+   - ADDED: photo tab info guide button and overlay
+   - PRESERVED: All existing functionality from v1.12
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -21,6 +22,7 @@ STATUS: Ready for integration
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
     <!-- Utility JS Files -->
     <script src="js/util-validate-record.js"></script>
@@ -28,6 +30,7 @@ STATUS: Ready for integration
     <script src="js/util-copy-record.js"></script>
     <script src="js/util-compare-record.js"></script>
     <script src="js/util-delete-record.js"></script>
+    <script src="js/util-photo.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -101,6 +104,7 @@ STATUS: Ready for integration
         }
         
         .card-title.danger { border-left-color: #ff6b6b; color: #ff6b6b; }
+        .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
         
         .tab-nav {
             display: flex;
@@ -110,12 +114,18 @@ STATUS: Ready for integration
             overflow: hidden;
             border: 1px solid #2a2a2a;
             background: #0a0a0a;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
+        .tab-nav::-webkit-scrollbar { height: 2px; }
+        .tab-nav::-webkit-scrollbar-thumb { background: #4caf50; border-radius: 2px; }
+        
         .tab-btn {
-            flex: 1;
-            padding: 14px 20px;
-            font-size: 0.9rem;
+            flex: 0 0 auto;
+            padding: 14px 16px;
+            font-size: 0.8rem;
             font-weight: 700;
             text-align: center;
             cursor: pointer;
@@ -124,13 +134,16 @@ STATUS: Ready for integration
             color: #666;
             transition: all 0.3s ease;
             border-right: 1px solid #1a1a1a;
+            white-space: nowrap;
+            min-width: 70px;
         }
         
         .tab-btn:last-child { border-right: none; }
         .tab-btn:hover { color: #aaa; background: #111; }
         .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
         .tab-btn.active.danger-active { background: #3a1a1a; color: #ff6b6b; box-shadow: inset 0 -2px 0 #ff6b6b; }
-        .tab-btn .tab-icon { margin-right: 8px; }
+        .tab-btn.active.photo-active { background: #2a2a0a; color: #ffaa44; box-shadow: inset 0 -2px 0 #ffaa44; }
+        .tab-btn .tab-icon { margin-right: 6px; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
@@ -155,6 +168,10 @@ STATUS: Ready for integration
         
         .tab-header-with-info .tab-title.danger {
             color: #ff6b6b;
+        }
+        
+        .tab-header-with-info .tab-title.photo {
+            color: #ffaa44;
         }
         
         .btn-info-guide {
@@ -487,6 +504,7 @@ STATUS: Ready for integration
         .env-row .env-side-label.left { color: #4caf50; }
         .env-row .env-side-label.right { color: #4a8af4; }
         .env-row .env-side-label.delete { color: #ff6b6b; }
+        .env-row .env-side-label.photo { color: #ffaa44; }
         
         .collection-select {
             width: 100%;
@@ -555,7 +573,7 @@ STATUS: Ready for integration
         .game-info-value { color: #4caf50; font-weight: 600; word-break: break-all; text-align: right; flex: 1; min-width: 80px; }
         .game-info-value.gold { color: #ffaa44; }
         
-        input {
+        input, textarea {
             background: #0a0a0a;
             border: 1px solid #4caf50;
             border-radius: 30px;
@@ -566,7 +584,7 @@ STATUS: Ready for integration
             margin-bottom: 8px;
         }
         
-        input:focus { outline: none; border-color: #ffaa44; }
+        input:focus, textarea:focus { outline: none; border-color: #ffaa44; }
         
         .input-with-datalist { position: relative; width: 100%; }
         .input-with-datalist input { width: 100%; }
@@ -644,6 +662,16 @@ STATUS: Ready for integration
             background: #1a2a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
+        }
+        
+        .btn-photo {
+            background: #2a2a0a;
+            border: 1px solid #ffaa44;
+            color: #ffaa44;
+        }
+        
+        .btn-photo:hover {
+            background: #3a3a0a;
         }
         
         .log {
@@ -1170,6 +1198,147 @@ STATUS: Ready for integration
         .badge-sched { background: #1a2a3a; color: #4a8af4; border: 1px solid #2a4a5a; }
         .badge-history { background: #1a3a2a; color: #4caf50; border: 1px solid #2a5a3a; }
         .badge-backup { background: #3a2a1a; color: #ffaa44; border: 1px solid #5a4a2a; }
+        
+        /* PHOTO Tab Styles */
+        .photo-viewer {
+            width: 100%;
+            height: 350px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 12px;
+        }
+        
+        .photo-viewer .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #555;
+            font-size: 1rem;
+        }
+        
+        .photo-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        
+        .photo-controls .btn {
+            flex: 1;
+            min-width: 80px;
+            margin-top: 0;
+        }
+        
+        .photo-status {
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            min-height: 40px;
+        }
+        
+        .photo-uploaded-preview {
+            margin-top: 12px;
+            padding: 12px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            text-align: center;
+        }
+        
+        .photo-uploaded-preview img {
+            max-width: 100%;
+            max-height: 200px;
+            object-fit: contain;
+            border-radius: 8px;
+            border: 1px solid #4caf50;
+        }
+        
+        .photo-url-display {
+            word-break: break-all;
+            font-size: 0.7rem;
+            color: #888;
+            padding: 8px;
+            background: #0a0a0a;
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+        
+        .photo-url-display .url-value {
+            color: #ffaa44;
+            font-family: monospace;
+        }
+        
+        .photo-progress {
+            display: none;
+            margin: 8px 0;
+        }
+        
+        .photo-progress .progress-bar {
+            height: 4px;
+            background: #2a5a2a;
+            border-radius: 2px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+        
+        .photo-firestore-ref {
+            margin-top: 12px;
+            padding: 12px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            display: none;
+        }
+        
+        .photo-firestore-ref .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .photo-firestore-ref .row input,
+        .photo-firestore-ref .row select {
+            flex: 1;
+            min-width: 100px;
+            margin-bottom: 4px;
+        }
+        
+        .photo-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            background: #2a2a0a;
+            color: #ffaa44;
+            border: 1px solid #5a5a2a;
+            margin-left: 6px;
+        }
+        
+        /* Fix for scrollable tab nav on mobile */
+        @media (max-width: 500px) {
+            .tab-btn {
+                padding: 10px 12px;
+                font-size: 0.7rem;
+                min-width: 55px;
+            }
+            .tab-btn .tab-icon { margin-right: 4px; }
+        }
+        
+        @media (max-width: 380px) {
+            .tab-btn {
+                padding: 8px 8px;
+                font-size: 0.6rem;
+                min-width: 45px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1187,6 +1356,9 @@ STATUS: Ready for integration
         </button>
         <button class="tab-btn" data-tab="tabValidate">
             <span class="tab-icon">🔬</span> VALIDATE
+        </button>
+        <button class="tab-btn" data-tab="tabPhoto">
+            <span class="tab-icon">🖼️</span> PHOTO
         </button>
         <button class="tab-btn" data-tab="tabDelete">
             <span class="tab-icon">🗑️</span> DELETE
@@ -1514,6 +1686,96 @@ STATUS: Ready for integration
     </div>
     
     <!-- ============================================================ -->
+    <!-- TAB: PHOTO -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabPhoto">
+        
+        <!-- INFO BUTTON - PHOTO -->
+        <div class="tab-header-with-info">
+            <span class="tab-title photo">🖼️ PHOTO</span>
+            <button class="btn-info-guide" onclick="showPhotoInfoGuide()">ℹ️ Information</button>
+        </div>
+        
+        <div class="card">
+            <div class="card-title photo">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label photo">🖼️ STORAGE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="photoProdBtn">PROD</button>
+                    <button class="env-btn-small" id="photoDevBtn">DEV</button>
+                </div>
+                <span id="photoIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            <div style="font-size:0.7rem; color:#888; margin-top:4px;">
+                📸 Source image: <a href="https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg" target="_blank" style="color:#ffaa44;">C.jpg</a> (Cloudflare Pages)
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title photo">📥 STEP 1: LOAD IMAGE</div>
+            <div class="photo-controls">
+                <input type="text" id="photoUrlInput" placeholder="Enter GitHub raw URL or use default" value="https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg">
+                <button id="photoLoadBtn" class="btn btn-photo">📥 Load from URL</button>
+                <button id="photoResetBtn" class="btn btn-secondary">↻ Reset</button>
+            </div>
+            <div class="photo-viewer" id="photoViewer">
+                <div class="placeholder">🖼️ Load an image to preview</div>
+            </div>
+            <div class="photo-status" id="photoStatus">
+                <span class="log-info">Ready. Load an image from the URL above.</span>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title photo">📤 STEP 2: UPLOAD TO STORAGE</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <div style="flex:2; min-width:150px;">
+                    <input type="text" id="photoFilename" placeholder="Filename (e.g., C_2026-06-29.jpg)">
+                </div>
+                <div style="flex:1; min-width:120px;">
+                    <input type="text" id="photoStorageFolder" placeholder="Folder (e.g., celebrations/)" value="celebrations/">
+                </div>
+            </div>
+            <div class="photo-progress" id="photoProgress">
+                <div class="progress-bar" style="width:0%;"></div>
+            </div>
+            <button id="photoUploadBtn" class="btn btn-photo">📤 Upload to Firebase Storage</button>
+            <div class="photo-status" id="photoUploadStatus" style="margin-top:8px;"></div>
+        </div>
+        
+        <div class="card" id="uploadedPhotoCard" style="display:none;">
+            <div class="card-title photo">✅ UPLOADED</div>
+            <div class="photo-uploaded-preview" id="uploadedPhotoViewer"></div>
+            <div class="photo-url-display" id="uploadedUrl" style="display:none;">
+                <span class="game-info-label">Download URL:</span>
+                <span class="url-value" id="uploadedUrlValue"></span>
+            </div>
+            <div class="button-group" style="margin-top:8px;">
+                <button id="copyUrlBtn" class="btn btn-secondary" style="display:none;">📋 Copy URL</button>
+                <button id="viewUploadedBtn" class="btn btn-secondary" style="display:none;">👁️ View</button>
+            </div>
+        </div>
+        
+        <div class="card photo-firestore-ref" id="firestoreRefSection" style="display:none;">
+            <div class="card-title photo">💾 SAVE TO FIRESTORE</div>
+            <div style="font-size:0.7rem; color:#888; margin-bottom:8px;">
+                Save the uploaded photo URL to a Firestore document field.
+            </div>
+            <div class="row">
+                <select id="photoFirestoreCollection" class="collection-select" style="flex:1; min-width:100px;">
+                    <option value="scheduledGames">scheduledGames</option>
+                    <option value="historyGames">historyGames</option>
+                    <option value="backupFolder">backupFolder</option>
+                </select>
+                <input type="text" id="photoFirestoreDocId" placeholder="Document ID" style="flex:2; min-width:150px;">
+                <input type="text" id="photoFirestoreField" placeholder="Field name (e.g., celebration)" value="celebration" style="flex:1; min-width:100px;">
+            </div>
+            <button id="saveFirestoreRefBtn" class="btn btn-photo">💾 Save Reference to Firestore</button>
+            <div id="firestoreStatus" class="photo-status" style="margin-top:8px;"></div>
+        </div>
+    </div>
+    
+    <!-- ============================================================ -->
     <!-- TAB: DELETE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabDelete">
@@ -1587,15 +1849,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.13</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.12
+// VERSION: 1.13
 // ============================================================
 
-var APP_VERSION = "1.12";
+var APP_VERSION = "1.13";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -1712,11 +1974,15 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         document.querySelectorAll('.tab-btn').forEach(function(el) {
             el.classList.remove('active');
             el.classList.remove('danger-active');
+            el.classList.remove('photo-active');
         });
         document.getElementById(tabId).classList.add('active');
         this.classList.add('active');
         if (tabId === 'tabDelete') {
             this.classList.add('danger-active');
+        }
+        if (tabId === 'tabPhoto') {
+            this.classList.add('photo-active');
         }
         
         if (tabId === 'tabCompare') {
@@ -1730,6 +1996,9 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
                 loadDeleteRecords();
             }
         }
+        if (tabId === 'tabPhoto') {
+            initPhotoTab();
+        }
     });
 });
 
@@ -1740,6 +2009,7 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 // - showCompareInfoGuide() in util-compare-record.js
 // - showValidateInfoGuide() in util-validate-record.js
 // - showDeleteInfoGuide()  in util-delete-record.js
+// - showPhotoInfoGuide()   in util-photo.js
 // ============================================================
 
 // ============================================================
@@ -1967,6 +2237,13 @@ document.getElementById('deleteCollection').onchange = function() {
 };
 
 // ============================================================
+// PHOTO TAB: EVENT BINDINGS (delegates to util-photo.js)
+// ============================================================
+
+// Environment buttons are handled in util-photo.js via initPhotoTab()
+// But we need to set the default environment on load
+
+// ============================================================
 // DATE TOGGLE
 // ============================================================
 
@@ -2006,6 +2283,7 @@ document.getElementById('copyDestProdBtn').className = 'env-btn-small active-pro
 document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('photoProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('deleteProdBtn').className = 'env-btn-small active-prod';
 
 document.getElementById('copySourceIndicator').textContent = 'PROD';
@@ -2018,6 +2296,8 @@ document.getElementById('compareRightIndicator').textContent = 'PROD';
 document.getElementById('compareRightIndicator').className = 'env-indicator-small prod';
 document.getElementById('validateIndicator').textContent = 'PROD';
 document.getElementById('validateIndicator').className = 'env-indicator-small prod';
+document.getElementById('photoIndicator').textContent = 'PROD';
+document.getElementById('photoIndicator').className = 'env-indicator-small prod';
 document.getElementById('deleteIndicator').textContent = 'PROD';
 document.getElementById('deleteIndicator').className = 'env-indicator-small prod';
 
@@ -2032,13 +2312,20 @@ setCompareRightEnvironment('PROD');
 // Set up DELETE tab environment
 setDeleteEnvironment('PROD');
 
-log('Record Management v1.12 loaded', 'success');
+// Set up PHOTO tab environment
+setPhotoEnvironment('PROD');
+
+// Initialize Photo tab UI
+initPhotoTab();
+
+log('Record Management v1.13 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
 log('3. COMPARE tab: field-by-field comparison across environments', 'info');
 log('4. VALIDATE tab: load and validate records, fix corrupted ones', 'info');
-log('5. DELETE tab: delete records from any collection (PERMANENT)', 'info');
+log('5. PHOTO tab: load C.jpg from CF, upload to Firebase Storage, save to Firestore', 'info');
+log('6. DELETE tab: delete records from any collection (PERMANENT)', 'info');
 log('=====================================', 'info');
 
 // Pre-load records
@@ -2055,13 +2342,14 @@ setTimeout(function() {
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - ADDED: Info button in each tab header (COPY, COMPARE, VALIDATE, DELETE)
-   - ADDED: Full-page overlay CSS for information display
-   - ADDED: showCopyInfoGuide(), showCompareInfoGuide(), showValidateInfoGuide(), showDeleteInfoGuide() functions
-   - ADDED: Close button functionality for info overlays
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: PHOTO tab as the 4th tab (placed before DELETE)
+   - ADDED: Integration of util-photo.js for loading, viewing, and uploading images
+   - ADDED: Default image source set to CF URL: https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg
+   - ADDED: Photo delete functionality to remove images from Firebase Storage
+   - ADDED: photo tab info guide button and overlay
+   - PRESERVED: All existing functionality from v1.12
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
