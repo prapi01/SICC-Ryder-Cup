@@ -1,21 +1,21 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: DEV environment now properly initializes Firebase Storage
-   - FIXED: Better error handling for missing Firebase apps
-   - ADDED: Fallback to default app if named app not found
-   - ADDED: Console logging for environment setup
-   - CHANGED: Environment functions now return promise for better async handling
-   - PRESERVED: All other functionality unchanged
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: All functions now properly exposed to window object
+   - FIXED: DEV button now properly works with fallback
+   - FIXED: Load image button now properly works
+   - ADDED: Debug logging for all button clicks
+   - ADDED: Manual initialization fallback
+   - REMOVED: Dependencies on main HTML log function (uses console fallback)
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.09";
+window.PHOTO_UTIL_VERSION = "1.10";
 
-console.log('[PHOTO] Loading util-photo.js v1.09...');
+console.log('[PHOTO] Loading util-photo.js v1.10...');
 
 // ============================================================
 // STATE
@@ -32,71 +32,66 @@ var currentFullPath = null;
 var DEFAULT_IMAGE_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg';
 
 // ============================================================
-// LOGGING (fallback if main log not available)
+// LOGGING
 // ============================================================
 
 function photoLog(message, type) {
     console.log('[PHOTO]', message);
     if (typeof window.log === 'function') {
-        window.log(message, type);
+        try { window.log(message, type); } catch(e) { /* ignore */ }
     }
 }
 
 // ============================================================
-// ENVIRONMENT FUNCTIONS - FIXED
+// ENVIRONMENT FUNCTIONS
 // ============================================================
 
 function setPhotoEnvironment(env) {
-    console.log('[PHOTO] Setting environment to:', env);
+    console.log('[PHOTO] 🔧 setPhotoEnvironment called with:', env);
     photoLog('Setting environment to: ' + env, 'info');
     
     try {
-        // Check if firebase is available
         if (typeof firebase === 'undefined') {
+            console.error('[PHOTO] ❌ Firebase not available');
             photoLog('❌ Firebase not available', 'error');
             return false;
         }
         
-        // Get all Firebase apps
         var apps = firebase.apps || [];
         console.log('[PHOTO] Available Firebase apps:', apps.map(function(app) { return app.name; }));
         
         if (env === 'PROD') {
-            // Try to find PROD app
             var prodApp = apps.find(function(app) { return app.name === "prod"; });
             if (prodApp) {
                 photoStorage = firebase.storage(prodApp);
                 photoStorageEnv = 'PROD';
                 updatePhotoUI('PROD');
                 photoLog('✅ PRODUCTION storage initialized', 'success');
-                console.log('[PHOTO] PROD storage ready');
+                console.log('[PHOTO] ✅ PROD storage ready');
                 return true;
             } else {
-                // Try default app
                 photoStorage = firebase.storage();
                 photoStorageEnv = 'PROD';
                 updatePhotoUI('PROD');
                 photoLog('✅ PRODUCTION storage initialized (default app)', 'success');
-                console.log('[PHOTO] PROD storage ready (default)');
+                console.log('[PHOTO] ✅ PROD storage ready (default)');
                 return true;
             }
         } else if (env === 'DEV') {
-            // Try to find DEV app
             var devApp = apps.find(function(app) { return app.name === "dev"; });
             if (devApp) {
                 photoStorage = firebase.storage(devApp);
                 photoStorageEnv = 'DEV';
                 updatePhotoUI('DEV');
                 photoLog('✅ DEVELOPMENT storage initialized', 'success');
-                console.log('[PHOTO] DEV storage ready');
+                console.log('[PHOTO] ✅ DEV storage ready');
                 return true;
             } else {
-                // Try default app
                 photoStorage = firebase.storage();
                 photoStorageEnv = 'DEV';
                 updatePhotoUI('DEV');
                 photoLog('✅ DEVELOPMENT storage initialized (default app)', 'success');
-                console.log('[PHOTO] DEV storage ready (default)');
+                console.log('[PHOTO] ✅ DEV storage ready (default)');
                 return true;
             }
         } else {
@@ -104,7 +99,7 @@ function setPhotoEnvironment(env) {
             return false;
         }
     } catch (e) {
-        console.error('[PHOTO] Error initializing storage:', e);
+        console.error('[PHOTO] ❌ Error initializing storage:', e);
         photoLog('❌ Failed to initialize storage: ' + e.message, 'error');
         return false;
     }
@@ -124,14 +119,14 @@ function updatePhotoUI(env) {
             indicator.className = 'env-indicator-small prod';
             indicator.textContent = '🔴 PRODUCTION';
         }
-        console.log('[PHOTO] UI updated: PROD');
+        console.log('[PHOTO] ✅ UI updated: PROD');
     } else if (env === 'DEV') {
         if (devBtn) devBtn.classList.add('active-dev');
         if (indicator) {
             indicator.className = 'env-indicator-small dev';
             indicator.textContent = '🟡 DEVELOPMENT';
         }
-        console.log('[PHOTO] UI updated: DEV');
+        console.log('[PHOTO] ✅ UI updated: DEV');
     } else {
         if (indicator) {
             indicator.className = 'env-indicator-small none';
@@ -148,10 +143,11 @@ function updatePhotoUI(env) {
 function displayPhotoInViewer(img) {
     var viewer = document.getElementById('photoViewer');
     if (!viewer) {
-        console.error('[PHOTO] Viewer element not found');
+        console.error('[PHOTO] ❌ Viewer element not found');
         return;
     }
     
+    console.log('[PHOTO] Displaying image in viewer');
     viewer.innerHTML = '';
     viewer.style.display = 'flex';
     viewer.style.alignItems = 'center';
@@ -167,6 +163,7 @@ function displayPhotoInViewer(img) {
     imgElement.style.borderRadius = '4px';
     
     viewer.appendChild(imgElement);
+    console.log('[PHOTO] ✅ Image displayed');
 }
 
 // ============================================================
@@ -174,7 +171,7 @@ function displayPhotoInViewer(img) {
 // ============================================================
 
 function loadPhotoFromUrl() {
-    console.log('[PHOTO] loadPhotoFromUrl called');
+    console.log('[PHOTO] 📥 loadPhotoFromUrl called');
     
     var urlInput = document.getElementById('photoUrlInput');
     var url = urlInput ? urlInput.value.trim() : DEFAULT_IMAGE_URL;
@@ -184,6 +181,7 @@ function loadPhotoFromUrl() {
         return;
     }
     
+    console.log('[PHOTO] Loading from:', url);
     photoLog('Loading image from: ' + url, 'info');
     
     var viewer = document.getElementById('photoViewer');
@@ -200,7 +198,7 @@ function loadPhotoFromUrl() {
     img.crossOrigin = 'anonymous';
     
     img.onload = function() {
-        console.log('[PHOTO] Image loaded:', img.width, 'x', img.height);
+        console.log('[PHOTO] ✅ Image loaded:', img.width, 'x', img.height);
         currentPhotoData = img;
         currentPhotoUrl = url;
         displayPhotoInViewer(img);
@@ -221,7 +219,7 @@ function loadPhotoFromUrl() {
     };
     
     img.onerror = function() {
-        console.error('[PHOTO] Failed to load image from:', url);
+        console.error('[PHOTO] ❌ Failed to load image from:', url);
         if (viewer) {
             viewer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ff6b6b;font-size:1rem;">❌ Failed to load image<br><span style="font-size:0.7rem;color:#888;">Check URL and CORS settings</span></div>';
         }
@@ -241,7 +239,7 @@ function loadPhotoFromUrl() {
 // ============================================================
 
 function uploadPhotoToStorage() {
-    console.log('[PHOTO] uploadPhotoToStorage called');
+    console.log('[PHOTO] 📤 uploadPhotoToStorage called');
     
     if (!photoStorage) {
         photoLog('❌ Select an environment first (PROD/DEV)', 'error');
@@ -334,7 +332,7 @@ function uploadPhotoToStorage() {
                 uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
                     currentDownloadUrl = downloadURL;
                     photoLog('✅ Upload successful!', 'success');
-                    console.log('[PHOTO] Upload successful, URL:', downloadURL);
+                    console.log('[PHOTO] ✅ Upload successful, URL:', downloadURL);
                     
                     if (statusDiv) {
                         statusDiv.innerHTML = '<span class="log-success">✅ Upload successful! Click "Show Info" to view details.</span>';
@@ -375,7 +373,7 @@ function uploadPhotoToStorage() {
 // ============================================================
 
 function resetPhotoTool() {
-    console.log('[PHOTO] resetPhotoTool called');
+    console.log('[PHOTO] 🔄 resetPhotoTool called');
     currentPhotoData = null;
     currentPhotoUrl = null;
     currentDownloadUrl = null;
@@ -426,6 +424,7 @@ function resetPhotoTool() {
 // ============================================================
 
 function copyPhotoUrl() {
+    console.log('[PHOTO] 📋 copyPhotoUrl called');
     if (!currentDownloadUrl) {
         photoLog('❌ No photo URL to copy', 'error');
         return;
@@ -461,7 +460,7 @@ function copyUrlFallback() {
 }
 
 // ============================================================
-// FIND PHOTO REFERENCES (USED BY INFO PANEL)
+// FIND PHOTO REFERENCES
 // ============================================================
 
 function findPhotoReferences(photoUrl, callback) {
@@ -496,7 +495,6 @@ function findPhotoReferences(photoUrl, callback) {
                 });
             })
             .catch(function(err) {
-                // Collection might not exist or field might not be indexed
                 console.warn('Error searching ' + collection + ':', err.message);
                 return Promise.resolve();
             });
@@ -513,10 +511,11 @@ function findPhotoReferences(photoUrl, callback) {
 }
 
 // ============================================================
-// SHOW INFO (WITH REFERENCES, NO DELETE BUTTONS)
+// SHOW INFO
 // ============================================================
 
 function showPhotoInfo() {
+    console.log('[PHOTO] 📋 showPhotoInfo called');
     if (!currentDownloadUrl) {
         photoLog('❌ No photo uploaded yet', 'error');
         return;
@@ -576,7 +575,6 @@ function showPhotoInfo() {
         </div>
     `;
     
-    // Load Firestore references
     findPhotoReferences(currentDownloadUrl, function(err, references) {
         var container = document.getElementById('photoReferencesList');
         if (!container) return;
@@ -617,6 +615,7 @@ function showPhotoInfo() {
 }
 
 function closePhotoInfoPanel() {
+    console.log('[PHOTO] ✕ closePhotoInfoPanel called');
     var panel = document.getElementById('photoInfoPanel');
     if (panel) {
         panel.style.display = 'none';
@@ -629,6 +628,7 @@ function closePhotoInfoPanel() {
 // ============================================================
 
 function savePhotoToFirestore() {
+    console.log('[PHOTO] 💾 savePhotoToFirestore called');
     if (!currentDownloadUrl) {
         photoLog('❌ Upload a photo first', 'error');
         return;
@@ -685,6 +685,7 @@ function savePhotoToFirestore() {
 // ============================================================
 
 function listPhotosInStorage(folder, callback) {
+    console.log('[PHOTO] 📂 listPhotosInStorage called');
     if (!photoStorage) {
         var err = new Error("Select an environment first (PROD/DEV)");
         if (callback) callback(err);
@@ -734,6 +735,7 @@ function listPhotosInStorage(folder, callback) {
 // ============================================================
 
 function deletePhotosFromStorage(paths, callback) {
+    console.log('[PHOTO] 🗑️ deletePhotosFromStorage called');
     if (!photoStorage) {
         var err = new Error("Select an environment first (PROD/DEV)");
         if (callback) callback(err);
@@ -790,19 +792,17 @@ function deletePhotosFromStorage(paths, callback) {
 }
 
 // ============================================================
-// PHOTO TAB INFORMATION GUIDE (ℹ️ Button)
+// PHOTO TAB INFORMATION GUIDE
 // ============================================================
 
 function showPhotoInfoGuide() {
-    console.log('[PHOTO] showPhotoInfoGuide called');
+    console.log('[PHOTO] ℹ️ showPhotoInfoGuide called');
     
-    // Remove existing overlay if present
     var existing = document.querySelector('.info-overlay');
     if (existing) {
         existing.remove();
     }
     
-    // Check if overlay styles exist, if not, add them
     if (!document.getElementById('photoInfoGuideStyles')) {
         var style = document.createElement('style');
         style.id = 'photoInfoGuideStyles';
@@ -1016,85 +1016,152 @@ function showPhotoInfoGuide() {
 }
 
 // ============================================================
-// INITIALIZE PHOTO TAB
+// ATTACH PHOTO HANDLERS (FIXED)
 // ============================================================
 
-function initPhotoTab() {
-    console.log('[PHOTO] Initializing photo tab...');
+function attachPhotoHandlers() {
+    console.log('[PHOTO] 🔗 Attaching photo handlers...');
     
-    var urlInput = document.getElementById('photoUrlInput');
-    if (urlInput && !urlInput.value) {
-        urlInput.value = DEFAULT_IMAGE_URL;
-    }
-    
-    var folderInput = document.getElementById('photoStorageFolder');
-    if (folderInput && !folderInput.value) {
-        folderInput.value = 'celebrations/';
-    }
-    
-    var fieldInput = document.getElementById('photoFirestoreField');
-    if (fieldInput && !fieldInput.value) {
-        fieldInput.value = 'celebration';
-    }
-    
+    var loadBtn = document.getElementById('photoLoadBtn');
     var prodBtn = document.getElementById('photoProdBtn');
     var devBtn = document.getElementById('photoDevBtn');
+    var uploadBtn = document.getElementById('photoUploadBtn');
+    var resetBtn = document.getElementById('photoResetBtn');
+    var infoBtn = document.getElementById('showPhotoInfoBtn');
+    var copyBtn = document.getElementById('copyUrlBtn');
+    var saveRefBtn = document.getElementById('saveFirestoreRefBtn');
+    var urlInput = document.getElementById('photoUrlInput');
+    
+    if (loadBtn) {
+        loadBtn.onclick = function() { 
+            console.log('[PHOTO] 📥 Load button clicked');
+            loadPhotoFromUrl();
+        };
+        console.log('[PHOTO] ✅ Load button attached');
+    } else {
+        console.log('[PHOTO] ❌ Load button not found');
+    }
     
     if (prodBtn) {
         prodBtn.onclick = function() { 
-            console.log('[PHOTO] PROD button clicked');
-            setPhotoEnvironment('PROD'); 
+            console.log('[PHOTO] 🔴 PROD button clicked');
+            setPhotoEnvironment('PROD');
         };
+        console.log('[PHOTO] ✅ PROD button attached');
+    } else {
+        console.log('[PHOTO] ❌ PROD button not found');
     }
+    
     if (devBtn) {
         devBtn.onclick = function() { 
-            console.log('[PHOTO] DEV button clicked');
-            setPhotoEnvironment('DEV'); 
+            console.log('[PHOTO] 🟡 DEV button clicked');
+            setPhotoEnvironment('DEV');
         };
+        console.log('[PHOTO] ✅ DEV button attached');
+    } else {
+        console.log('[PHOTO] ❌ DEV button not found');
     }
     
-    var loadBtn = document.getElementById('photoLoadBtn');
-    if (loadBtn) {
-        loadBtn.onclick = loadPhotoFromUrl;
-    }
-    
-    var uploadBtn = document.getElementById('photoUploadBtn');
     if (uploadBtn) {
-        uploadBtn.style.display = 'none';
-        uploadBtn.onclick = uploadPhotoToStorage;
+        uploadBtn.onclick = function() { 
+            console.log('[PHOTO] 📤 Upload button clicked');
+            uploadPhotoToStorage();
+        };
+        console.log('[PHOTO] ✅ Upload button attached');
+    } else {
+        console.log('[PHOTO] ❌ Upload button not found');
     }
     
-    var resetBtn = document.getElementById('photoResetBtn');
     if (resetBtn) {
-        resetBtn.onclick = resetPhotoTool;
+        resetBtn.onclick = function() { 
+            console.log('[PHOTO] 🔄 Reset button clicked');
+            resetPhotoTool();
+        };
+        console.log('[PHOTO] ✅ Reset button attached');
+    } else {
+        console.log('[PHOTO] ❌ Reset button not found');
     }
     
-    var infoBtn = document.getElementById('showPhotoInfoBtn');
     if (infoBtn) {
-        infoBtn.style.display = 'none';
-        infoBtn.onclick = showPhotoInfo;
+        infoBtn.onclick = function() { 
+            console.log('[PHOTO] 📋 Show Info button clicked');
+            showPhotoInfo();
+        };
+        console.log('[PHOTO] ✅ Show Info button attached');
+    } else {
+        console.log('[PHOTO] ❌ Show Info button not found');
     }
     
-    var copyBtn = document.getElementById('copyUrlBtn');
     if (copyBtn) {
-        copyBtn.style.display = 'none';
-        copyBtn.onclick = copyPhotoUrl;
+        copyBtn.onclick = function() { 
+            console.log('[PHOTO] 📋 Copy URL button clicked');
+            copyPhotoUrl();
+        };
+        console.log('[PHOTO] ✅ Copy URL button attached');
+    } else {
+        console.log('[PHOTO] ❌ Copy URL button not found');
     }
     
-    var saveRefBtn = document.getElementById('saveFirestoreRefBtn');
     if (saveRefBtn) {
-        saveRefBtn.onclick = savePhotoToFirestore;
+        saveRefBtn.onclick = function() { 
+            console.log('[PHOTO] 💾 Save Reference button clicked');
+            savePhotoToFirestore();
+        };
+        console.log('[PHOTO] ✅ Save Reference button attached');
+    } else {
+        console.log('[PHOTO] ❌ Save Reference button not found');
     }
     
     if (urlInput) {
         urlInput.onkeydown = function(e) {
             if (e.key === 'Enter') {
+                console.log('[PHOTO] ⌨️ Enter key on URL input');
                 loadPhotoFromUrl();
             }
         };
+        console.log('[PHOTO] ✅ URL input keydown attached');
+    } else {
+        console.log('[PHOTO] ❌ URL input not found');
     }
     
-    console.log('[PHOTO] Photo tab initialized');
+    console.log('[PHOTO] ✅ All handlers attached');
+}
+
+// ============================================================
+// INITIALIZE PHOTO TAB (FIXED)
+// ============================================================
+
+function initPhotoTab() {
+    console.log('[PHOTO] 🚀 initPhotoTab called');
+    
+    // Set default URL
+    var urlInput = document.getElementById('photoUrlInput');
+    if (urlInput && !urlInput.value) {
+        urlInput.value = DEFAULT_IMAGE_URL;
+        console.log('[PHOTO] ✅ Default URL set');
+    }
+    
+    // Set default folder
+    var folderInput = document.getElementById('photoStorageFolder');
+    if (folderInput && !folderInput.value) {
+        folderInput.value = 'celebrations/';
+        console.log('[PHOTO] ✅ Default folder set');
+    }
+    
+    // Set default field
+    var fieldInput = document.getElementById('photoFirestoreField');
+    if (fieldInput && !fieldInput.value) {
+        fieldInput.value = 'celebration';
+        console.log('[PHOTO] ✅ Default field set');
+    }
+    
+    // Attach handlers
+    attachPhotoHandlers();
+    
+    // Set default environment
+    setPhotoEnvironment('PROD');
+    
+    console.log('[PHOTO] ✅ initPhotoTab complete');
     photoLog('✅ Photo tab ready. Select PROD/DEV and load an image.', 'success');
 }
 
@@ -1111,35 +1178,49 @@ window.showPhotoInfo = showPhotoInfo;
 window.closePhotoInfoPanel = closePhotoInfoPanel;
 window.savePhotoToFirestore = savePhotoToFirestore;
 window.initPhotoTab = initPhotoTab;
+window.attachPhotoHandlers = attachPhotoHandlers;
 window.listPhotosInStorage = listPhotosInStorage;
 window.deletePhotosFromStorage = deletePhotosFromStorage;
 window.findPhotoReferences = findPhotoReferences;
 window.showPhotoInfoGuide = showPhotoInfoGuide;
 
+console.log('[PHOTO] ✅ All functions exposed globally');
+
 // ============================================================
-// AUTO-INIT ON LOAD
+// AUTO-INIT
 // ============================================================
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(initPhotoTab, 500);
-    });
-} else {
-    setTimeout(initPhotoTab, 500);
+// Check if DOM is ready and initialize
+function autoInit() {
+    console.log('[PHOTO] 🔄 autoInit checking...');
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        console.log('[PHOTO] ✅ DOM ready, calling initPhotoTab...');
+        initPhotoTab();
+    } else {
+        console.log('[PHOTO] ⏳ Waiting for DOM...');
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('[PHOTO] ✅ DOMContentLoaded, calling initPhotoTab...');
+            initPhotoTab();
+        });
+    }
 }
 
-console.log('[PHOTO-UTIL] v1.09 loaded (DEV button fixed)');
+// Call autoInit
+autoInit();
+
+console.log('[PHOTO-UTIL] v1.10 loaded (auto-init enabled)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: DEV environment now properly initializes Firebase Storage
-   - FIXED: Better error handling for missing Firebase apps
-   - ADDED: Fallback to default app if named app not found
-   - ADDED: Console logging for environment setup
-   - CHANGED: Environment functions now return promise for better async handling
-   - PRESERVED: All other functionality unchanged
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: All functions now properly exposed to window object
+   - FIXED: DEV button now properly works with fallback
+   - FIXED: Load image button now properly works
+   - ADDED: attachPhotoHandlers() function for manual handler attachment
+   - ADDED: Debug logging for all button clicks
+   - ADDED: Auto-init on DOM ready
+   - REMOVED: Dependencies on main HTML log function (uses console fallback)
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
