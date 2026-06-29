@@ -1,20 +1,21 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: All functions now properly exposed globally
-   - FIXED: Added fallback for missing log function
-   - FIXED: Better error handling
-   - ADDED: Console logging for debugging
-   - SIMPLIFIED: Removed all external dependencies
-DEPENDS ON: Firebase Storage (for upload), Firestore (for saving references)
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - REMOVED: All delete-related functions (moved to DELETE tab)
+   - REMOVED: deletePhotoFromStorage, deletePhotosFromStorage, deletePhotoWithReferences
+   - REMOVED: deletePhotoStorageOnly, deletePhotoComplete, findPhotoReferences
+   - REMOVED: removeSingleReference, deleteCurrentPhoto
+   - PRESERVED: Load, upload, view, copy, save to Firestore functions
+   - PRESERVED: listPhotosInStorage (used by DELETE tab)
+DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.05";
+window.PHOTO_UTIL_VERSION = "1.06";
 
-console.log('[PHOTO] Loading util-photo.js v1.05...');
+console.log('[PHOTO] Loading util-photo.js v1.06...');
 
 // ============================================================
 // STATE
@@ -36,7 +37,6 @@ var DEFAULT_IMAGE_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.j
 
 function photoLog(message, type) {
     console.log('[PHOTO]', message);
-    // Try to use main log if available
     if (typeof window.log === 'function') {
         window.log(message, type);
     }
@@ -58,15 +58,12 @@ function setPhotoEnvironment(env) {
                 photoStorageEnv = 'PROD';
                 updatePhotoUI('PROD');
                 photoLog('✅ PRODUCTION storage initialized', 'success');
-                console.log('[PHOTO] PROD storage ready');
                 return true;
             } else {
-                // Try default app
                 photoStorage = firebase.storage();
                 photoStorageEnv = 'PROD';
                 updatePhotoUI('PROD');
-                photoLog('✅ PRODUCTION storage initialized (default app)', 'success');
-                console.log('[PHOTO] PROD storage ready (default)');
+                photoLog('✅ PRODUCTION storage initialized (default)', 'success');
                 return true;
             }
         } else if (env === 'DEV') {
@@ -76,15 +73,12 @@ function setPhotoEnvironment(env) {
                 photoStorageEnv = 'DEV';
                 updatePhotoUI('DEV');
                 photoLog('✅ DEVELOPMENT storage initialized', 'success');
-                console.log('[PHOTO] DEV storage ready');
                 return true;
             } else {
-                // Try default app
                 photoStorage = firebase.storage();
                 photoStorageEnv = 'DEV';
                 updatePhotoUI('DEV');
-                photoLog('✅ DEVELOPMENT storage initialized (default app)', 'success');
-                console.log('[PHOTO] DEV storage ready (default)');
+                photoLog('✅ DEVELOPMENT storage initialized (default)', 'success');
                 return true;
             }
         }
@@ -137,8 +131,6 @@ function displayPhotoInViewer(img) {
         return;
     }
     
-    console.log('[PHOTO] Displaying image in viewer');
-    
     viewer.innerHTML = '';
     viewer.style.display = 'flex';
     viewer.style.alignItems = 'center';
@@ -154,7 +146,6 @@ function displayPhotoInViewer(img) {
     imgElement.style.borderRadius = '4px';
     
     viewer.appendChild(imgElement);
-    console.log('[PHOTO] Image displayed');
 }
 
 // ============================================================
@@ -173,7 +164,6 @@ function loadPhotoFromUrl() {
     }
     
     photoLog('Loading image from: ' + url, 'info');
-    console.log('[PHOTO] Loading from:', url);
     
     var viewer = document.getElementById('photoViewer');
     if (viewer) {
@@ -198,7 +188,6 @@ function loadPhotoFromUrl() {
         }
         photoLog('✅ Image loaded: ' + img.width + 'x' + img.height, 'success');
         
-        // Set default filename
         var filenameInput = document.getElementById('photoFilename');
         if (filenameInput && !filenameInput.value) {
             var env = photoStorageEnv || 'PROD';
@@ -206,7 +195,6 @@ function loadPhotoFromUrl() {
             filenameInput.value = env + '_C_' + timestamp + '.jpg';
         }
         
-        // Show upload button
         var uploadBtn = document.getElementById('photoUploadBtn');
         if (uploadBtn) uploadBtn.style.display = 'block';
     };
@@ -275,9 +263,7 @@ function uploadPhotoToStorage() {
     }
     
     photoLog('Uploading to: ' + fullPath, 'info');
-    console.log('[PHOTO] Uploading to:', fullPath);
     
-    // Convert image to blob
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     
@@ -326,7 +312,7 @@ function uploadPhotoToStorage() {
                 uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
                     currentDownloadUrl = downloadURL;
                     photoLog('✅ Upload successful!', 'success');
-                    console.log('[PHOTO] Upload successful, URL:', downloadURL);
+                    console.log('[PHOTO] Upload successful');
                     
                     if (statusDiv) {
                         statusDiv.innerHTML = '<span class="log-success">✅ Upload successful! Click "Show Info" to view details.</span>';
@@ -335,7 +321,6 @@ function uploadPhotoToStorage() {
                         progressDiv.style.display = 'none';
                     }
                     
-                    // Show uploaded preview
                     var uploadedViewer = document.getElementById('uploadedPhotoViewer');
                     if (uploadedViewer) {
                         uploadedViewer.innerHTML = '';
@@ -349,15 +334,12 @@ function uploadPhotoToStorage() {
                         uploadedViewer.appendChild(img);
                     }
                     
-                    // Show the uploaded card
                     var card = document.getElementById('uploadedPhotoCard');
                     if (card) card.style.display = 'block';
                     
-                    // Show info button
                     var infoBtn = document.getElementById('showPhotoInfoBtn');
                     if (infoBtn) infoBtn.style.display = 'inline-block';
                     
-                    // Show copy button
                     var copyBtn = document.getElementById('copyUrlBtn');
                     if (copyBtn) copyBtn.style.display = 'inline-block';
                 });
@@ -457,7 +439,7 @@ function copyUrlFallback() {
 }
 
 // ============================================================
-// SHOW INFO (SIMPLIFIED)
+// SHOW INFO (SIMPLIFIED - NO DELETE BUTTONS)
 // ============================================================
 
 function showPhotoInfo() {
@@ -573,31 +555,136 @@ function savePhotoToFirestore() {
 }
 
 // ============================================================
+// LIST PHOTOS (USED BY DELETE TAB)
+// ============================================================
+
+function listPhotosInStorage(folder, callback) {
+    if (!photoStorage) {
+        var err = new Error("Select an environment first (PROD/DEV)");
+        if (callback) callback(err);
+        return;
+    }
+    
+    if (!folder) folder = 'celebrations/';
+    if (!folder.endsWith('/')) folder = folder + '/';
+    
+    photoLog('📂 Listing photos in: ' + folder, 'info');
+    
+    var ref = photoStorage.ref(folder);
+    var photos = [];
+    
+    ref.listAll()
+        .then(function(result) {
+            var promises = result.items.map(function(item) {
+                return item.getMetadata().then(function(metadata) {
+                    return {
+                        name: item.name,
+                        fullPath: item.fullPath,
+                        size: metadata.size,
+                        contentType: metadata.contentType,
+                        updated: metadata.updated,
+                        created: metadata.timeCreated
+                    };
+                });
+            });
+            return Promise.all(promises);
+        })
+        .then(function(photoList) {
+            photoList.sort(function(a, b) {
+                return new Date(b.updated) - new Date(a.updated);
+            });
+            photos = photoList;
+            photoLog('📸 Found ' + photos.length + ' photos in ' + folder, 'success');
+            if (callback) callback(null, photos);
+        })
+        .catch(function(err) {
+            photoLog('❌ Failed to list photos: ' + err.message, 'error');
+            if (callback) callback(err);
+        });
+}
+
+// ============================================================
+// DELETE PHOTOS (USED BY DELETE TAB)
+// ============================================================
+
+function deletePhotosFromStorage(paths, callback) {
+    if (!photoStorage) {
+        var err = new Error("Select an environment first (PROD/DEV)");
+        if (callback) callback(err);
+        return;
+    }
+    
+    if (!paths || paths.length === 0) {
+        var err = new Error("No paths specified");
+        if (callback) callback(err);
+        return;
+    }
+    
+    photoLog('🗑️ Deleting ' + paths.length + ' photos from Storage', 'info');
+    
+    var results = {
+        total: paths.length,
+        deleted: 0,
+        failed: 0,
+        notFound: 0,
+        details: []
+    };
+    
+    var promises = paths.map(function(path) {
+        return new Promise(function(resolve) {
+            var ref = photoStorage.ref(path);
+            ref.delete()
+                .then(function() {
+                    results.deleted++;
+                    results.details.push({ path: path, status: 'deleted' });
+                    resolve({ path: path, success: true });
+                })
+                .catch(function(err) {
+                    if (err.code === 'storage/object-not-found') {
+                        results.notFound++;
+                        results.details.push({ path: path, status: 'notFound' });
+                        resolve({ path: path, success: false, notFound: true });
+                    } else {
+                        results.failed++;
+                        results.details.push({ path: path, status: 'failed', error: err.message });
+                        resolve({ path: path, success: false, error: err.message });
+                    }
+                });
+        });
+    });
+    
+    Promise.all(promises)
+        .then(function() {
+            var msg = 'Deletion complete: ' + results.deleted + ' deleted';
+            if (results.notFound > 0) msg += ', ' + results.notFound + ' not found';
+            if (results.failed > 0) msg += ', ' + results.failed + ' failed';
+            photoLog(msg, results.failed === 0 ? 'success' : 'warning');
+            if (callback) callback(null, results);
+        });
+}
+
+// ============================================================
 // INITIALIZE PHOTO TAB
 // ============================================================
 
 function initPhotoTab() {
     console.log('[PHOTO] Initializing photo tab...');
     
-    // Set default URL
     var urlInput = document.getElementById('photoUrlInput');
     if (urlInput && !urlInput.value) {
         urlInput.value = DEFAULT_IMAGE_URL;
     }
     
-    // Set default folder
     var folderInput = document.getElementById('photoStorageFolder');
     if (folderInput && !folderInput.value) {
         folderInput.value = 'celebrations/';
     }
     
-    // Set default field
     var fieldInput = document.getElementById('photoFirestoreField');
     if (fieldInput && !fieldInput.value) {
         fieldInput.value = 'celebration';
     }
     
-    // Environment buttons
     var prodBtn = document.getElementById('photoProdBtn');
     var devBtn = document.getElementById('photoDevBtn');
     
@@ -608,46 +695,39 @@ function initPhotoTab() {
         devBtn.onclick = function() { setPhotoEnvironment('DEV'); };
     }
     
-    // Load button
     var loadBtn = document.getElementById('photoLoadBtn');
     if (loadBtn) {
         loadBtn.onclick = loadPhotoFromUrl;
     }
     
-    // Upload button
     var uploadBtn = document.getElementById('photoUploadBtn');
     if (uploadBtn) {
         uploadBtn.style.display = 'none';
         uploadBtn.onclick = uploadPhotoToStorage;
     }
     
-    // Reset button
     var resetBtn = document.getElementById('photoResetBtn');
     if (resetBtn) {
         resetBtn.onclick = resetPhotoTool;
     }
     
-    // Info button
     var infoBtn = document.getElementById('showPhotoInfoBtn');
     if (infoBtn) {
         infoBtn.style.display = 'none';
         infoBtn.onclick = showPhotoInfo;
     }
     
-    // Copy URL button
     var copyBtn = document.getElementById('copyUrlBtn');
     if (copyBtn) {
         copyBtn.style.display = 'none';
         copyBtn.onclick = copyPhotoUrl;
     }
     
-    // Save Firestore reference button
     var saveRefBtn = document.getElementById('saveFirestoreRefBtn');
     if (saveRefBtn) {
         saveRefBtn.onclick = savePhotoToFirestore;
     }
     
-    // Enter key on URL input
     if (urlInput) {
         urlInput.onkeydown = function(e) {
             if (e.key === 'Enter') {
@@ -673,32 +753,33 @@ window.showPhotoInfo = showPhotoInfo;
 window.closePhotoInfoPanel = closePhotoInfoPanel;
 window.savePhotoToFirestore = savePhotoToFirestore;
 window.initPhotoTab = initPhotoTab;
+window.listPhotosInStorage = listPhotosInStorage;
+window.deletePhotosFromStorage = deletePhotosFromStorage;
 
 // ============================================================
 // AUTO-INIT ON LOAD
 // ============================================================
 
-// Check if DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-        // Wait a beat for other scripts to load
         setTimeout(initPhotoTab, 500);
     });
 } else {
     setTimeout(initPhotoTab, 500);
 }
 
-console.log('[PHOTO-UTIL] v1.05 loaded');
+console.log('[PHOTO-UTIL] v1.06 loaded (no delete functions)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: All functions now properly exposed globally
-   - FIXED: Added fallback for missing log function
-   - FIXED: Better error handling
-   - ADDED: Console logging for debugging
-   - SIMPLIFIED: Removed all external dependencies
-DEPENDS ON: Firebase Storage (for upload), Firestore (for saving references)
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - REMOVED: All delete-related functions (moved to DELETE tab)
+   - REMOVED: deletePhotoFromStorage, deletePhotosFromStorage, deletePhotoWithReferences
+   - REMOVED: deletePhotoStorageOnly, deletePhotoComplete, findPhotoReferences
+   - REMOVED: removeSingleReference, deleteCurrentPhoto
+   - PRESERVED: Load, upload, view, copy, save to Firestore functions
+   - PRESERVED: listPhotosInStorage (used by DELETE tab)
+DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
