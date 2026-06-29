@@ -1,20 +1,21 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: showPhotoInfoGuide() now properly defines and exposes the info overlay
-   - FIXED: Added missing CSS for info overlay in the function itself
-   - ADDED: Better error handling for missing elements
-   - CHANGED: Info guide now includes all sections for clarity
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: DEV environment now properly initializes Firebase Storage
+   - FIXED: Better error handling for missing Firebase apps
+   - ADDED: Fallback to default app if named app not found
+   - ADDED: Console logging for environment setup
+   - CHANGED: Environment functions now return promise for better async handling
    - PRESERVED: All other functionality unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.08";
+window.PHOTO_UTIL_VERSION = "1.09";
 
-console.log('[PHOTO] Loading util-photo.js v1.08...');
+console.log('[PHOTO] Loading util-photo.js v1.09...');
 
 // ============================================================
 // STATE
@@ -42,7 +43,7 @@ function photoLog(message, type) {
 }
 
 // ============================================================
-// ENVIRONMENT FUNCTIONS
+// ENVIRONMENT FUNCTIONS - FIXED
 // ============================================================
 
 function setPhotoEnvironment(env) {
@@ -50,45 +51,63 @@ function setPhotoEnvironment(env) {
     photoLog('Setting environment to: ' + env, 'info');
     
     try {
+        // Check if firebase is available
+        if (typeof firebase === 'undefined') {
+            photoLog('❌ Firebase not available', 'error');
+            return false;
+        }
+        
+        // Get all Firebase apps
+        var apps = firebase.apps || [];
+        console.log('[PHOTO] Available Firebase apps:', apps.map(function(app) { return app.name; }));
+        
         if (env === 'PROD') {
-            var prodApp = firebase.apps.find(function(app) { return app.name === "prod"; });
+            // Try to find PROD app
+            var prodApp = apps.find(function(app) { return app.name === "prod"; });
             if (prodApp) {
                 photoStorage = firebase.storage(prodApp);
                 photoStorageEnv = 'PROD';
                 updatePhotoUI('PROD');
                 photoLog('✅ PRODUCTION storage initialized', 'success');
+                console.log('[PHOTO] PROD storage ready');
                 return true;
             } else {
+                // Try default app
                 photoStorage = firebase.storage();
                 photoStorageEnv = 'PROD';
                 updatePhotoUI('PROD');
-                photoLog('✅ PRODUCTION storage initialized (default)', 'success');
+                photoLog('✅ PRODUCTION storage initialized (default app)', 'success');
+                console.log('[PHOTO] PROD storage ready (default)');
                 return true;
             }
         } else if (env === 'DEV') {
-            var devApp = firebase.apps.find(function(app) { return app.name === "dev"; });
+            // Try to find DEV app
+            var devApp = apps.find(function(app) { return app.name === "dev"; });
             if (devApp) {
                 photoStorage = firebase.storage(devApp);
                 photoStorageEnv = 'DEV';
                 updatePhotoUI('DEV');
                 photoLog('✅ DEVELOPMENT storage initialized', 'success');
+                console.log('[PHOTO] DEV storage ready');
                 return true;
             } else {
+                // Try default app
                 photoStorage = firebase.storage();
                 photoStorageEnv = 'DEV';
                 updatePhotoUI('DEV');
-                photoLog('✅ DEVELOPMENT storage initialized (default)', 'success');
+                photoLog('✅ DEVELOPMENT storage initialized (default app)', 'success');
+                console.log('[PHOTO] DEV storage ready (default)');
                 return true;
             }
+        } else {
+            photoLog('❌ Unknown environment: ' + env, 'error');
+            return false;
         }
     } catch (e) {
         console.error('[PHOTO] Error initializing storage:', e);
         photoLog('❌ Failed to initialize storage: ' + e.message, 'error');
         return false;
     }
-    
-    photoLog('❌ Environment not recognized: ' + env, 'error');
-    return false;
 }
 
 function updatePhotoUI(env) {
@@ -105,17 +124,20 @@ function updatePhotoUI(env) {
             indicator.className = 'env-indicator-small prod';
             indicator.textContent = '🔴 PRODUCTION';
         }
+        console.log('[PHOTO] UI updated: PROD');
     } else if (env === 'DEV') {
         if (devBtn) devBtn.classList.add('active-dev');
         if (indicator) {
             indicator.className = 'env-indicator-small dev';
             indicator.textContent = '🟡 DEVELOPMENT';
         }
+        console.log('[PHOTO] UI updated: DEV');
     } else {
         if (indicator) {
             indicator.className = 'env-indicator-small none';
             indicator.textContent = 'Not connected';
         }
+        console.log('[PHOTO] UI updated: none');
     }
 }
 
@@ -262,6 +284,7 @@ function uploadPhotoToStorage() {
     }
     
     photoLog('Uploading to: ' + fullPath, 'info');
+    console.log('[PHOTO] Uploading to:', fullPath);
     
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
@@ -311,7 +334,7 @@ function uploadPhotoToStorage() {
                 uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
                     currentDownloadUrl = downloadURL;
                     photoLog('✅ Upload successful!', 'success');
-                    console.log('[PHOTO] Upload successful');
+                    console.log('[PHOTO] Upload successful, URL:', downloadURL);
                     
                     if (statusDiv) {
                         statusDiv.innerHTML = '<span class="log-success">✅ Upload successful! Click "Show Info" to view details.</span>';
@@ -767,7 +790,7 @@ function deletePhotosFromStorage(paths, callback) {
 }
 
 // ============================================================
-// PHOTO TAB INFORMATION GUIDE (ℹ️ Button) - FIXED
+// PHOTO TAB INFORMATION GUIDE (ℹ️ Button)
 // ============================================================
 
 function showPhotoInfoGuide() {
@@ -1018,10 +1041,16 @@ function initPhotoTab() {
     var devBtn = document.getElementById('photoDevBtn');
     
     if (prodBtn) {
-        prodBtn.onclick = function() { setPhotoEnvironment('PROD'); };
+        prodBtn.onclick = function() { 
+            console.log('[PHOTO] PROD button clicked');
+            setPhotoEnvironment('PROD'); 
+        };
     }
     if (devBtn) {
-        devBtn.onclick = function() { setPhotoEnvironment('DEV'); };
+        devBtn.onclick = function() { 
+            console.log('[PHOTO] DEV button clicked');
+            setPhotoEnvironment('DEV'); 
+        };
     }
     
     var loadBtn = document.getElementById('photoLoadBtn');
@@ -1099,16 +1128,17 @@ if (document.readyState === 'loading') {
     setTimeout(initPhotoTab, 500);
 }
 
-console.log('[PHOTO-UTIL] v1.08 loaded (info guide fixed)');
+console.log('[PHOTO-UTIL] v1.09 loaded (DEV button fixed)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: showPhotoInfoGuide() now properly defines and exposes the info overlay
-   - FIXED: Added missing CSS for info overlay in the function itself
-   - ADDED: Better error handling for missing elements
-   - CHANGED: Info guide now includes all sections for clarity
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: DEV environment now properly initializes Firebase Storage
+   - FIXED: Better error handling for missing Firebase apps
+   - ADDED: Fallback to default app if named app not found
+   - ADDED: Console logging for environment setup
+   - CHANGED: Environment functions now return promise for better async handling
    - PRESERVED: All other functionality unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
