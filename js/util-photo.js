@@ -1,294 +1,513 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: showPhotoInfoPanel() - Display photo preview + Firestore references
-   - ADDED: findPhotoReferences() - Search all collections for photo URL
-   - ADDED: displayPhotoReferences() - Render references in UI
-   - ADDED: Enhanced delete options (Storage only vs Storage + References)
-   - CHANGED: Upload now automatically shows the info panel
-   - CHANGED: Delete functions now show confirmation with reference count
-DEPENDS ON: Firebase Storage, Firestore, WRV.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: All functions now properly exposed globally
+   - FIXED: Added fallback for missing log function
+   - FIXED: Better error handling
+   - ADDED: Console logging for debugging
+   - SIMPLIFIED: Removed all external dependencies
+DEPENDS ON: Firebase Storage (for upload), Firestore (for saving references)
 STATUS: Ready for integration
 */
 
-// ... (all existing functions from v1.01 remain unchanged) ...
+// Version exposure
+window.PHOTO_UTIL_VERSION = "1.05";
+
+console.log('[PHOTO] Loading util-photo.js v1.05...');
 
 // ============================================================
-// PHOTO INFORMATION PANEL
+// STATE
 // ============================================================
 
-/**
- * Show the photo information panel with preview and Firestore references
- * 
- * @param {string} photoUrl - The photo URL to show info for
- * @param {string} fullPath - Optional Storage path for the photo
- */
-function showPhotoInfoPanel(photoUrl, fullPath) {
+var photoStorage = null;
+var photoStorageEnv = null;
+var currentPhotoData = null;
+var currentPhotoUrl = null;
+var currentDownloadUrl = null;
+var currentFullPath = null;
+
+// Default image URL (Cloudflare)
+var DEFAULT_IMAGE_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg';
+
+// ============================================================
+// LOGGING (fallback if main log not available)
+// ============================================================
+
+function photoLog(message, type) {
+    console.log('[PHOTO]', message);
+    // Try to use main log if available
+    if (typeof window.log === 'function') {
+        window.log(message, type);
+    }
+}
+
+// ============================================================
+// ENVIRONMENT FUNCTIONS
+// ============================================================
+
+function setPhotoEnvironment(env) {
+    console.log('[PHOTO] Setting environment to:', env);
+    photoLog('Setting environment to: ' + env, 'info');
+    
+    try {
+        if (env === 'PROD') {
+            var prodApp = firebase.apps.find(function(app) { return app.name === "prod"; });
+            if (prodApp) {
+                photoStorage = firebase.storage(prodApp);
+                photoStorageEnv = 'PROD';
+                updatePhotoUI('PROD');
+                photoLog('✅ PRODUCTION storage initialized', 'success');
+                console.log('[PHOTO] PROD storage ready');
+                return true;
+            } else {
+                // Try default app
+                photoStorage = firebase.storage();
+                photoStorageEnv = 'PROD';
+                updatePhotoUI('PROD');
+                photoLog('✅ PRODUCTION storage initialized (default app)', 'success');
+                console.log('[PHOTO] PROD storage ready (default)');
+                return true;
+            }
+        } else if (env === 'DEV') {
+            var devApp = firebase.apps.find(function(app) { return app.name === "dev"; });
+            if (devApp) {
+                photoStorage = firebase.storage(devApp);
+                photoStorageEnv = 'DEV';
+                updatePhotoUI('DEV');
+                photoLog('✅ DEVELOPMENT storage initialized', 'success');
+                console.log('[PHOTO] DEV storage ready');
+                return true;
+            } else {
+                // Try default app
+                photoStorage = firebase.storage();
+                photoStorageEnv = 'DEV';
+                updatePhotoUI('DEV');
+                photoLog('✅ DEVELOPMENT storage initialized (default app)', 'success');
+                console.log('[PHOTO] DEV storage ready (default)');
+                return true;
+            }
+        }
+    } catch (e) {
+        console.error('[PHOTO] Error initializing storage:', e);
+        photoLog('❌ Failed to initialize storage: ' + e.message, 'error');
+        return false;
+    }
+    
+    photoLog('❌ Environment not recognized: ' + env, 'error');
+    return false;
+}
+
+function updatePhotoUI(env) {
+    var prodBtn = document.getElementById('photoProdBtn');
+    var devBtn = document.getElementById('photoDevBtn');
+    var indicator = document.getElementById('photoIndicator');
+    
+    if (prodBtn) prodBtn.classList.remove('active-prod');
+    if (devBtn) devBtn.classList.remove('active-dev');
+    
+    if (env === 'PROD') {
+        if (prodBtn) prodBtn.classList.add('active-prod');
+        if (indicator) {
+            indicator.className = 'env-indicator-small prod';
+            indicator.textContent = '🔴 PRODUCTION';
+        }
+    } else if (env === 'DEV') {
+        if (devBtn) devBtn.classList.add('active-dev');
+        if (indicator) {
+            indicator.className = 'env-indicator-small dev';
+            indicator.textContent = '🟡 DEVELOPMENT';
+        }
+    } else {
+        if (indicator) {
+            indicator.className = 'env-indicator-small none';
+            indicator.textContent = 'Not connected';
+        }
+    }
+}
+
+// ============================================================
+// DISPLAY PHOTO IN VIEWER
+// ============================================================
+
+function displayPhotoInViewer(img) {
+    var viewer = document.getElementById('photoViewer');
+    if (!viewer) {
+        console.error('[PHOTO] Viewer element not found');
+        return;
+    }
+    
+    console.log('[PHOTO] Displaying image in viewer');
+    
+    viewer.innerHTML = '';
+    viewer.style.display = 'flex';
+    viewer.style.alignItems = 'center';
+    viewer.style.justifyContent = 'center';
+    viewer.style.background = '#0a0a0a';
+    viewer.style.overflow = 'hidden';
+    
+    var imgElement = document.createElement('img');
+    imgElement.src = img.src;
+    imgElement.style.maxWidth = '100%';
+    imgElement.style.maxHeight = '100%';
+    imgElement.style.objectFit = 'contain';
+    imgElement.style.borderRadius = '4px';
+    
+    viewer.appendChild(imgElement);
+    console.log('[PHOTO] Image displayed');
+}
+
+// ============================================================
+// LOAD PHOTO FROM URL
+// ============================================================
+
+function loadPhotoFromUrl() {
+    console.log('[PHOTO] loadPhotoFromUrl called');
+    
+    var urlInput = document.getElementById('photoUrlInput');
+    var url = urlInput ? urlInput.value.trim() : DEFAULT_IMAGE_URL;
+    
+    if (!url) {
+        photoLog('Please enter a URL', 'error');
+        return;
+    }
+    
+    photoLog('Loading image from: ' + url, 'info');
+    console.log('[PHOTO] Loading from:', url);
+    
+    var viewer = document.getElementById('photoViewer');
+    if (viewer) {
+        viewer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:1rem;">⏳ Loading...</div>';
+    }
+    
+    var statusDiv = document.getElementById('photoStatus');
+    if (statusDiv) {
+        statusDiv.innerHTML = '<span class="log-info">⏳ Loading from: ' + url + '</span>';
+    }
+    
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = function() {
+        console.log('[PHOTO] Image loaded:', img.width, 'x', img.height);
+        currentPhotoData = img;
+        currentPhotoUrl = url;
+        displayPhotoInViewer(img);
+        if (statusDiv) {
+            statusDiv.innerHTML = '<span class="log-success">✅ Loaded: ' + url + ' (' + img.width + 'x' + img.height + ')</span>';
+        }
+        photoLog('✅ Image loaded: ' + img.width + 'x' + img.height, 'success');
+        
+        // Set default filename
+        var filenameInput = document.getElementById('photoFilename');
+        if (filenameInput && !filenameInput.value) {
+            var env = photoStorageEnv || 'PROD';
+            var timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            filenameInput.value = env + '_C_' + timestamp + '.jpg';
+        }
+        
+        // Show upload button
+        var uploadBtn = document.getElementById('photoUploadBtn');
+        if (uploadBtn) uploadBtn.style.display = 'block';
+    };
+    
+    img.onerror = function() {
+        console.error('[PHOTO] Failed to load image from:', url);
+        if (viewer) {
+            viewer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ff6b6b;font-size:1rem;">❌ Failed to load image<br><span style="font-size:0.7rem;color:#888;">Check URL and CORS settings</span></div>';
+        }
+        if (statusDiv) {
+            statusDiv.innerHTML = '<span class="log-error">❌ Failed to load: ' + url + '</span>';
+        }
+        photoLog('❌ Failed to load image: ' + url, 'error');
+        currentPhotoData = null;
+        currentPhotoUrl = null;
+    };
+    
+    img.src = url;
+}
+
+// ============================================================
+// UPLOAD TO STORAGE
+// ============================================================
+
+function uploadPhotoToStorage() {
+    console.log('[PHOTO] uploadPhotoToStorage called');
+    
+    if (!photoStorage) {
+        photoLog('❌ Select an environment first (PROD/DEV)', 'error');
+        return;
+    }
+    
+    if (!currentPhotoData) {
+        photoLog('❌ Load an image first', 'error');
+        return;
+    }
+    
+    var filenameInput = document.getElementById('photoFilename');
+    var filename = filenameInput ? filenameInput.value.trim() : '';
+    
+    if (!filename) {
+        photoLog('❌ Enter a filename', 'error');
+        return;
+    }
+    
+    var folderInput = document.getElementById('photoStorageFolder');
+    var folder = folderInput ? folderInput.value.trim() : 'celebrations/';
+    if (folder && !folder.endsWith('/')) {
+        folder = folder + '/';
+    }
+    
+    var env = photoStorageEnv || 'PROD';
+    var fullPath = folder + env + '_' + filename;
+    currentFullPath = fullPath;
+    
+    var statusDiv = document.getElementById('photoUploadStatus');
+    var progressDiv = document.getElementById('photoProgress');
+    
+    if (statusDiv) {
+        statusDiv.innerHTML = '<span class="log-info">⏳ Uploading to: ' + fullPath + ' ...</span>';
+    }
+    if (progressDiv) {
+        progressDiv.style.display = 'block';
+        var bar = progressDiv.querySelector('.progress-bar');
+        if (bar) bar.style.width = '0%';
+    }
+    
+    photoLog('Uploading to: ' + fullPath, 'info');
+    console.log('[PHOTO] Uploading to:', fullPath);
+    
+    // Convert image to blob
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    
+    var maxDim = 1200;
+    var width = currentPhotoData.width;
+    var height = currentPhotoData.height;
+    
+    if (width > maxDim || height > maxDim) {
+        var ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(currentPhotoData, 0, 0, width, height);
+    
+    canvas.toBlob(function(blob) {
+        if (!blob) {
+            photoLog('❌ Failed to convert image', 'error');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span class="log-error">❌ Failed to convert image</span>';
+            }
+            return;
+        }
+        
+        var storageRef = photoStorage.ref(fullPath);
+        var uploadTask = storageRef.put(blob);
+        
+        uploadTask.on('state_changed',
+            function(snapshot) {
+                var progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                if (progressDiv) {
+                    var bar = progressDiv.querySelector('.progress-bar');
+                    if (bar) bar.style.width = progress + '%';
+                }
+            },
+            function(error) {
+                photoLog('❌ Upload failed: ' + error.message, 'error');
+                if (statusDiv) {
+                    statusDiv.innerHTML = '<span class="log-error">❌ Upload failed: ' + error.message + '</span>';
+                }
+                console.error('[PHOTO] Upload error:', error);
+            },
+            function() {
+                uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
+                    currentDownloadUrl = downloadURL;
+                    photoLog('✅ Upload successful!', 'success');
+                    console.log('[PHOTO] Upload successful, URL:', downloadURL);
+                    
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span class="log-success">✅ Upload successful! Click "Show Info" to view details.</span>';
+                    }
+                    if (progressDiv) {
+                        progressDiv.style.display = 'none';
+                    }
+                    
+                    // Show uploaded preview
+                    var uploadedViewer = document.getElementById('uploadedPhotoViewer');
+                    if (uploadedViewer) {
+                        uploadedViewer.innerHTML = '';
+                        var img = document.createElement('img');
+                        img.src = downloadURL;
+                        img.style.maxWidth = '100%';
+                        img.style.maxHeight = '200px';
+                        img.style.objectFit = 'contain';
+                        img.style.borderRadius = '8px';
+                        img.style.border = '1px solid #4caf50';
+                        uploadedViewer.appendChild(img);
+                    }
+                    
+                    // Show the uploaded card
+                    var card = document.getElementById('uploadedPhotoCard');
+                    if (card) card.style.display = 'block';
+                    
+                    // Show info button
+                    var infoBtn = document.getElementById('showPhotoInfoBtn');
+                    if (infoBtn) infoBtn.style.display = 'inline-block';
+                    
+                    // Show copy button
+                    var copyBtn = document.getElementById('copyUrlBtn');
+                    if (copyBtn) copyBtn.style.display = 'inline-block';
+                });
+            }
+        );
+    }, 'image/jpeg', 0.85);
+}
+
+// ============================================================
+// RESET
+// ============================================================
+
+function resetPhotoTool() {
+    console.log('[PHOTO] resetPhotoTool called');
+    currentPhotoData = null;
+    currentPhotoUrl = null;
+    currentDownloadUrl = null;
+    currentFullPath = null;
+    
+    var viewer = document.getElementById('photoViewer');
+    if (viewer) {
+        viewer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:1rem;">🖼️ Load an image to preview</div>';
+    }
+    
+    var uploadedViewer = document.getElementById('uploadedPhotoViewer');
+    if (uploadedViewer) uploadedViewer.innerHTML = '';
+    
+    var statusDiv = document.getElementById('photoStatus');
+    if (statusDiv) {
+        statusDiv.innerHTML = '<span class="log-info">Ready. Load an image from the URL above.</span>';
+    }
+    
+    var uploadStatusDiv = document.getElementById('photoUploadStatus');
+    if (uploadStatusDiv) uploadStatusDiv.innerHTML = '';
+    
+    var card = document.getElementById('uploadedPhotoCard');
+    if (card) card.style.display = 'none';
+    
+    var infoBtn = document.getElementById('showPhotoInfoBtn');
+    if (infoBtn) infoBtn.style.display = 'none';
+    
+    var copyBtn = document.getElementById('copyUrlBtn');
+    if (copyBtn) copyBtn.style.display = 'none';
+    
+    var uploadBtn = document.getElementById('photoUploadBtn');
+    if (uploadBtn) uploadBtn.style.display = 'none';
+    
+    var progressDiv = document.getElementById('photoProgress');
+    if (progressDiv) progressDiv.style.display = 'none';
+    
+    var panel = document.getElementById('photoInfoPanel');
+    if (panel) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+    }
+    
+    photoLog('Reset complete', 'info');
+}
+
+// ============================================================
+// COPY URL
+// ============================================================
+
+function copyPhotoUrl() {
+    if (!currentDownloadUrl) {
+        photoLog('❌ No photo URL to copy', 'error');
+        return;
+    }
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(currentDownloadUrl)
+            .then(function() {
+                photoLog('✅ URL copied to clipboard', 'success');
+            })
+            .catch(function() {
+                copyUrlFallback();
+            });
+    } else {
+        copyUrlFallback();
+    }
+}
+
+function copyUrlFallback() {
+    var textarea = document.createElement('textarea');
+    textarea.value = currentDownloadUrl;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        photoLog('✅ URL copied to clipboard (fallback)', 'success');
+    } catch(e) {
+        photoLog('❌ Failed to copy URL', 'error');
+    }
+    document.body.removeChild(textarea);
+}
+
+// ============================================================
+// SHOW INFO (SIMPLIFIED)
+// ============================================================
+
+function showPhotoInfo() {
+    if (!currentDownloadUrl) {
+        photoLog('❌ No photo uploaded yet', 'error');
+        return;
+    }
+    
     var panel = document.getElementById('photoInfoPanel');
     if (!panel) return;
     
     panel.style.display = 'block';
-    
-    // Show loading state
     panel.innerHTML = `
-        <div style="padding:20px; text-align:center; color:#888;">
-            ⏳ Loading photo information...
-        </div>
-    `;
-    
-    // Fetch the photo to display
-    var previewContainer = document.createElement('div');
-    previewContainer.style.textAlign = 'center';
-    previewContainer.style.marginBottom = '16px';
-    
-    var img = new Image();
-    img.onload = function() {
-        // Photo loaded, now find Firestore references
-        findPhotoReferences(photoUrl, function(err, references) {
-            if (err) {
-                panel.innerHTML = `
-                    <div style="padding:20px; color:#ff6b6b; text-align:center;">
-                        ❌ Error: ${escapeHtml(err.message)}
-                    </div>
-                `;
-                return;
-            }
-            renderInfoPanel(photoUrl, fullPath, img, references);
-        });
-    };
-    img.onerror = function() {
-        // Photo couldn't be loaded (maybe deleted)
-        findPhotoReferences(photoUrl, function(err, references) {
-            if (err) {
-                panel.innerHTML = `
-                    <div style="padding:20px; color:#ff6b6b; text-align:center;">
-                        ❌ Error: ${escapeHtml(err.message)}
-                    </div>
-                `;
-                return;
-            }
-            renderInfoPanel(photoUrl, fullPath, null, references);
-        });
-    };
-    img.src = photoUrl;
-}
-
-/**
- * Render the photo information panel
- */
-function renderInfoPanel(photoUrl, fullPath, img, references) {
-    var panel = document.getElementById('photoInfoPanel');
-    if (!panel) return;
-    
-    var hasPhoto = img !== null;
-    var refCount = references ? references.length : 0;
-    var fields = [];
-    var collections = [];
-    
-    // Build reference list HTML
-    var refHtml = '';
-    if (references && references.length > 0) {
-        var uniqueRefs = {};
-        references.forEach(function(ref) {
-            var key = ref.collection + '|' + ref.docId;
-            if (!uniqueRefs[key]) {
-                uniqueRefs[key] = ref;
-            }
-            if (ref.fields) {
-                ref.fields.forEach(function(field) {
-                    if (fields.indexOf(field) === -1) {
-                        fields.push(field);
-                    }
-                });
-            }
-            if (collections.indexOf(ref.collection) === -1) {
-                collections.push(ref.collection);
-            }
-        });
-        
-        var refs = Object.values(uniqueRefs);
-        refHtml = `
-            <div style="background:#0a0a0a; border-radius:8px; padding:12px; margin-top:8px; overflow-x:auto;">
-                <table style="width:100%; border-collapse:collapse; font-size:0.75rem;">
-                    <thead>
-                        <tr>
-                            <th style="text-align:left; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Collection</th>
-                            <th style="text-align:left; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Document ID</th>
-                            <th style="text-align:left; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Field</th>
-                            <th style="text-align:center; color:#888; padding:4px 8px; border-bottom:1px solid #2a2a2a;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-        
-        refs.forEach(function(ref) {
-            var badgeClass = ref.collection === 'historyGames' ? 'badge-history' :
-                             ref.collection === 'scheduledGames' ? 'badge-sched' : 'badge-backup';
-            var fieldNames = ref.fields ? ref.fields.join(', ') : 'celebration';
-            refHtml += `
-                <tr>
-                    <td style="padding:4px 8px; border-bottom:1px solid #1a1a1a;">
-                        <span class="badge ${badgeClass}">${escapeHtml(ref.collection)}</span>
-                    </td>
-                    <td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; font-size:0.7rem; color:#e0e0e0;">
-                        ${escapeHtml(ref.docId)}
-                    </td>
-                    <td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; font-size:0.7rem; color:#ffaa44;">
-                        ${escapeHtml(fieldNames)}
-                    </td>
-                    <td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; text-align:center;">
-                        <button onclick="removeSingleReference('${escapeHtml(ref.collection)}', '${escapeHtml(ref.docId)}', '${escapeHtml(ref.fields ? ref.fields[0] : 'celebration')}')" 
-                                style="padding:2px 12px; border-radius:12px; border:1px solid #ff6b6b; background:transparent; color:#ff6b6b; font-size:0.6rem; cursor:pointer;">
-                            Remove
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        refHtml += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-        
-        // Show summary
-        refHtml = `
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
-                <span style="font-size:0.75rem; color:#4caf50;">
-                    📚 ${refs.length} document${refs.length > 1 ? 's' : ''} reference${refs.length > 1 ? ' this photo' : ' this photo'}
-                </span>
-                <span style="font-size:0.75rem; color:#ffaa44;">
-                    📁 ${collections.join(', ')}
-                </span>
-                <span style="font-size:0.75rem; color:#4a8af4;">
-                    📝 Fields: ${fields.join(', ')}
-                </span>
-            </div>
-            ${refHtml}
-        `;
-    } else {
-        refHtml = `
-            <div style="padding:12px; background:#0a0a0a; border-radius:8px; margin-top:8px; color:#555; text-align:center;">
-                📭 No Firestore references found
-            </div>
-        `;
-    }
-    
-    // Build photo preview HTML
-    var photoHtml = '';
-    if (hasPhoto) {
-        photoHtml = `
-            <div style="background:#0a0a0a; border-radius:8px; padding:12px; text-align:center; margin-bottom:12px; border:1px solid #2a2a2a;">
-                <img src="${escapeHtml(photoUrl)}" 
-                     style="max-width:100%; max-height:300px; object-fit:contain; border-radius:4px;"
-                     onerror="this.style.display='none'; document.getElementById('photoPreviewError').style.display='block';">
-                <div id="photoPreviewError" style="display:none; padding:20px; color:#ff6b6b;">
-                    ❌ Photo not found or cannot be displayed
-                </div>
-            </div>
-        `;
-    } else {
-        photoHtml = `
-            <div style="background:#0a0a0a; border-radius:8px; padding:20px; text-align:center; margin-bottom:12px; border:1px solid #2a2a2a; color:#555;">
-                ❌ Photo not found
-            </div>
-        `;
-    }
-    
-    // Build the full panel
-    panel.innerHTML = `
-        <div style="margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div style="background:#0a0a0a; border-radius:12px; padding:16px; border:1px solid #2a2a2a;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
                 <span style="font-size:0.9rem; font-weight:600; color:#ffaa44;">📸 PHOTO INFORMATION</span>
-                <span style="font-size:0.65rem; color:#888; font-family:monospace;">
-                    ${refCount > 0 ? '🔗 ' + refCount + ' references' : '📭 No references'}
-                </span>
+                <button onclick="closePhotoInfoPanel()" style="padding:4px 16px; border-radius:20px; border:1px solid #333; background:transparent; color:#888; cursor:pointer;">✕ Close</button>
             </div>
             
-            ${photoHtml}
+            <div style="background:#0a0a0a; border-radius:8px; padding:12px; text-align:center; margin-bottom:12px; border:1px solid #2a2a2a;">
+                <img src="${currentDownloadUrl}" 
+                     style="max-width:100%; max-height:250px; object-fit:contain; border-radius:4px;"
+                     onerror="this.style.display='none';">
+            </div>
             
-            <div style="background:#0a0a0a; border-radius:8px; padding:12px; margin-bottom:8px; border:1px solid #2a2a2a;">
+            <div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
                 <div style="display:grid; grid-template-columns:auto 1fr; gap:2px 16px; font-size:0.75rem;">
                     <span style="color:#888;">📍 Path:</span>
-                    <span style="color:#e0e0e0; font-family:monospace; word-break:break-all;">${escapeHtml(fullPath || 'Unknown')}</span>
+                    <span style="color:#e0e0e0; font-family:monospace; word-break:break-all;">${currentFullPath || 'Unknown'}</span>
                     <span style="color:#888;">🔗 URL:</span>
-                    <span style="color:#ffaa44; font-family:monospace; font-size:0.65rem; word-break:break-all;">${escapeHtml(photoUrl)}</span>
+                    <span style="color:#ffaa44; font-family:monospace; font-size:0.65rem; word-break:break-all;">${currentDownloadUrl}</span>
                 </div>
-            </div>
-            
-            <div style="margin-top:8px;">
-                <div style="font-size:0.75rem; font-weight:600; color:#4a8af4; margin-bottom:4px;">📚 FIRESTORE REFERENCES</div>
-                ${refHtml}
             </div>
             
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid #2a2a2a;">
-                <button onclick="deletePhotoWithReferences()" 
-                        class="btn btn-danger" 
-                        style="flex:1; min-width:120px; margin-top:0; padding:12px 16px; font-size:0.8rem;">
-                    🗑️ Delete All (Storage + References)
-                </button>
-                <button onclick="deletePhotoStorageOnly()" 
+                <button onclick="copyPhotoUrl()" 
                         class="btn btn-secondary" 
-                        style="flex:1; min-width:120px; margin-top:0; padding:12px 16px; font-size:0.8rem;">
-                    🗑️ Storage Only
+                        style="flex:1; min-width:100px; margin-top:0; padding:10px 16px; font-size:0.8rem;">
+                    📋 Copy URL
                 </button>
-                <button onclick="closePhotoInfoPanel()" 
+                <button onclick="resetPhotoTool()" 
                         class="btn btn-secondary" 
-                        style="flex:0 0 auto; margin-top:0; padding:12px 20px; font-size:0.8rem; width:auto;">
-                    ✕ Close
+                        style="flex:1; min-width:100px; margin-top:0; padding:10px 16px; font-size:0.8rem;">
+                    🔄 Reset
                 </button>
             </div>
         </div>
     `;
-    
-    // Store the current photo data for delete operations
-    panel.dataset.photoUrl = photoUrl;
-    panel.dataset.fullPath = fullPath || '';
 }
 
-/**
- * Remove a single reference from Firestore
- */
-function removeSingleReference(collection, docId, field) {
-    if (!collection || !docId || !field) {
-        log('Missing collection, document ID, or field', 'error');
-        return;
-    }
-    
-    if (!confirm('Remove this reference from ' + collection + '/' + docId + '?')) {
-        return;
-    }
-    
-    var db = photoStorageEnv === 'PROD' ? prodDb : devDb;
-    if (!db) {
-        log('Database not available', 'error');
-        return;
-    }
-    
-    var updateData = {};
-    updateData[field] = firebase.firestore.FieldValue.delete();
-    
-    db.collection(collection).doc(docId).update(updateData)
-        .then(function() {
-            log('✅ Removed reference from: ' + collection + '/' + docId, 'success');
-            // Refresh the panel
-            var panel = document.getElementById('photoInfoPanel');
-            var photoUrl = panel ? panel.dataset.photoUrl : null;
-            var fullPath = panel ? panel.dataset.fullPath : null;
-            if (photoUrl) {
-                showPhotoInfoPanel(photoUrl, fullPath);
-            }
-        })
-        .catch(function(err) {
-            log('❌ Failed to remove reference: ' + err.message, 'error');
-        });
-}
-
-/**
- * Close the photo information panel
- */
 function closePhotoInfoPanel() {
     var panel = document.getElementById('photoInfoPanel');
     if (panel) {
@@ -297,169 +516,189 @@ function closePhotoInfoPanel() {
     }
 }
 
-/**
- * Delete photo from Storage only (keep Firestore references)
- */
-function deletePhotoStorageOnly() {
-    var panel = document.getElementById('photoInfoPanel');
-    if (!panel) return;
-    
-    var fullPath = panel.dataset.fullPath;
-    if (!fullPath) {
-        log('No storage path found', 'error');
-        return;
-    }
-    
-    if (!confirm('Delete this photo from Firebase Storage only?\n\n' + fullPath + '\n\nFirestore references will be kept.')) {
-        return;
-    }
-    
-    deletePhotoFromStorage(fullPath, function(err, result) {
-        if (err) {
-            log('❌ Delete failed: ' + err.message, 'error');
-            return;
-        }
-        if (result.notFound) {
-            log('⚠️ Photo not found in Storage', 'warning');
-        } else {
-            log('✅ Photo deleted from Storage', 'success');
-            // Refresh the panel to show the photo is gone
-            var photoUrl = panel.dataset.photoUrl;
-            if (photoUrl) {
-                showPhotoInfoPanel(photoUrl, fullPath);
-            }
-        }
-    });
-}
+// ============================================================
+// SAVE TO FIRESTORE
+// ============================================================
 
-/**
- * Delete photo from Storage AND all Firestore references
- */
-function deletePhotoWithReferences() {
-    var panel = document.getElementById('photoInfoPanel');
-    if (!panel) return;
-    
-    var fullPath = panel.dataset.fullPath;
-    var photoUrl = panel.dataset.photoUrl;
-    
-    if (!fullPath || !photoUrl) {
-        log('Missing storage path or photo URL', 'error');
+function savePhotoToFirestore() {
+    if (!currentDownloadUrl) {
+        photoLog('❌ Upload a photo first', 'error');
         return;
     }
     
-    // Check if there are references
-    findPhotoReferences(photoUrl, function(err, references) {
-        if (err) {
-            log('❌ Failed to find references: ' + err.message, 'error');
-            return;
-        }
-        
-        var refCount = references ? references.length : 0;
-        var msg = 'Delete this photo from Firebase Storage AND all Firestore references?\n\n';
-        msg += 'Storage: ' + fullPath + '\n\n';
-        msg += 'Found ' + refCount + ' Firestore reference' + (refCount > 1 ? 's' : '') + ':\n';
-        
-        if (references && references.length > 0) {
-            references.forEach(function(ref) {
-                msg += '  • ' + ref.collection + '/' + ref.docId + ' (celebration)\n';
-            });
-        } else {
-            msg += '  (none found)\n';
-        }
-        msg += '\nThis action CANNOT be undone.';
-        
-        if (!confirm(msg)) {
-            return;
-        }
-        
-        // Step 1: Delete from Storage
-        deletePhotoFromStorage(fullPath, function(err, result) {
-            if (err) {
-                log('❌ Storage delete failed: ' + err.message, 'error');
-                return;
+    var collection = document.getElementById('photoFirestoreCollection');
+    var docId = document.getElementById('photoFirestoreDocId');
+    var field = document.getElementById('photoFirestoreField');
+    
+    if (!collection || !docId || !field) {
+        photoLog('❌ Missing Firestore fields', 'error');
+        return;
+    }
+    
+    var collectionName = collection.value.trim();
+    var documentId = docId.value.trim();
+    var fieldName = field.value.trim();
+    
+    if (!collectionName || !documentId || !fieldName) {
+        photoLog('❌ Fill in all Firestore fields', 'error');
+        return;
+    }
+    
+    var db = photoStorageEnv === 'PROD' ? prodDb : devDb;
+    if (!db) {
+        photoLog('❌ Database not available', 'error');
+        return;
+    }
+    
+    photoLog('Saving to: ' + collectionName + '/' + documentId + ' -> ' + fieldName, 'info');
+    
+    var updateData = {};
+    updateData[fieldName] = currentDownloadUrl;
+    
+    db.collection(collectionName).doc(documentId).update(updateData)
+        .then(function() {
+            photoLog('✅ Saved to Firestore: ' + collectionName + '/' + documentId, 'success');
+            var statusDiv = document.getElementById('firestoreStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span class="log-success">✅ Saved to: ' + collectionName + '/' + documentId + ' -> ' + fieldName + '</span>';
             }
-            
-            var storageDeleted = result.success || result.notFound;
-            log('✅ Storage deletion: ' + (result.success ? 'Success' : 'Not found'), 'info');
-            
-            // Step 2: Delete Firestore references
-            if (references && references.length > 0) {
-                var db = photoStorageEnv === 'PROD' ? prodDb : devDb;
-                if (!db) {
-                    log('❌ Database not available', 'error');
-                    return;
-                }
-                
-                var totalRefs = references.length;
-                var deletedRefs = 0;
-                var failedRefs = 0;
-                
-                references.forEach(function(ref, index) {
-                    var updateData = {};
-                    var field = 'celebration';
-                    updateData[field] = firebase.firestore.FieldValue.delete();
-                    
-                    db.collection(ref.collection).doc(ref.docId).update(updateData)
-                        .then(function() {
-                            deletedRefs++;
-                            log('✅ Removed: ' + ref.collection + '/' + ref.docId, 'success');
-                            // When all done, show final message
-                            if (deletedRefs + failedRefs === totalRefs) {
-                                var msg = '✅ Complete: ' + (storageDeleted ? 'Storage deleted' : 'Storage not found') + 
-                                         ', ' + deletedRefs + ' Firestore references removed';
-                                if (failedRefs > 0) {
-                                    msg += ' (' + failedRefs + ' failed)';
-                                }
-                                log(msg, 'success');
-                                // Refresh the panel or close it
-                                closePhotoInfoPanel();
-                            }
-                        })
-                        .catch(function(err) {
-                            failedRefs++;
-                            log('❌ Failed to remove: ' + ref.collection + '/' + ref.docId + ' - ' + err.message, 'error');
-                            if (deletedRefs + failedRefs === totalRefs) {
-                                var msg = '⚠️ Complete: ' + (storageDeleted ? 'Storage deleted' : 'Storage not found') + 
-                                         ', ' + deletedRefs + ' removed, ' + failedRefs + ' failed';
-                                log(msg, 'warning');
-                            }
-                        });
-                });
-            } else {
-                log('✅ Complete: Storage ' + (storageDeleted ? 'deleted' : 'not found') + ', no Firestore references to remove', 'success');
-                closePhotoInfoPanel();
+        })
+        .catch(function(err) {
+            photoLog('❌ Failed to save: ' + err.message, 'error');
+            var statusDiv = document.getElementById('firestoreStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span class="log-error">❌ Failed: ' + err.message + '</span>';
             }
         });
-    });
 }
 
 // ============================================================
-// EXPOSE NEW FUNCTIONS GLOBALLY
+// INITIALIZE PHOTO TAB
 // ============================================================
 
-window.showPhotoInfoPanel = showPhotoInfoPanel;
-window.renderInfoPanel = renderInfoPanel;
-window.removeSingleReference = removeSingleReference;
+function initPhotoTab() {
+    console.log('[PHOTO] Initializing photo tab...');
+    
+    // Set default URL
+    var urlInput = document.getElementById('photoUrlInput');
+    if (urlInput && !urlInput.value) {
+        urlInput.value = DEFAULT_IMAGE_URL;
+    }
+    
+    // Set default folder
+    var folderInput = document.getElementById('photoStorageFolder');
+    if (folderInput && !folderInput.value) {
+        folderInput.value = 'celebrations/';
+    }
+    
+    // Set default field
+    var fieldInput = document.getElementById('photoFirestoreField');
+    if (fieldInput && !fieldInput.value) {
+        fieldInput.value = 'celebration';
+    }
+    
+    // Environment buttons
+    var prodBtn = document.getElementById('photoProdBtn');
+    var devBtn = document.getElementById('photoDevBtn');
+    
+    if (prodBtn) {
+        prodBtn.onclick = function() { setPhotoEnvironment('PROD'); };
+    }
+    if (devBtn) {
+        devBtn.onclick = function() { setPhotoEnvironment('DEV'); };
+    }
+    
+    // Load button
+    var loadBtn = document.getElementById('photoLoadBtn');
+    if (loadBtn) {
+        loadBtn.onclick = loadPhotoFromUrl;
+    }
+    
+    // Upload button
+    var uploadBtn = document.getElementById('photoUploadBtn');
+    if (uploadBtn) {
+        uploadBtn.style.display = 'none';
+        uploadBtn.onclick = uploadPhotoToStorage;
+    }
+    
+    // Reset button
+    var resetBtn = document.getElementById('photoResetBtn');
+    if (resetBtn) {
+        resetBtn.onclick = resetPhotoTool;
+    }
+    
+    // Info button
+    var infoBtn = document.getElementById('showPhotoInfoBtn');
+    if (infoBtn) {
+        infoBtn.style.display = 'none';
+        infoBtn.onclick = showPhotoInfo;
+    }
+    
+    // Copy URL button
+    var copyBtn = document.getElementById('copyUrlBtn');
+    if (copyBtn) {
+        copyBtn.style.display = 'none';
+        copyBtn.onclick = copyPhotoUrl;
+    }
+    
+    // Save Firestore reference button
+    var saveRefBtn = document.getElementById('saveFirestoreRefBtn');
+    if (saveRefBtn) {
+        saveRefBtn.onclick = savePhotoToFirestore;
+    }
+    
+    // Enter key on URL input
+    if (urlInput) {
+        urlInput.onkeydown = function(e) {
+            if (e.key === 'Enter') {
+                loadPhotoFromUrl();
+            }
+        };
+    }
+    
+    console.log('[PHOTO] Photo tab initialized');
+    photoLog('✅ Photo tab ready. Select PROD/DEV and load an image.', 'success');
+}
+
+// ============================================================
+// EXPOSE FUNCTIONS GLOBALLY
+// ============================================================
+
+window.setPhotoEnvironment = setPhotoEnvironment;
+window.loadPhotoFromUrl = loadPhotoFromUrl;
+window.uploadPhotoToStorage = uploadPhotoToStorage;
+window.resetPhotoTool = resetPhotoTool;
+window.copyPhotoUrl = copyPhotoUrl;
+window.showPhotoInfo = showPhotoInfo;
 window.closePhotoInfoPanel = closePhotoInfoPanel;
-window.deletePhotoStorageOnly = deletePhotoStorageOnly;
-window.deletePhotoWithReferences = deletePhotoWithReferences;
+window.savePhotoToFirestore = savePhotoToFirestore;
+window.initPhotoTab = initPhotoTab;
 
 // ============================================================
-// EXPOSE FOR DEBUGGING
+// AUTO-INIT ON LOAD
 // ============================================================
 
-console.log("[PHOTO-UTIL] v1.02 loaded (with info panel + references)");
+// Check if DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        // Wait a beat for other scripts to load
+        setTimeout(initPhotoTab, 500);
+    });
+} else {
+    setTimeout(initPhotoTab, 500);
+}
+
+console.log('[PHOTO-UTIL] v1.05 loaded');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: showPhotoInfoPanel() - Display photo preview + Firestore references
-   - ADDED: findPhotoReferences() - Search all collections for photo URL
-   - ADDED: displayPhotoReferences() - Render references in UI
-   - ADDED: Enhanced delete options (Storage only vs Storage + References)
-   - CHANGED: Upload now automatically shows the info panel
-   - CHANGED: Delete functions now show confirmation with reference count
-DEPENDS ON: Firebase Storage, Firestore, WRV.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: All functions now properly exposed globally
+   - FIXED: Added fallback for missing log function
+   - FIXED: Better error handling
+   - ADDED: Console logging for debugging
+   - SIMPLIFIED: Removed all external dependencies
+DEPENDS ON: Firebase Storage (for upload), Firestore (for saving references)
 STATUS: Ready for integration
 */
