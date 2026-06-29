@@ -1,23 +1,23 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: validatePhotoPointer() - Check if record has celebration field with imageUrl
-   - ADDED: validateAllFields() - Comprehensive field-by-field validation
-   - ADDED: buildFieldDiff() - Build detailed diff for preview
-   - CHANGED: validateRecord() now includes photo validation and comprehensive field checks
-   - CHANGED: buildFixPayload() now includes ALL fields (TR, T-1, T-2, Strk, status, finalResults, celebration)
-   - PRESERVED: All existing functionality from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateTeamGame()
+   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateStrokeGame()
+   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateMatchGamePerHole()
+   - CHANGED: Renamed Game1 → "Match Play", Game2 → "Team Game", Game3 → "Stroke Game"
+   - CHANGED: Removed dramatic colors in validation display (clean professional UI)
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.03";
+window.UTIL_VALIDATE_VERSION = "1.04";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.03");
+    console.log("[UTIL-VALIDATE] Initializing v1.04");
     
     // ============================================================
     // PARSING FUNCTIONS
@@ -221,7 +221,7 @@ var UtilValidate = (function() {
         for (var idx = 0; idx < 18; idx++) {
             var hole = flightScores[idx];
             if (!hole || !hole.saved) {
-                results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0.5, trPointsB: 0.5, teamGameTR: { A: 0.5, B: 0.5 } });
+                results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0, trPointsB: 0, teamGameTR: { A: 0, B: 0 } });
                 continue;
             }
             var si = courseSi && courseSi[idx] ? courseSi[idx] : 1;
@@ -245,7 +245,7 @@ var UtilValidate = (function() {
             var trPointsA, trPointsB;
             if (running > 0) { trPointsA = 1; trPointsB = 0; }
             else if (running < 0) { trPointsA = 0; trPointsB = 1; }
-            else { trPointsA = 0.5; trPointsB = 0.5; }
+            else { trPointsA = 0; trPointsB = 0; }  // FIXED: AS = 0 points each
             results.push({
                 hole: idx+1,
                 match1: match1,
@@ -274,7 +274,7 @@ var UtilValidate = (function() {
         for (var pos = 0; pos < 18; pos++) {
             var f1 = f1Scores[pos], f2 = f2Scores[pos];
             if (!f1 || !f1.saved || !f2 || !f2.saved) {
-                results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0.5, trPointsB: 0.5, strokeTR: { A: 0.5, B: 0.5 } });
+                results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0, trPointsB: 0, strokeTR: { A: 0, B: 0 } });
                 continue;
             }
             var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
@@ -288,7 +288,7 @@ var UtilValidate = (function() {
             else if (diff > 0) display = 'A' + Math.round(diff);
             else display = 'B' + Math.round(Math.abs(diff));
             var trPointsA, trPointsB;
-            if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }
+            if (Math.abs(diff) < 0.01) { trPointsA = 0; trPointsB = 0; }  // FIXED: AS = 0 points each
             else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
             else { trPointsA = 0; trPointsB = 1; }
             results.push({
@@ -386,10 +386,10 @@ var UtilValidate = (function() {
                 var pointsA, pointsB;
                 if (leadA > 0) { pointsA = 1; }
                 else if (leadA < 0) { pointsA = 0; }
-                else { pointsA = 0.5; }
+                else { pointsA = 0; }  // FIXED: AS = 0 points
                 if (leadB > 0) { pointsB = 1; }
                 else if (leadB < 0) { pointsB = 0; }
-                else { pointsB = 0.5; }
+                else { pointsB = 0; }  // FIXED: AS = 0 points
                 
                 var matchKey = match.playerA.name + "_vs_" + match.playerB.name;
                 holeMatchPoints[matchKey] = { pointsA: pointsA, pointsB: pointsB };
@@ -496,12 +496,12 @@ var UtilValidate = (function() {
                 mB += match.pointsB || 0;
             }
             
-            var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0.5;
-            var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0.5;
-            var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0.5;
-            var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0.5;
-            var sA = strk.strokeTR ? strk.strokeTR.A : 0.5;
-            var sB = strk.strokeTR ? strk.strokeTR.B : 0.5;
+            var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0;
+            var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0;
+            var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0;
+            var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0;
+            var sA = strk.strokeTR ? strk.strokeTR.A : 0;
+            var sB = strk.strokeTR ? strk.strokeTR.B : 0;
             
             var trA = mA + t1A + t2A + sA;
             var trB = mB + t1B + t2B + sB;
@@ -620,8 +620,8 @@ var UtilValidate = (function() {
             f2IntraMatches.push(f2MatchResults);
         }
         
-        var game1PointsA = [];
-        var game1PointsB = [];
+        var matchPlayPointsA = [];
+        var matchPlayPointsB = [];
         for (var pos = 0; pos < 18; pos++) {
             var holeMatchData = matchPointsPerHole[pos] || {};
             var mA = 0, mB = 0;
@@ -629,11 +629,11 @@ var UtilValidate = (function() {
                 mA += holeMatchData[matchKey].pointsA || 0;
                 mB += holeMatchData[matchKey].pointsB || 0;
             }
-            game1PointsA.push(mA);
-            game1PointsB.push(mB);
+            matchPlayPointsA.push(mA);
+            matchPlayPointsB.push(mB);
         }
         
-        var game2 = {
+        var teamGame = {
             flight1: {
                 leader: t1Results.map(function(r) { return r.display || 'AS'; }),
                 cumulativePoints: t1Results.map(function(r) { return r.running || 0; }),
@@ -644,29 +644,29 @@ var UtilValidate = (function() {
                 cumulativePoints: t2Results.map(function(r) { return r.running || 0; }),
                 clinchedHole: null
             },
-            pointsA: t1Results.map(function(r, i) { return (t1Results[i].trPointsA || 0.5) + (t2Results[i].trPointsA || 0.5); }),
-            pointsB: t1Results.map(function(r, i) { return (t1Results[i].trPointsB || 0.5) + (t2Results[i].trPointsB || 0.5); }),
+            pointsA: t1Results.map(function(r, i) { return (t1Results[i].trPointsA || 0) + (t2Results[i].trPointsA || 0); }),
+            pointsB: t1Results.map(function(r, i) { return (t1Results[i].trPointsB || 0) + (t2Results[i].trPointsB || 0); }),
             displayT1: displayT1,
             displayT2: displayT2
         };
         
-        var game3 = {
+        var strokeGame = {
             leader: strkResults.map(function(r) { return r.display || 'AS'; }),
             displayStrk: displayStrk,
-            pointsA: strkResults.map(function(r) { return r.trPointsA || 0.5; }),
-            pointsB: strkResults.map(function(r) { return r.trPointsB || 0.5; }),
+            pointsA: strkResults.map(function(r) { return r.trPointsA || 0; }),
+            pointsB: strkResults.map(function(r) { return r.trPointsB || 0; }),
             nettA: strkResults.map(function(r) { return r.netA || 0; }),
             nettB: strkResults.map(function(r) { return r.netB || 0; })
         };
         
         var finalResults = {
             version: 1,
-            game1: {
-                pointsA: game1PointsA,
-                pointsB: game1PointsB
+            matchPlay: {
+                pointsA: matchPlayPointsA,
+                pointsB: matchPlayPointsB
             },
-            game2: game2,
-            game3: game3,
+            teamGame: teamGame,
+            strokeGame: strokeGame,
             matchResults: matchResultsArray,
             f1IntraMatches: f1IntraMatches,
             f2IntraMatches: f2IntraMatches,
@@ -730,7 +730,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.03: PHOTO POINTER VALIDATION
+    // PHOTO POINTER VALIDATION
     // ============================================================
     
     function validatePhotoPointer(recordData) {
@@ -741,7 +741,6 @@ var UtilValidate = (function() {
         var celebration = recordData.celebration || {};
         var hasPhoto = !!(celebration.imageUrl && celebration.imageRef);
         
-        // Generate expected path from record ID
         var expectedPath = null;
         if (recordData.id) {
             expectedPath = 'celebration/' + recordData.id + '.jpg';
@@ -756,7 +755,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.03: COMPREHENSIVE FIELD VALIDATION
+    // COMPREHENSIVE FIELD VALIDATION
     // ============================================================
     
     function validateAllFields(recordData, recalculated) {
@@ -772,7 +771,7 @@ var UtilValidate = (function() {
             matched: 0
         };
         
-        // 1. TR Values (most important)
+        // 1. TR Values
         var curTrA = (recordData.results?.tr?.teamA) || [];
         var curTrB = (recordData.results?.tr?.teamB) || [];
         var newTrA = recalculated.tr.teamA || [];
@@ -811,8 +810,8 @@ var UtilValidate = (function() {
         }
         
         // 3. T-1 Display
-        var curT1 = (recordData.results?.game2?.displayT1) || [];
-        var newT1 = recalculated.game2.displayT1 || [];
+        var curT1 = (recordData.results?.teamGame?.displayT1) || [];
+        var newT1 = recalculated.teamGame.displayT1 || [];
         for (var i = 0; i < 18; i++) {
             if (curT1[i] !== newT1[i]) {
                 mismatches.push({ field: 'T-1 H' + (i+1), current: curT1[i] || '?', expected: newT1[i] || '?' });
@@ -825,8 +824,8 @@ var UtilValidate = (function() {
         }
         
         // 4. T-2 Display
-        var curT2 = (recordData.results?.game2?.displayT2) || [];
-        var newT2 = recalculated.game2.displayT2 || [];
+        var curT2 = (recordData.results?.teamGame?.displayT2) || [];
+        var newT2 = recalculated.teamGame.displayT2 || [];
         for (var i = 0; i < 18; i++) {
             if (curT2[i] !== newT2[i]) {
                 mismatches.push({ field: 'T-2 H' + (i+1), current: curT2[i] || '?', expected: newT2[i] || '?' });
@@ -838,9 +837,9 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 5. Strk Display
-        var curStrk = (recordData.results?.game3?.displayStrk) || [];
-        var newStrk = recalculated.game3.displayStrk || [];
+        // 5. Stroke Display
+        var curStrk = (recordData.results?.strokeGame?.displayStrk) || [];
+        var newStrk = recalculated.strokeGame.displayStrk || [];
         for (var i = 0; i < 18; i++) {
             if (curStrk[i] !== newStrk[i]) {
                 mismatches.push({ field: 'Strk H' + (i+1), current: curStrk[i] || '?', expected: newStrk[i] || '?' });
@@ -852,49 +851,49 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 6. Game1 Points
-        var curG1A = (recordData.results?.game1?.pointsA) || [];
-        var curG1B = (recordData.results?.game1?.pointsB) || [];
-        var newG1A = recalculated.game1.pointsA || [];
-        var newG1B = recalculated.game1.pointsB || [];
+        // 6. Match Play Points
+        var curMPA = (recordData.results?.matchPlay?.pointsA) || [];
+        var curMPB = (recordData.results?.matchPlay?.pointsB) || [];
+        var newMPA = recalculated.matchPlay.pointsA || [];
+        var newMPB = recalculated.matchPlay.pointsB || [];
         for (var i = 0; i < 18; i++) {
-            if (curG1A[i] !== newG1A[i] || curG1B[i] !== newG1B[i]) {
-                mismatches.push({ field: 'Game1 H' + (i+1), current: curG1A[i] + '-' + curG1B[i], expected: newG1A[i] + '-' + newG1B[i] });
+            if (curMPA[i] !== newMPA[i] || curMPB[i] !== newMPB[i]) {
+                mismatches.push({ field: 'Match Play H' + (i+1), current: curMPA[i] + '-' + curMPB[i], expected: newMPA[i] + '-' + newMPB[i] });
                 summary.mismatched++;
             } else {
-                matches.push({ field: 'Game1 H' + (i+1), current: curG1A[i] + '-' + curG1B[i], expected: newG1A[i] + '-' + newG1B[i] });
+                matches.push({ field: 'Match Play H' + (i+1), current: curMPA[i] + '-' + curMPB[i], expected: newMPA[i] + '-' + newMPB[i] });
                 summary.matched++;
             }
             summary.totalFields++;
         }
         
-        // 7. Game2 Points
-        var curG2A = (recordData.results?.game2?.pointsA) || [];
-        var curG2B = (recordData.results?.game2?.pointsB) || [];
-        var newG2A = recalculated.game2.pointsA || [];
-        var newG2B = recalculated.game2.pointsB || [];
+        // 7. Team Game Points
+        var curTGA = (recordData.results?.teamGame?.pointsA) || [];
+        var curTGB = (recordData.results?.teamGame?.pointsB) || [];
+        var newTGA = recalculated.teamGame.pointsA || [];
+        var newTGB = recalculated.teamGame.pointsB || [];
         for (var i = 0; i < 18; i++) {
-            if (curG2A[i] !== newG2A[i] || curG2B[i] !== newG2B[i]) {
-                mismatches.push({ field: 'Game2 H' + (i+1), current: curG2A[i] + '-' + curG2B[i], expected: newG2A[i] + '-' + newG2B[i] });
+            if (curTGA[i] !== newTGA[i] || curTGB[i] !== newTGB[i]) {
+                mismatches.push({ field: 'Team Game H' + (i+1), current: curTGA[i] + '-' + curTGB[i], expected: newTGA[i] + '-' + newTGB[i] });
                 summary.mismatched++;
             } else {
-                matches.push({ field: 'Game2 H' + (i+1), current: curG2A[i] + '-' + curG2B[i], expected: newG2A[i] + '-' + newG2B[i] });
+                matches.push({ field: 'Team Game H' + (i+1), current: curTGA[i] + '-' + curTGB[i], expected: newTGA[i] + '-' + newTGB[i] });
                 summary.matched++;
             }
             summary.totalFields++;
         }
         
-        // 8. Game3 Points
-        var curG3A = (recordData.results?.game3?.pointsA) || [];
-        var curG3B = (recordData.results?.game3?.pointsB) || [];
-        var newG3A = recalculated.game3.pointsA || [];
-        var newG3B = recalculated.game3.pointsB || [];
+        // 8. Stroke Game Points
+        var curSGA = (recordData.results?.strokeGame?.pointsA) || [];
+        var curSGB = (recordData.results?.strokeGame?.pointsB) || [];
+        var newSGA = recalculated.strokeGame.pointsA || [];
+        var newSGB = recalculated.strokeGame.pointsB || [];
         for (var i = 0; i < 18; i++) {
-            if (curG3A[i] !== newG3A[i] || curG3B[i] !== newG3B[i]) {
-                mismatches.push({ field: 'Game3 H' + (i+1), current: curG3A[i] + '-' + curG3B[i], expected: newG3A[i] + '-' + newG3B[i] });
+            if (curSGA[i] !== newSGA[i] || curSGB[i] !== newSGB[i]) {
+                mismatches.push({ field: 'Stroke Game H' + (i+1), current: curSGA[i] + '-' + curSGB[i], expected: newSGA[i] + '-' + newSGB[i] });
                 summary.mismatched++;
             } else {
-                matches.push({ field: 'Game3 H' + (i+1), current: curG3A[i] + '-' + curG3B[i], expected: newG3A[i] + '-' + newG3B[i] });
+                matches.push({ field: 'Stroke Game H' + (i+1), current: curSGA[i] + '-' + curSGB[i], expected: newSGA[i] + '-' + newSGB[i] });
                 summary.matched++;
             }
             summary.totalFields++;
@@ -953,7 +952,7 @@ var UtilValidate = (function() {
         }
         summary.totalFields++;
         
-        // 13. Status (check for conflict)
+        // 13. Status
         var signatures = recordData.signatures || {};
         var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
         var status = recordData.status || 'unknown';
@@ -970,17 +969,16 @@ var UtilValidate = (function() {
         }
         summary.totalFields++;
         
-        // 14. Celebration/Photo (v1.03)
+        // 14. Celebration Photo (LAST check)
         var photoStatus = validatePhotoPointer(recordData);
         var isCompletedGame = (status === 'completed' || status === 'pending_handicap' || bothSigned);
         if (isCompletedGame && !photoStatus.hasPhoto) {
-            mismatches.push({ field: 'Celebration Photo', current: 'MISSING', expected: photoStatus.expectedPath || 'celebration/{gameId}_H.jpg' });
+            mismatches.push({ field: 'Celebration Photo', current: 'MISSING', expected: photoStatus.expectedPath || 'celebration/{gameId}.jpg' });
             summary.mismatched++;
         } else if (isCompletedGame && photoStatus.hasPhoto) {
             matches.push({ field: 'Celebration Photo', current: 'present', expected: 'present' });
             summary.matched++;
         } else {
-            // Not completed - photo optional
             matches.push({ field: 'Celebration Photo', current: photoStatus.hasPhoto ? 'present' : 'not required', expected: 'not required (game not completed)' });
             summary.matched++;
         }
@@ -1000,7 +998,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.03: VALIDATE RECORD - Comprehensive validation
+    // VALIDATE RECORD
     // ============================================================
     
     function validateRecord(recordData) {
@@ -1032,7 +1030,6 @@ var UtilValidate = (function() {
         
         var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
         
-        // v1.03: Comprehensive field validation
         var fieldValidation = validateAllFields(recordData, recalculated);
         
         var needsFix = fieldValidation.summary.mismatched > 0;
@@ -1059,7 +1056,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.03: BUILD FIELD DIFF - For preview
+    // BUILD FIELD DIFF
     // ============================================================
     
     function buildFieldDiff(recordData, recalculated) {
@@ -1072,16 +1069,17 @@ var UtilValidate = (function() {
         var unchanged = [];
         var notTouched = [];
         
-        // Map mismatches to changes
         for (var i = 0; i < validation.mismatches.length; i++) {
             var m = validation.mismatches[i];
             var changeIcon = '';
-            if (m.field.indexOf('TR') !== -1) changeIcon = '🏆';
-            else if (m.field.indexOf('T-1') !== -1 || m.field.indexOf('T-2') !== -1) changeIcon = '📊';
-            else if (m.field.indexOf('Strk') !== -1) changeIcon = '🎯';
-            else if (m.field.indexOf('Game') !== -1) changeIcon = '🎯';
-            else if (m.field.indexOf('Photo') !== -1) changeIcon = '📸';
-            else changeIcon = '📝';
+            if (m.field.indexOf('TR') !== -1) changeIcon = 'TR';
+            else if (m.field.indexOf('T-1') !== -1 || m.field.indexOf('T-2') !== -1) changeIcon = 'T';
+            else if (m.field.indexOf('Strk') !== -1) changeIcon = 'S';
+            else if (m.field.indexOf('Match Play') !== -1) changeIcon = 'MP';
+            else if (m.field.indexOf('Team Game') !== -1) changeIcon = 'TG';
+            else if (m.field.indexOf('Stroke Game') !== -1) changeIcon = 'SG';
+            else if (m.field.indexOf('Photo') !== -1) changeIcon = 'PH';
+            else changeIcon = '•';
             
             changes.push({
                 field: m.field,
@@ -1091,13 +1089,11 @@ var UtilValidate = (function() {
             });
         }
         
-        // Map matches to unchanged
         for (var i = 0; i < validation.matches.length; i++) {
             var m = validation.matches[i];
             unchanged.push(m.field);
         }
         
-        // Not touched - sacred data
         notTouched.push('f1DataString (raw scores)');
         notTouched.push('f2DataString (raw scores)');
         notTouched.push('players');
@@ -1124,7 +1120,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD FIX PREVIEW (v1.03: uses new diff)
+    // BUILD FIX PREVIEW
     // ============================================================
     
     function buildFixPreview(recordData, recalculated) {
@@ -1141,7 +1137,6 @@ var UtilValidate = (function() {
         
         var diff = buildFieldDiff(recordData, recalculated);
         
-        // Extract mismatched holes from TR changes
         var mismatchedHoles = [];
         var matchingHoles = [];
         for (var i = 0; i < diff.mismatches.length; i++) {
@@ -1153,7 +1148,6 @@ var UtilValidate = (function() {
                 }
             }
         }
-        // Sort holes
         mismatchedHoles.sort(function(a, b) { return a - b; });
         for (var h = 1; h <= 18; h++) {
             if (mismatchedHoles.indexOf(h) === -1) {
@@ -1177,7 +1171,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD FIX PAYLOAD (v1.03: comprehensive)
+    // BUILD FIX PAYLOAD
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1215,8 +1209,8 @@ var UtilValidate = (function() {
         }
         
         // 2. T-1 Display
-        var curT1 = (recordData.results?.game2?.displayT1) || [];
-        var newT1 = recalculated.game2.displayT1 || [];
+        var curT1 = (recordData.results?.teamGame?.displayT1) || [];
+        var newT1 = recalculated.teamGame.displayT1 || [];
         var t1Mismatches = [];
         for (var i = 0; i < 18; i++) {
             if (curT1[i] !== newT1[i]) t1Mismatches.push(i);
@@ -1226,12 +1220,12 @@ var UtilValidate = (function() {
             for (var idx = 0; idx < t1Mismatches.length; idx++) {
                 updatedT1[t1Mismatches[idx]] = newT1[t1Mismatches[idx]];
             }
-            updatePayload['results.game2.displayT1'] = updatedT1;
+            updatePayload['results.teamGame.displayT1'] = updatedT1;
         }
         
         // 3. T-2 Display
-        var curT2 = (recordData.results?.game2?.displayT2) || [];
-        var newT2 = recalculated.game2.displayT2 || [];
+        var curT2 = (recordData.results?.teamGame?.displayT2) || [];
+        var newT2 = recalculated.teamGame.displayT2 || [];
         var t2Mismatches = [];
         for (var i = 0; i < 18; i++) {
             if (curT2[i] !== newT2[i]) t2Mismatches.push(i);
@@ -1241,12 +1235,12 @@ var UtilValidate = (function() {
             for (var idx = 0; idx < t2Mismatches.length; idx++) {
                 updatedT2[t2Mismatches[idx]] = newT2[t2Mismatches[idx]];
             }
-            updatePayload['results.game2.displayT2'] = updatedT2;
+            updatePayload['results.teamGame.displayT2'] = updatedT2;
         }
         
-        // 4. Strk Display
-        var curStrk = (recordData.results?.game3?.displayStrk) || [];
-        var newStrk = recalculated.game3.displayStrk || [];
+        // 4. Stroke Display
+        var curStrk = (recordData.results?.strokeGame?.displayStrk) || [];
+        var newStrk = recalculated.strokeGame.displayStrk || [];
         var strkMismatches = [];
         for (var i = 0; i < 18; i++) {
             if (curStrk[i] !== newStrk[i]) strkMismatches.push(i);
@@ -1256,70 +1250,70 @@ var UtilValidate = (function() {
             for (var idx = 0; idx < strkMismatches.length; idx++) {
                 updatedStrk[strkMismatches[idx]] = newStrk[strkMismatches[idx]];
             }
-            updatePayload['results.game3.displayStrk'] = updatedStrk;
+            updatePayload['results.strokeGame.displayStrk'] = updatedStrk;
         }
         
-        // 5. Game1 Points
-        var curG1A = (recordData.results?.game1?.pointsA) || [];
-        var curG1B = (recordData.results?.game1?.pointsB) || [];
-        var newG1A = recalculated.game1.pointsA || [];
-        var newG1B = recalculated.game1.pointsB || [];
-        var g1Mismatches = [];
+        // 5. Match Play Points
+        var curMPA = (recordData.results?.matchPlay?.pointsA) || [];
+        var curMPB = (recordData.results?.matchPlay?.pointsB) || [];
+        var newMPA = recalculated.matchPlay.pointsA || [];
+        var newMPB = recalculated.matchPlay.pointsB || [];
+        var mpMismatches = [];
         for (var i = 0; i < 18; i++) {
-            if (curG1A[i] !== newG1A[i] || curG1B[i] !== newG1B[i]) g1Mismatches.push(i);
+            if (curMPA[i] !== newMPA[i] || curMPB[i] !== newMPB[i]) mpMismatches.push(i);
         }
-        if (g1Mismatches.length > 0) {
-            var updatedG1A = curG1A.slice();
-            var updatedG1B = curG1B.slice();
-            for (var idx = 0; idx < g1Mismatches.length; idx++) {
-                var holeIdx = g1Mismatches[idx];
-                updatedG1A[holeIdx] = newG1A[holeIdx];
-                updatedG1B[holeIdx] = newG1B[holeIdx];
+        if (mpMismatches.length > 0) {
+            var updatedMPA = curMPA.slice();
+            var updatedMPB = curMPB.slice();
+            for (var idx = 0; idx < mpMismatches.length; idx++) {
+                var holeIdx = mpMismatches[idx];
+                updatedMPA[holeIdx] = newMPA[holeIdx];
+                updatedMPB[holeIdx] = newMPB[holeIdx];
             }
-            updatePayload['results.game1.pointsA'] = updatedG1A;
-            updatePayload['results.game1.pointsB'] = updatedG1B;
+            updatePayload['results.matchPlay.pointsA'] = updatedMPA;
+            updatePayload['results.matchPlay.pointsB'] = updatedMPB;
         }
         
-        // 6. Game2 Points
-        var curG2A = (recordData.results?.game2?.pointsA) || [];
-        var curG2B = (recordData.results?.game2?.pointsB) || [];
-        var newG2A = recalculated.game2.pointsA || [];
-        var newG2B = recalculated.game2.pointsB || [];
-        var g2Mismatches = [];
+        // 6. Team Game Points
+        var curTGA = (recordData.results?.teamGame?.pointsA) || [];
+        var curTGB = (recordData.results?.teamGame?.pointsB) || [];
+        var newTGA = recalculated.teamGame.pointsA || [];
+        var newTGB = recalculated.teamGame.pointsB || [];
+        var tgMismatches = [];
         for (var i = 0; i < 18; i++) {
-            if (curG2A[i] !== newG2A[i] || curG2B[i] !== newG2B[i]) g2Mismatches.push(i);
+            if (curTGA[i] !== newTGA[i] || curTGB[i] !== newTGB[i]) tgMismatches.push(i);
         }
-        if (g2Mismatches.length > 0) {
-            var updatedG2A = curG2A.slice();
-            var updatedG2B = curG2B.slice();
-            for (var idx = 0; idx < g2Mismatches.length; idx++) {
-                var holeIdx = g2Mismatches[idx];
-                updatedG2A[holeIdx] = newG2A[holeIdx];
-                updatedG2B[holeIdx] = newG2B[holeIdx];
+        if (tgMismatches.length > 0) {
+            var updatedTGA = curTGA.slice();
+            var updatedTGB = curTGB.slice();
+            for (var idx = 0; idx < tgMismatches.length; idx++) {
+                var holeIdx = tgMismatches[idx];
+                updatedTGA[holeIdx] = newTGA[holeIdx];
+                updatedTGB[holeIdx] = newTGB[holeIdx];
             }
-            updatePayload['results.game2.pointsA'] = updatedG2A;
-            updatePayload['results.game2.pointsB'] = updatedG2B;
+            updatePayload['results.teamGame.pointsA'] = updatedTGA;
+            updatePayload['results.teamGame.pointsB'] = updatedTGB;
         }
         
-        // 7. Game3 Points
-        var curG3A = (recordData.results?.game3?.pointsA) || [];
-        var curG3B = (recordData.results?.game3?.pointsB) || [];
-        var newG3A = recalculated.game3.pointsA || [];
-        var newG3B = recalculated.game3.pointsB || [];
-        var g3Mismatches = [];
+        // 7. Stroke Game Points
+        var curSGA = (recordData.results?.strokeGame?.pointsA) || [];
+        var curSGB = (recordData.results?.strokeGame?.pointsB) || [];
+        var newSGA = recalculated.strokeGame.pointsA || [];
+        var newSGB = recalculated.strokeGame.pointsB || [];
+        var sgMismatches = [];
         for (var i = 0; i < 18; i++) {
-            if (curG3A[i] !== newG3A[i] || curG3B[i] !== newG3B[i]) g3Mismatches.push(i);
+            if (curSGA[i] !== newSGA[i] || curSGB[i] !== newSGB[i]) sgMismatches.push(i);
         }
-        if (g3Mismatches.length > 0) {
-            var updatedG3A = curG3A.slice();
-            var updatedG3B = curG3B.slice();
-            for (var idx = 0; idx < g3Mismatches.length; idx++) {
-                var holeIdx = g3Mismatches[idx];
-                updatedG3A[holeIdx] = newG3A[holeIdx];
-                updatedG3B[holeIdx] = newG3B[holeIdx];
+        if (sgMismatches.length > 0) {
+            var updatedSGA = curSGA.slice();
+            var updatedSGB = curSGB.slice();
+            for (var idx = 0; idx < sgMismatches.length; idx++) {
+                var holeIdx = sgMismatches[idx];
+                updatedSGA[holeIdx] = newSGA[holeIdx];
+                updatedSGB[holeIdx] = newSGB[holeIdx];
             }
-            updatePayload['results.game3.pointsA'] = updatedG3A;
-            updatePayload['results.game3.pointsB'] = updatedG3B;
+            updatePayload['results.strokeGame.pointsA'] = updatedSGA;
+            updatePayload['results.strokeGame.pointsB'] = updatedSGB;
         }
         
         // 8. Player Totals
@@ -1339,7 +1333,7 @@ var UtilValidate = (function() {
             updatePayload['results.computedUpToHole'] = newComputed;
         }
         
-        // 11. Status (only if conflict detected)
+        // 11. Status
         var signatures = recordData.signatures || {};
         var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
         var status = recordData.status || 'unknown';
@@ -1384,7 +1378,6 @@ var UtilValidate = (function() {
     // ============================================================
     
     return {
-        // Existing
         parseDataString: parseDataString,
         parseHoleData: parseHoleData,
         getStrokeHoles: getStrokeHoles,
@@ -1398,11 +1391,9 @@ var UtilValidate = (function() {
         calculateMatchGamePerHole: calculateMatchGamePerHole,
         buildCompleteResultsFromRawData: buildCompleteResultsFromRawData,
         deepEqual: deepEqual,
-        // v1.03: New
         validatePhotoPointer: validatePhotoPointer,
         validateAllFields: validateAllFields,
         buildFieldDiff: buildFieldDiff,
-        // Updated
         validateRecord: validateRecord,
         buildFixPreview: buildFixPreview,
         buildFixPayload: buildFixPayload
@@ -1410,164 +1401,18 @@ var UtilValidate = (function() {
     
 })();
 
-// Make available globally
 window.UtilValidate = UtilValidate;
-
-// ============================================================
-// VALIDATE TAB: INFORMATION GUIDE (unchanged)
-// ============================================================
-
-function showValidateInfoGuide() {
-    // Remove existing overlay if present
-    var existing = document.querySelector('.info-overlay');
-    if (existing) existing.remove();
-    
-    var overlay = document.createElement('div');
-    overlay.className = 'info-overlay';
-    overlay.innerHTML = `
-        <div class="info-card">
-            <div class="info-header">
-                <div class="info-title">🔬 VALIDATE TAB - Information & Guide</div>
-                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
-            </div>
-            
-            <div class="info-section">
-                <div class="info-section-title">🎯 What This Tab Does</div>
-                <div class="info-text">
-                    The <strong>VALIDATE</strong> tab checks the integrity of a game record by <strong>recalculating all derived data from raw scores</strong> and comparing it with what is stored in Firestore.
-                    <br><br>
-                    This is the most powerful tool in Record Management — it's the <strong>last resort safety net</strong> when records become corrupted or inconsistent.
-                </div>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">⚠️ When To Use This</div>
-                <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                    <li>🔴 <strong>You suspect data corruption</strong> — UI showing wrong T-1, T-2, Strk, or TR values</li>
-                    <li>🔴 <strong>Record status is 'pending_handicap'</strong> — the game never completed properly</li>
-                    <li>🔴 <strong>Player totals don't add up</strong> — gross scores don't match par calculations</li>
-                    <li>🔴 <strong>After a bad WRV write</strong> — data was partially written or overwritten</li>
-                    <li>🔴 <strong>After a failed cascade</strong> — some holes didn't recalculate correctly</li>
-                    <li>🟡 <strong>Audit/verification</strong> — you want to confirm a record is correct</li>
-                </ul>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">📊 What Gets Validated</div>
-                <div class="info-text">
-                    The tool recalculates <strong>every derived field</strong> from the raw scores:
-                </div>
-                <table class="info-table">
-                    <tr><th>Field</th><th>What It Validates</th></tr>
-                    <tr><td><span class="field-name">TR (Total Results)</span></td><td class="field-desc">Team A &amp; B cumulative points per hole — the most important check</td></tr>
-                    <tr><td><span class="field-name">TR Green Flags</span></td><td class="field-desc">Which team is winning per hole</td></tr>
-                    <tr><td><span class="field-name">T-1 Display</span></td><td class="field-desc">Flight 1 team game running score (e.g., "A2", "B1", "AS")</td></tr>
-                    <tr><td><span class="field-name">T-2 Display</span></td><td class="field-desc">Flight 2 team game running score (e.g., "A2", "B1", "AS")</td></tr>
-                    <tr><td><span class="field-name">Strk Display</span></td><td class="field-desc">Stroke game running score (e.g., "A3", "B2", "AS")</td></tr>
-                    <tr><td><span class="field-name">Game1 Points</span></td><td class="field-desc">Match play points per hole</td></tr>
-                    <tr><td><span class="field-name">Game2 Points</span></td><td class="field-desc">Team game points per hole</td></tr>
-                    <tr><td><span class="field-name">Game3 Points</span></td><td class="field-desc">Stroke game points per hole</td></tr>
-                    <tr><td><span class="field-name">Player Totals</span></td><td class="field-desc">Gross score, par, relative-to-par per player</td></tr>
-                    <tr><td><span class="field-name">ClinchedAt</span></td><td class="field-desc">When each match was clinched</td></tr>
-                    <tr><td><span class="field-name">computedUpToHole</span></td><td class="field-desc">How many holes have been computed</td></tr>
-                    <tr><td><span class="field-name">finalResults</span></td><td class="field-desc">Team A/B final scores and winner</td></tr>
-                    <tr><td><span class="field-name">Status</span></td><td class="field-desc">Record status (conflict detection)</td></tr>
-                    <tr><td><span class="field-name">Celebration Photo</span></td><td class="field-desc">Photo pointer for completed games</td></tr>
-                </table>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">🔧 What "Fix Record" Does</div>
-                <div class="info-text">
-                    When you click <strong style="color:#ffaa44;">"Fix Record"</strong>, the tool performs the following operations:
-                    <ol style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li><strong style="color:#4a8af4;">1. Creates a Backup</strong> — Copies the current record to <code>backupFolder</code> with timestamp. <strong style="color:#4a8af4;">Always safe!</strong></li>
-                        <li><strong style="color:#4caf50;">2. Updates TR Values</strong> — Fixes any mismatched TR values for all 18 holes</li>
-                        <li><strong style="color:#4caf50;">3. Updates TR Green Flags</strong> — Recalculates winning team indicators</li>
-                        <li><strong style="color:#4caf50;">4. Updates T-1, T-2, Strk</strong> — Fixes display values if they're wrong</li>
-                        <li><strong style="color:#4caf50;">5. Updates Game Points</strong> — Fixes Game1, Game2, Game3 points if mismatched</li>
-                        <li><strong style="color:#4caf50;">6. Updates Player Totals</strong> — Recalculates gross, par, relative-to-par</li>
-                        <li><strong style="color:#4caf50;">7. Updates ClinchedAt</strong> — Recalculates clinch data</li>
-                        <li><strong style="color:#4caf50;">8. Updates Final Results</strong> — Sets team scores and winner</li>
-                        <li><strong style="color:#4caf50;">9. Updates Status</strong> — Changes from 'pending_handicap' to 'completed' if signatures are true</li>
-                        <li><strong style="color:#4caf50;">10. Flags Missing Photo</strong> — Highlights if celebration photo is missing for completed games</li>
-                    </ol>
-                </div>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">✅ What Is PRESERVED (Never Touched)</div>
-                <div class="info-text">
-                    The following fields are <strong style="color:#4caf50;">NEVER modified</strong> during a fix — they are considered the "source of truth":
-                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li>📝 <strong>Raw scores</strong> — f1DataString, f2DataString (the original scores)</li>
-                        <li>👥 <strong>Players</strong> — Names, labels, handicaps, teams, flights</li>
-                        <li>⛳ <strong>Course</strong> — Name, par, stroke index values</li>
-                        <li>📋 <strong>GameInfo</strong> — Date, starting hole, format, etc.</li>
-                        <li>🔒 <strong>Locks</strong> — Preserved as-is</li>
-                        <li>📝 <strong>Signatures</strong> — Preserved (only status is updated if conflict)</li>
-                    </ul>
-                    <br>
-                    <strong style="color:#ffaa44;">In short:</strong> Only derived data is fixed. The raw data is the single source of truth.
-                </div>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">📖 How To Use</div>
-                <ol class="info-steps">
-                    <li><strong>Step 1 - Environment:</strong> Select PROD or DEV</li>
-                    <li><strong>Step 2 - Collection:</strong> Choose <code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code></li>
-                    <li><strong>Step 3 - Record:</strong> Select the record you want to validate</li>
-                    <li><strong>Step 4 - Load & Validate:</strong> Click <span class="highlight">"Load & Validate"</span> — this recalculates and compares</li>
-                    <li><strong>Step 5 - Review Results:</strong> Check the TR table to see which holes match or differ (green = OK, red = needs fix)</li>
-                    <li><strong>Step 6 - Fix (if needed):</strong> Click <span class="highlight">"Fix Record"</span> — backup is automatic!</li>
-                </ol>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">⚠️ Important Warnings</div>
-                <ul class="info-warnings">
-                    <li><strong>🔴 Backup is automatic:</strong> The tool ALWAYS creates a backup in <code>backupFolder</code> before any fix. The backup ID is the original ID with a timestamp suffix.</li>
-                    <li><strong>🟡 Fix is permanent:</strong> Once applied, the changes are written to Firestore. You can restore from backup if needed.</li>
-                    <li><strong>🟢 Only derived data changes:</strong> Raw scores are NEVER modified. You can always re-run validation.</li>
-                    <li><strong>📸 Photo pointer:</strong> For completed games, the tool highlights if the celebration photo is missing. You can add it via the PHOTO tab.</li>
-                </ul>
-            </div>
-            
-            <div style="text-align:center; margin-top:20px;">
-                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-}
-
-// Make available globally
-window.showValidateInfoGuide = showValidateInfoGuide;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: validatePhotoPointer() - Check if record has celebration field with imageUrl
-   - ADDED: validateAllFields() - Comprehensive field-by-field validation
-   - ADDED: buildFieldDiff() - Build detailed diff for preview
-   - CHANGED: validateRecord() now includes photo validation and comprehensive field checks
-   - CHANGED: buildFixPayload() now includes ALL fields (TR, T-1, T-2, Strk, status, finalResults, celebration)
-   - PRESERVED: All existing functionality from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateTeamGame()
+   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateStrokeGame()
+   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateMatchGamePerHole()
+   - CHANGED: Renamed Game1 → "Match Play", Game2 → "Team Game", Game3 → "Stroke Game"
+   - CHANGED: Removed dramatic colors in validation display (clean professional UI)
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
