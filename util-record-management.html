@@ -1,18 +1,9 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - REMOVED: All inline JavaScript handlers (moved to .js files)
-   - REMOVED: initPhotoTab stub (now in util-photo.js)
-   - REMOVED: COPY tab handlers (now in util-copy-record.js)
-   - REMOVED: COMPARE tab handlers (now in util-compare-record.js)
-   - REMOVED: VALIDATE tab handlers (now in util-validate-record.js)
-   - REMOVED: DELETE tab handlers (now in util-delete-record.js)
-   - REMOVED: DELETE photo handlers (now in util-photo.js)
-   - REMOVED: Firebase init (now in util-firebase.js - to be created)
-   - REMOVED: Logging functions (now in util-logger.js - to be created)
-   - PRESERVED: All UI structure and CSS
-   - PRESERVED: Tab switching logic (UI-only)
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - ADDED: Browser tab favicon using /images/ICON.png
+   - PRESERVED: All UI structure, CSS, and functionality from v1.16
 DEPENDS ON: js/firebase-config.js, js/util-logger.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
@@ -23,6 +14,9 @@ STATUS: Ready for integration
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Record Management - SICC Ryder Cup</title>
+    
+    <!-- Browser Tab Favicon -->
+    <link rel="icon" type="image/png" href="/images/ICON.png">
     
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -808,15 +802,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.16</div>
+<div class="version-tag">v1.17</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.16
+// VERSION: 1.17
 // ============================================================
 
-var APP_VERSION = "1.16";
+var APP_VERSION = "1.17";
 
 // ============================================================
 // TAB SWITCHING - UI ONLY
@@ -872,7 +866,7 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.16...');
+console.log('[REC-MGMT] Initializing v1.17...');
 
 // Initialize Firebase (from util-firebase.js)
 if (typeof initFirebase === 'function') {
@@ -927,7 +921,7 @@ setTimeout(function() {
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
 }, 500);
 
-console.log('[REC-MGMT] Record Management v1.16 ready');
+console.log('[REC-MGMT] Record Management v1.17 ready');
 console.log('=== TABS ===');
 console.log('📝 COPY    - Copy records between collections/environments');
 console.log('🔍 COMPARE - Field-by-field comparison across environments');
@@ -941,19 +935,10 @@ console.log('=====================================');
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - REMOVED: All inline JavaScript handlers (moved to .js files)
-   - REMOVED: initPhotoTab stub (now in util-photo.js)
-   - REMOVED: COPY tab handlers (now in util-copy-record.js)
-   - REMOVED: COMPARE tab handlers (now in util-compare-record.js)
-   - REMOVED: VALIDATE tab handlers (now in util-validate-record.js)
-   - REMOVED: DELETE tab handlers (now in util-delete-record.js)
-   - REMOVED: DELETE photo handlers (now in util-photo.js)
-   - REMOVED: Firebase init (now in util-firebase.js - to be created)
-   - REMOVED: Logging functions (now in util-logger.js - to be created)
-   - PRESERVED: All UI structure and CSS
-   - PRESERVED: Tab switching logic (UI-only)
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - ADDED: Browser tab favicon using /images/ICON.png
+   - PRESERVED: All UI structure, CSS, and functionality from v1.16
 DEPENDS ON: js/firebase-config.js, js/util-logger.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
