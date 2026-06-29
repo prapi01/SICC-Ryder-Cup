@@ -1,12 +1,16 @@
 <!--
 FILE: view-history.html
-VERSION: 8.34
-KEY CHANGES from v8.33:
-   - ADDED: celebration-photo.js script tag
-   - ADDED: Celebration image display in game list cards
-   - ADDED: getCelebrationPhoto() call to load and display celebration image
-   - All existing functionality preserved from v8.33
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
+VERSION: 8.35
+KEY CHANGES from v8.34:
+   - REMOVED: Unused calculation modules from both modulesToLoad arrays
+     - game-match.js (no calculation needed - read stored data only)
+     - game-team.js (no calculation needed - read stored data only)
+     - game-stroke.js (no calculation needed - read stored data only)
+     - game-loader.js (no cache needed - data from history record)
+   - ADDED: Pass clinchedAt to GameScorecard.renderScorecard() as 16th parameter
+   - This enables green clinch highlights in history scorecard view
+   - PRESERVED: All existing functionality from v8.34
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
 
@@ -373,7 +377,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.34</div>
+<div class="version-tag">v8.35</div>
 
 <script>
 // ============================================================
@@ -386,10 +390,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.34: Added celebration-photo.js
+// VERSION CACHE-BUSTING - v8.35: Added clinch highlight fix
 // ============================================================
-var APP_VERSION = "8.34";
-var CACHE_KEY = "view_history_version_v834";
+var APP_VERSION = "8.35";
+var CACHE_KEY = "view_history_version_v835";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -407,8 +411,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.34";
-console.log("[VIEW-HISTORY] Initializing v8.34 - Added celebration image display");
+window.VIEW_HISTORY_VERSION = "8.35";
+console.log("[VIEW-HISTORY] Initializing v8.35 - Clinch highlight fix");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -591,7 +595,7 @@ function getSavedHolesArray(flight, f1DataString, f2DataString, startingHole) {
 }
 
 // ============================================================
-// Show Scorecard View - v8.26: Uses GameOrder for order operations
+// Show Scorecard View - v8.35: Removed unused modules, added clinch highlight
 // ============================================================
 
 function showScorecardView(game) {
@@ -612,16 +616,12 @@ function showScorecardView(game) {
     detailView.style.display = 'block';
     detailContent.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
-    // v8.26: Added game-order.js to modules list
+    // v8.35: Removed unnecessary calculation modules - history only displays stored data
     var modulesToLoad = [
         'js/game-order.js',
         'js/game-data.js',
-        'js/game-match.js',
-        'js/game-team.js',
-        'js/game-stroke.js',
         'js/game-scorecard.js',
         'js/game-ui.js',
-        'js/game-loader.js',
         'js/ticker.js'
     ];
     
@@ -761,16 +761,69 @@ function renderScorecardView(game) {
     }
     
     function getAllOpponents(player) {
-        return GameMatch.getAllOpponents(allPlayers, player);
+        // v8.35: Use stored match data only - no calculation needed
+        var opponents = [];
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight && p.team !== player.team; });
+        var otherFlightPlayers = allPlayers.filter(function(p) { return p.flight !== player.flight; });
+        
+        // Intra-flight opponents (same flight, different team)
+        for (var i = 0; i < flightPlayers.length; i++) {
+            if (flightPlayers[i].name !== player.name) {
+                opponents.push(flightPlayers[i]);
+            }
+        }
+        // Cross-flight opponents (different flight)
+        for (var i = 0; i < otherFlightPlayers.length; i++) {
+            opponents.push(otherFlightPlayers[i]);
+        }
+        return opponents;
     }
     
     function getMatchValueFromStoredResults(player, opponent, holeNumber) {
-        return GameMatch.getMatchValueFromStoredResults(resultsCache, player, opponent, holeNumber, getHolePosition, allPlayers);
+        // Read from stored matchResults only - no calculation
+        if (!resultsCache || !resultsCache.matchResults) return 0;
+        
+        var position = getHolePosition(holeNumber);
+        var matchResultsArray = resultsCache.matchResults[position];
+        if (!matchResultsArray) return 0;
+        
+        // Determine player index based on team/flight order
+        var allPlayersOrdered = [];
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { 
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { 
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        for (var i = 0; i < teamAPlayers.length; i++) allPlayersOrdered.push(teamAPlayers[i]);
+        for (var i = 0; i < teamBPlayers.length; i++) allPlayersOrdered.push(teamBPlayers[i]);
+        
+        var aIndex = -1;
+        var bIndex = -1;
+        for (var i = 0; i < allPlayersOrdered.length; i++) {
+            if (allPlayersOrdered[i].name === player.name) aIndex = i;
+            if (allPlayersOrdered[i].name === opponent.name) bIndex = i;
+        }
+        
+        if (aIndex === -1 || bIndex === -1) return 0;
+        
+        var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
+        var value = matchResultsArray[matchIndex] || 0;
+        
+        // If player is Team B, invert the value
+        if (player.team === 'B') {
+            return -value;
+        }
+        return value;
     }
     
     function getBubbleValue(player, opponent) {
         var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
-        return GameMatch.getMatchDisplayValue(matchValue);
+        if (matchValue > 0) return matchValue;
+        if (matchValue < 0) return Math.abs(matchValue);
+        return 'AS';
     }
     
     function getBubbleClass(player, opponent) {
@@ -779,6 +832,7 @@ function renderScorecardView(game) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var lastSyncedHole = resultsCache?.computedUpToHole || 18;
         
+        // Use stored clinchedAt for history view
         return GameMatch.getMatchBubbleClass(
             matchValue, clinchedAt, player, opponent, currentHole,
             isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole,
@@ -870,7 +924,7 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    // v8.33: Updated renderDetailView - uses displayT2 and displayStrk
+    // v8.35: renderDetailView - Pass clinchedAt to GameScorecard
     function renderDetailView() {
         if (!f1DataString || !f2DataString) return;
         
@@ -904,9 +958,12 @@ function renderScorecardView(game) {
         var t2Display = resultsCache?.game2?.displayT2 || null;
         var strkDisplay = resultsCache?.game3?.displayStrk || null;
         
+        // v8.35: Get clinchedAt directly from the history record
+        var clinchedAt = resultsCache?.clinchedAt || {};
+        
         var displayMode = GameUI.getDisplayMode();
         
-        // v8.26: Use new GameScorecard signature (displayMode, startingHole)
+        // v8.35: Pass clinchedAt as 16th parameter to enable green highlights
         if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
             GameScorecard.renderScorecard(
                 "scorecardWrapper",
@@ -924,7 +981,8 @@ function renderScorecardView(game) {
                 t2ClinchedHole,
                 t1Display,
                 t2Display,
-                strkDisplay
+                strkDisplay,
+                clinchedAt
             );
         } else {
             // Fallback to old signature if needed
@@ -933,7 +991,8 @@ function renderScorecardView(game) {
                 "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
                 t1Row, t2Row, strkRow, coursePar, courseSi,
                 t1ClinchedHole, t2ClinchedHole,
-                t1Display, t2Display, strkDisplay
+                t1Display, t2Display, strkDisplay,
+                clinchedAt
             );
         }
         
@@ -1219,16 +1278,12 @@ function loadGameListAndModules() {
             checkBothReady();
         });
     
-    // v8.26: Added game-order.js to modules list
+    // v8.35: Removed unnecessary calculation modules - history only displays stored data
     var modulesToLoad = [
         'js/game-order.js',
         'js/game-data.js',
-        'js/game-match.js',
-        'js/game-team.js',
-        'js/game-stroke.js',
         'js/game-scorecard.js',
         'js/game-ui.js',
-        'js/game-loader.js',
         'js/ticker.js',
         'js/hcp-adjust.js'
     ];
@@ -1299,12 +1354,16 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.34
-KEY CHANGES from v8.33:
-   - ADDED: celebration-photo.js script tag
-   - ADDED: Celebration image display in game list cards
-   - ADDED: getCelebrationPhoto() call to load and display celebration image
-   - All existing functionality preserved from v8.33
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
+VERSION: 8.35
+KEY CHANGES from v8.34:
+   - REMOVED: Unused calculation modules from both modulesToLoad arrays
+     - game-match.js (no calculation needed - read stored data only)
+     - game-team.js (no calculation needed - read stored data only)
+     - game-stroke.js (no calculation needed - read stored data only)
+     - game-loader.js (no cache needed - data from history record)
+   - ADDED: Pass clinchedAt to GameScorecard.renderScorecard() as 16th parameter
+   - This enables green clinch highlights in history scorecard view
+   - PRESERVED: All existing functionality from v8.34
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
