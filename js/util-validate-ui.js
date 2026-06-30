@@ -1,20 +1,24 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Exposed photo selector functions globally (openPhotoSelector, closePhotoSelector, etc.)
-   - FIXED: Exposed inline photo functions (toggleInlinePhotoSelector, loadInlinePhotos, etc.)
-   - FIXED: Exposed renderValidateResults globally for HTML onclick bindings
-   - PRESERVED: All existing functionality from v1.03
-DEPENDS ON: UtilValidate, util-core.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: Thumbnail display for photos in inline selector (actual images, not just filenames)
+   - ADDED: Photo preview on click (shows full image in preview area before attaching)
+   - ADDED: "Attach Photo" button to stage selected photo (does NOT write to Firestore)
+   - ADDED: window._stagedPhoto state for tracking staged photo
+   - REMOVED: Auto-apply on photo click (no more confirm popup)
+   - CHANGED: Photo click now selects/previews, does NOT update record
+   - CHANGED: loadInlinePhotos() now generates thumbnails using getPhotoDownloadUrl()
+   - PRESERVED: All existing rendering functions from v1.04
+DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.04";
+window.UTIL_VALIDATE_UI_VERSION = "1.05";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.04");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.05");
     
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -873,10 +877,20 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.03: INLINE PHOTO SELECTOR FUNCTIONS
+    // v1.05: INLINE PHOTO SELECTOR WITH THUMBNAILS AND PREVIEW
     // ============================================================
     
     var inlinePhotoSelectorActive = false;
+    var selectedPhotoPath = null;
+    var selectedPhotoUrl = null;
+    
+    // Store staged photo for Fix Record to use
+    window._stagedPhoto = {
+        fullPath: null,
+        downloadUrl: null,
+        recordId: null,
+        collection: null
+    };
     
     function toggleInlinePhotoSelector(recordId, collection) {
         var container = document.getElementById('inlinePhotoSelectorContainer');
@@ -891,17 +905,34 @@ var UtilValidateUI = (function() {
         container.style.display = 'block';
         inlinePhotoSelectorActive = true;
         
+        // Reset selected photo
+        selectedPhotoPath = null;
+        selectedPhotoUrl = null;
+        window._stagedPhoto.fullPath = null;
+        window._stagedPhoto.downloadUrl = null;
+        window._stagedPhoto.recordId = recordId;
+        window._stagedPhoto.collection = collection;
+        
         // Store record info for the selector
         window._inlineSelectorRecordId = recordId;
         window._inlineSelectorCollection = collection;
         
-        // Build the inline selector
-        var html = '<div style="background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:12px; margin-top:8px; max-height:300px; overflow-y:auto;">';
+        // Build the inline selector with preview area
+        var html = '<div style="background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:12px; margin-top:8px; max-height:500px; overflow-y:auto;">';
         html += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">';
         html += '<input type="text" id="inlinePhotoFolder" value="celebration/" placeholder="Folder path" style="flex:2; min-width:120px; padding:6px 12px; font-size:0.7rem; border-radius:20px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff;">';
         html += '<button onclick="loadInlinePhotos()" style="flex:0 0 auto; padding:6px 16px; font-size:0.65rem; border-radius:20px; border:1px solid #ffaa44; background:#2a2a0a; color:#ffaa44; cursor:pointer;">🔄 Load Photos</button>';
         html += '<button onclick="closeInlinePhotoSelector()" style="flex:0 0 auto; padding:6px 16px; font-size:0.65rem; border-radius:20px; border:1px solid #333; background:#1a1a1a; color:#888; cursor:pointer;">✕ Close</button>';
         html += '</div>';
+        
+        // Preview area
+        html += '<div id="inlinePhotoPreview" style="display:none; background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:8px; margin-bottom:8px; text-align:center;">';
+        html += '<div style="font-size:0.6rem; color:#888; margin-bottom:4px;">📸 SELECTED PHOTO</div>';
+        html += '<img id="inlinePhotoPreviewImg" src="" style="max-width:100%; max-height:150px; object-fit:contain; border-radius:4px; display:none;">';
+        html += '<div id="inlinePhotoPreviewName" style="font-size:0.65rem; color:#e0e0e0; margin-top:4px;"></div>';
+        html += '<button id="inlineAttachPhotoBtn" onclick="stageSelectedPhoto()" style="margin-top:6px; padding:4px 16px; font-size:0.65rem; border-radius:20px; border:1px solid #4caf50; background:#1a3a1a; color:#4caf50; cursor:pointer; display:none;">📎 Attach Photo</button>';
+        html += '</div>';
+        
         html += '<div id="inlinePhotoList" style="max-height:250px; overflow-y:auto;">';
         html += '<div style="text-align:center; padding:20px; color:#555;">Click "Load Photos" to browse</div>';
         html += '</div>';
@@ -918,6 +949,10 @@ var UtilValidateUI = (function() {
             container.innerHTML = '';
         }
         inlinePhotoSelectorActive = false;
+        selectedPhotoPath = null;
+        selectedPhotoUrl = null;
+        window._stagedPhoto.fullPath = null;
+        window._stagedPhoto.downloadUrl = null;
     }
     
     function loadInlinePhotos() {
@@ -925,8 +960,12 @@ var UtilValidateUI = (function() {
         var folder = folderInput ? folderInput.value.trim() : 'celebration/';
         var listContainer = document.getElementById('inlinePhotoList');
         var statusDiv = document.getElementById('inlinePhotoStatus');
+        var previewDiv = document.getElementById('inlinePhotoPreview');
         
         if (!listContainer) return;
+        
+        // Hide preview while loading
+        if (previewDiv) previewDiv.style.display = 'none';
         
         if (typeof listPhotosInStorage !== 'function') {
             listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">❌ Photo listing not available</div>';
@@ -957,153 +996,156 @@ var UtilValidateUI = (function() {
                            photo.size > 1024 ? (photo.size / 1024).toFixed(0) + ' KB' : 
                            photo.size + ' B';
                 
-                html += '<div onclick="applyInlinePhoto(\'' + escapeHtml(photo.fullPath) + '\', \'' + escapeHtml(photo.name) + '\')" style="background:#111; border-radius:8px; padding:8px; border:1px solid #2a2a2a; cursor:pointer; transition:all 0.2s; text-align:center;">';
-                html += '<div style="width:100%; height:80px; background:#0a0a0a; border-radius:4px; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:#555;">📸</div>';
-                html += '<div style="font-size:0.6rem; color:#e0e0e0; margin-top:4px; word-break:break-all;">' + escapeHtml(displayName) + '</div>';
-                html += '<div style="font-size:0.5rem; color:#666;">' + size + '</div>';
+                html += '<div class="photo-item-inline" data-path="' + escapeHtml(photo.fullPath) + '" onclick="previewInlinePhoto(\'' + escapeHtml(photo.fullPath) + '\', \'' + escapeHtml(photo.name) + '\')" style="background:#111; border-radius:8px; padding:8px; border:1px solid #2a2a2a; cursor:pointer; transition:all 0.2s; text-align:center;">';
+                html += '<div class="photo-thumb-inline" style="width:100%; height:80px; background:#0a0a0a; border-radius:4px; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:#555;">📸</div>';
+                html += '<div class="photo-name-inline" style="font-size:0.6rem; color:#e0e0e0; margin-top:4px; word-break:break-all;">' + escapeHtml(displayName) + '</div>';
+                html += '<div class="photo-size-inline" style="font-size:0.5rem; color:#666;">' + size + '</div>';
                 html += '</div>';
             });
             
             html += '</div>';
             listContainer.innerHTML = html;
-            if (statusDiv) statusDiv.textContent = '📸 ' + photos.length + ' photos found. Click a photo to apply.';
+            if (statusDiv) statusDiv.textContent = '📸 ' + photos.length + ' photos found. Click a photo to preview.';
+            
+            // Load thumbnails for all photos
+            loadPhotoThumbnails();
         });
     }
     
-    function applyInlinePhoto(fullPath, fileName) {
+    function loadPhotoThumbnails() {
+        var items = document.querySelectorAll('#inlinePhotoList .photo-item-inline');
+        items.forEach(function(item) {
+            var path = item.getAttribute('data-path');
+            if (path) {
+                var thumbContainer = item.querySelector('.photo-thumb-inline');
+                if (thumbContainer && thumbContainer.innerHTML === '📸') {
+                    getPhotoDownloadUrl(path, function(err, url) {
+                        if (!err && url) {
+                            var img = document.createElement('img');
+                            img.src = url;
+                            img.style.width = '100%';
+                            img.style.height = '100%';
+                            img.style.objectFit = 'cover';
+                            img.style.borderRadius = '4px';
+                            thumbContainer.innerHTML = '';
+                            thumbContainer.appendChild(img);
+                        }
+                    });
+                }
+            }
+        });
+    }
+    
+    function previewInlinePhoto(fullPath, fileName) {
+        selectedPhotoPath = fullPath;
+        selectedPhotoUrl = null;
+        
+        var previewDiv = document.getElementById('inlinePhotoPreview');
+        var previewImg = document.getElementById('inlinePhotoPreviewImg');
+        var previewName = document.getElementById('inlinePhotoPreviewName');
+        var attachBtn = document.getElementById('inlineAttachPhotoBtn');
+        var statusDiv = document.getElementById('inlinePhotoStatus');
+        
+        if (!previewDiv) return;
+        
+        previewDiv.style.display = 'block';
+        previewImg.style.display = 'none';
+        previewImg.src = '';
+        previewName.textContent = 'Loading preview...';
+        if (attachBtn) attachBtn.style.display = 'none';
+        
+        if (statusDiv) statusDiv.textContent = '📸 Loading preview...';
+        
+        getPhotoDownloadUrl(fullPath, function(err, url) {
+            if (err) {
+                if (statusDiv) statusDiv.textContent = '❌ Failed to load preview: ' + err.message;
+                previewName.textContent = '❌ Failed to load: ' + fileName;
+                return;
+            }
+            
+            selectedPhotoUrl = url;
+            previewImg.src = url;
+            previewImg.style.display = 'block';
+            previewName.textContent = '📸 ' + fileName;
+            if (attachBtn) attachBtn.style.display = 'inline-block';
+            if (statusDiv) statusDiv.textContent = '✅ Preview loaded. Click "Attach Photo" to stage it.';
+            
+            // Highlight selected item
+            var items = document.querySelectorAll('#inlinePhotoList .photo-item-inline');
+            items.forEach(function(item) {
+                item.style.borderColor = '#2a2a2a';
+                item.style.background = '#111';
+            });
+            var selectedItem = document.querySelector('#inlinePhotoList .photo-item-inline[data-path="' + fullPath + '"]');
+            if (selectedItem) {
+                selectedItem.style.borderColor = '#4caf50';
+                selectedItem.style.background = '#1a2a1a';
+            }
+        });
+    }
+    
+    function stageSelectedPhoto() {
+        if (!selectedPhotoPath || !selectedPhotoUrl) {
+            if (typeof window.log === 'function') {
+                window.log('Select a photo first', 'error');
+            }
+            return;
+        }
+        
         var recordId = window._inlineSelectorRecordId;
         var collection = window._inlineSelectorCollection;
         
         if (!recordId || !collection) {
             if (typeof window.log === 'function') {
-                window.log('Missing record info for photo selection', 'error');
+                window.log('Missing record info for photo staging', 'error');
             }
             return;
         }
         
-        if (!confirm('Link this photo to record ' + recordId + '?\n\n' + fullPath + '\n\nThis will update the celebration field.')) {
-            return;
-        }
+        // Stage the photo (do NOT write to Firestore yet)
+        window._stagedPhoto.fullPath = selectedPhotoPath;
+        window._stagedPhoto.downloadUrl = selectedPhotoUrl;
+        window._stagedPhoto.recordId = recordId;
+        window._stagedPhoto.collection = collection;
         
         if (typeof window.log === 'function') {
-            window.log('📸 Selected photo: ' + fullPath + ' for record: ' + recordId, 'info');
+            window.log('📎 Photo staged for record: ' + recordId + ' - ' + selectedPhotoPath, 'success');
         }
         
-        if (typeof getPhotoDownloadUrl !== 'function') {
-            if (typeof window.log === 'function') {
-                window.log('getPhotoDownloadUrl not available', 'error');
-            }
-            return;
+        // Update UI to show staged status
+        var statusDiv = document.getElementById('inlinePhotoStatus');
+        if (statusDiv) {
+            statusDiv.innerHTML = '<span style="color:#4caf50;">✅ Photo staged! Click "Fix Record" to save it.</span>';
         }
         
-        getPhotoDownloadUrl(fullPath, function(err, url) {
-            if (err) {
-                if (typeof window.log === 'function') {
-                    window.log('❌ Failed to get download URL: ' + err.message, 'error');
-                }
-                return;
-            }
-            applyPhotoToRecordInline(recordId, collection, fullPath, url);
-        });
-    }
-    
-    function applyPhotoToRecordInline(recordId, collection, fullPath, url) {
-        if (!recordId || !collection || !fullPath || !url) {
-            if (typeof window.log === 'function') {
-                window.log('Missing required data for photo update', 'error');
-            }
-            return;
+        var attachBtn = document.getElementById('inlineAttachPhotoBtn');
+        if (attachBtn) {
+            attachBtn.textContent = '✅ Staged';
+            attachBtn.style.borderColor = '#4caf50';
+            attachBtn.style.background = '#0a2a0a';
+            attachBtn.style.color = '#4caf50';
+            attachBtn.disabled = true;
+            attachBtn.style.cursor = 'default';
         }
         
-        var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
-        if (!db) {
-            if (typeof window.log === 'function') {
-                window.log('Database not available', 'error');
-            }
-            return;
+        // Update the photo status card to show staged photo
+        var photoContainer = document.getElementById('validatePhotoStatus');
+        if (photoContainer) {
+            var stagedHtml = '<div style="background:#0a2a0a; border-radius:8px; padding:12px; border:1px solid #4caf50;">';
+            stagedHtml += '<div style="font-size:0.75rem; font-weight:600; color:#4caf50; margin-bottom:8px;">📎 PHOTO STAGED (not yet saved)</div>';
+            stagedHtml += '<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+            stagedHtml += '<div style="width:60px; height:60px; border-radius:4px; overflow:hidden; border:1px solid #4caf50; background:#0a0a0a; display:flex; align-items:center; justify-content:center;">';
+            stagedHtml += '<img src="' + escapeHtml(selectedPhotoUrl) + '" style="width:100%; height:100%; object-fit:cover;">';
+            stagedHtml += '</div>';
+            stagedHtml += '<div style="flex:1; min-width:100px;">';
+            stagedHtml += '<div style="font-size:0.7rem; color:#4caf50;">📎 Staged for record: ' + escapeHtml(recordId) + '</div>';
+            stagedHtml += '<div style="font-size:0.6rem; color:#888; word-break:break-all;">' + escapeHtml(selectedPhotoPath) + '</div>';
+            stagedHtml += '<div style="font-size:0.6rem; color:#ffaa44; margin-top:2px;">Click "Fix Record" to save</div>';
+            stagedHtml += '</div>';
+            stagedHtml += '</div>';
+            stagedHtml += '</div>';
+            photoContainer.innerHTML = stagedHtml;
         }
-        
-        if (typeof window.log === 'function') {
-            window.log('💾 Applying photo to record: ' + collection + '/' + recordId, 'info');
-        }
-        
-        var updateData = {
-            'celebration.imageRef': fullPath,
-            'celebration.imageUrl': url,
-            'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        db.collection(collection).doc(recordId).update(updateData)
-            .then(function() {
-                if (typeof window.log === 'function') {
-                    window.log('✅ Photo applied to record: ' + recordId, 'success');
-                }
-                closeInlinePhotoSelector();
-                // Reload validation - call the validate app function if available
-                if (typeof window.loadAndValidate === 'function') {
-                    window.loadAndValidate();
-                } else {
-                    // Fallback: refresh the page
-                    if (typeof window.location !== 'undefined') {
-                        window.location.reload();
-                    }
-                }
-            })
-            .catch(function(err) {
-                if (typeof window.log === 'function') {
-                    window.log('❌ Failed to apply photo: ' + err.message, 'error');
-                }
-            });
-    }
-    
-    function clearPhotoFromRecord(recordId, collection) {
-        if (!recordId || !collection) {
-            if (typeof window.log === 'function') {
-                window.log('Missing record info', 'error');
-            }
-            return;
-        }
-        
-        if (!confirm('Remove the celebration photo from record ' + recordId + '?')) {
-            return;
-        }
-        
-        var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
-        if (!db) {
-            if (typeof window.log === 'function') {
-                window.log('Database not available', 'error');
-            }
-            return;
-        }
-        
-        if (typeof window.log === 'function') {
-            window.log('🗑️ Removing photo from record: ' + collection + '/' + recordId, 'info');
-        }
-        
-        var updateData = {
-            'celebration.imageRef': firebase.firestore.FieldValue.delete(),
-            'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
-            'celebration.copiedAt': firebase.firestore.FieldValue.delete()
-        };
-        
-        db.collection(collection).doc(recordId).update(updateData)
-            .then(function() {
-                if (typeof window.log === 'function') {
-                    window.log('✅ Photo removed from record: ' + recordId, 'success');
-                }
-                if (typeof window.loadAndValidate === 'function') {
-                    window.loadAndValidate();
-                } else {
-                    if (typeof window.location !== 'undefined') {
-                        window.location.reload();
-                    }
-                }
-            })
-            .catch(function(err) {
-                if (typeof window.log === 'function') {
-                    window.log('❌ Failed to remove photo: ' + err.message, 'error');
-                }
-            });
     }
     
     // ============================================================
@@ -1218,6 +1260,8 @@ var UtilValidateUI = (function() {
     }
     
     function selectPhotoFromList(fullPath, fileName) {
+        // LEGACY - kept for modal selector compatibility
+        // This should NOT auto-apply - it should preview
         if (!window._photoSelectorRecordId || !window._photoSelectorCollection) {
             if (typeof window.log === 'function') {
                 window.log('Missing record info for photo selection', 'error');
@@ -1228,19 +1272,9 @@ var UtilValidateUI = (function() {
         var recordId = window._photoSelectorRecordId;
         var collection = window._photoSelectorCollection;
         
-        if (!confirm('Link this photo to record ' + recordId + '?\n\n' + fullPath + '\n\nThis will update the celebration field.')) {
-            return;
-        }
-        
+        // Preview the photo instead of auto-applying
         if (typeof window.log === 'function') {
-            window.log('📸 Selected photo: ' + fullPath + ' for record: ' + recordId, 'info');
-        }
-        
-        if (typeof getPhotoDownloadUrl !== 'function') {
-            if (typeof window.log === 'function') {
-                window.log('getPhotoDownloadUrl not available', 'error');
-            }
-            return;
+            window.log('📸 Previewing photo: ' + fullPath, 'info');
         }
         
         getPhotoDownloadUrl(fullPath, function(err, url) {
@@ -1250,55 +1284,93 @@ var UtilValidateUI = (function() {
                 }
                 return;
             }
-            applyPhotoToRecord(recordId, collection, fullPath, url);
+            
+            // Show preview in modal
+            var previewArea = document.querySelector('#photoSelectorList');
+            if (previewArea) {
+                previewArea.innerHTML = '<div style="text-align:center; padding:12px; background:#0a0a0a; border-radius:8px; border:1px solid #ffaa44;">' +
+                    '<div style="font-size:0.7rem; color:#ffaa44; margin-bottom:4px;">📸 PREVIEW</div>' +
+                    '<img src="' + url + '" style="max-width:100%; max-height:200px; object-fit:contain; border-radius:4px;">' +
+                    '<div style="font-size:0.65rem; color:#e0e0e0; margin-top:4px;">' + escapeHtml(fullPath) + '</div>' +
+                    '<button onclick="applyPhotoToRecord(\'' + recordId + '\', \'' + collection + '\', \'' + escapeHtml(fullPath) + '\', \'' + url + '\')" style="margin-top:8px; padding:6px 16px; border-radius:20px; font-size:0.7rem; border:1px solid #4caf50; background:#1a3a1a; color:#4caf50; cursor:pointer;">📎 Attach Photo</button>' +
+                    '<button onclick="loadPhotoSelector()" style="margin-top:8px; margin-left:8px; padding:6px 16px; border-radius:20px; font-size:0.7rem; border:1px solid #333; background:#1a1a1a; color:#888; cursor:pointer;">↩ Back</button>' +
+                    '</div>';
+            }
         });
     }
     
     function applyPhotoToRecord(recordId, collection, fullPath, url) {
+        // LEGACY - kept for modal selector compatibility
+        // This stages the photo, doesn't write to Firestore
         if (!recordId || !collection || !fullPath || !url) {
             if (typeof window.log === 'function') {
-                window.log('Missing required data for photo update', 'error');
+                window.log('Missing required data for photo staging', 'error');
             }
             return;
         }
         
-        var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
-        if (!db) {
-            if (typeof window.log === 'function') {
-                window.log('Database not available', 'error');
-            }
-            return;
-        }
+        // Stage the photo (do NOT write to Firestore yet)
+        window._stagedPhoto.fullPath = fullPath;
+        window._stagedPhoto.downloadUrl = url;
+        window._stagedPhoto.recordId = recordId;
+        window._stagedPhoto.collection = collection;
         
         if (typeof window.log === 'function') {
-            window.log('💾 Applying photo to record: ' + collection + '/' + recordId, 'info');
+            window.log('📎 Photo staged for record: ' + recordId + ' - ' + fullPath, 'success');
+            window.log('Click "Fix Record" to save this photo to the record.', 'info');
         }
         
-        var updateData = {
-            'celebration.imageRef': fullPath,
-            'celebration.imageUrl': url,
-            'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-        };
+        // Close modal and refresh validation display to show staged photo
+        closePhotoSelector();
         
-        db.collection(collection).doc(recordId).update(updateData)
-            .then(function() {
-                if (typeof window.log === 'function') {
-                    window.log('✅ Photo applied to record: ' + recordId, 'success');
-                }
-                closePhotoSelector();
-                if (typeof window.loadAndValidate === 'function') {
-                    window.loadAndValidate();
-                } else {
-                    if (typeof window.location !== 'undefined') {
-                        window.location.reload();
-                    }
-                }
-            })
-            .catch(function(err) {
-                if (typeof window.log === 'function') {
-                    window.log('❌ Failed to apply photo: ' + err.message, 'error');
-                }
-            });
+        // Update the photo status card to show staged photo
+        var photoContainer = document.getElementById('validatePhotoStatus');
+        if (photoContainer) {
+            var stagedHtml = '<div style="background:#0a2a0a; border-radius:8px; padding:12px; border:1px solid #4caf50;">';
+            stagedHtml += '<div style="font-size:0.75rem; font-weight:600; color:#4caf50; margin-bottom:8px;">📎 PHOTO STAGED (not yet saved)</div>';
+            stagedHtml += '<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+            stagedHtml += '<div style="width:60px; height:60px; border-radius:4px; overflow:hidden; border:1px solid #4caf50; background:#0a0a0a; display:flex; align-items:center; justify-content:center;">';
+            stagedHtml += '<img src="' + escapeHtml(url) + '" style="width:100%; height:100%; object-fit:cover;">';
+            stagedHtml += '</div>';
+            stagedHtml += '<div style="flex:1; min-width:100px;">';
+            stagedHtml += '<div style="font-size:0.7rem; color:#4caf50;">📎 Staged for record: ' + escapeHtml(recordId) + '</div>';
+            stagedHtml += '<div style="font-size:0.6rem; color:#888; word-break:break-all;">' + escapeHtml(fullPath) + '</div>';
+            stagedHtml += '<div style="font-size:0.6rem; color:#ffaa44; margin-top:2px;">Click "Fix Record" to save</div>';
+            stagedHtml += '</div>';
+            stagedHtml += '</div>';
+            stagedHtml += '</div>';
+            photoContainer.innerHTML = stagedHtml;
+        }
+        
+        if (typeof window.loadAndValidate === 'function') {
+            // Reload validation to show staged photo status
+            window.loadAndValidate();
+        }
+    }
+    
+    // ============================================================
+    // v1.05: CLEAR STAGED PHOTO (for when Fix Record completes)
+    // ============================================================
+    
+    function clearStagedPhoto() {
+        window._stagedPhoto.fullPath = null;
+        window._stagedPhoto.downloadUrl = null;
+        window._stagedPhoto.recordId = null;
+        window._stagedPhoto.collection = null;
+        selectedPhotoPath = null;
+        selectedPhotoUrl = null;
+        
+        if (typeof window.log === 'function') {
+            window.log('🧹 Staged photo cleared', 'info');
+        }
+    }
+    
+    // ============================================================
+    // v1.05: GET STAGED PHOTO (for Fix Record to use)
+    // ============================================================
+    
+    function getStagedPhoto() {
+        return window._stagedPhoto;
     }
     
     // ============================================================
@@ -1324,9 +1396,13 @@ var UtilValidateUI = (function() {
         toggleInlinePhotoSelector: toggleInlinePhotoSelector,
         closeInlinePhotoSelector: closeInlinePhotoSelector,
         loadInlinePhotos: loadInlinePhotos,
-        applyInlinePhoto: applyInlinePhoto,
-        applyPhotoToRecordInline: applyPhotoToRecordInline,
-        clearPhotoFromRecord: clearPhotoFromRecord,
+        loadPhotoThumbnails: loadPhotoThumbnails,
+        previewInlinePhoto: previewInlinePhoto,
+        stageSelectedPhoto: stageSelectedPhoto,
+        // v1.05: New photo staging functions
+        clearStagedPhoto: clearStagedPhoto,
+        getStagedPhoto: getStagedPhoto,
+        // v1.03: Modal selector (kept for compatibility)
         openPhotoSelector: openPhotoSelector,
         closePhotoSelector: closePhotoSelector,
         loadPhotoSelector: loadPhotoSelector,
@@ -1353,23 +1429,30 @@ window.applyPhotoToRecord = UtilValidateUI.applyPhotoToRecord;
 window.toggleInlinePhotoSelector = UtilValidateUI.toggleInlinePhotoSelector;
 window.closeInlinePhotoSelector = UtilValidateUI.closeInlinePhotoSelector;
 window.loadInlinePhotos = UtilValidateUI.loadInlinePhotos;
-window.applyInlinePhoto = UtilValidateUI.applyInlinePhoto;
-window.applyPhotoToRecordInline = UtilValidateUI.applyPhotoToRecordInline;
-window.clearPhotoFromRecord = UtilValidateUI.clearPhotoFromRecord;
+window.loadPhotoThumbnails = UtilValidateUI.loadPhotoThumbnails;
+window.previewInlinePhoto = UtilValidateUI.previewInlinePhoto;
+window.stageSelectedPhoto = UtilValidateUI.stageSelectedPhoto;
+window.clearStagedPhoto = UtilValidateUI.clearStagedPhoto;
+window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 // Validation results renderer (for app.js to call)
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.04 - All functions exposed globally');
+console.log('[UTIL-VALIDATE-UI] v1.05 - Photo staging functions exposed globally');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Exposed photo selector functions globally (openPhotoSelector, closePhotoSelector, etc.)
-   - FIXED: Exposed inline photo functions (toggleInlinePhotoSelector, loadInlinePhotos, etc.)
-   - FIXED: Exposed renderValidateResults globally for HTML onclick bindings
-   - PRESERVED: All existing functionality from v1.03
-DEPENDS ON: UtilValidate, util-core.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: Thumbnail display for photos in inline selector (actual images, not just filenames)
+   - ADDED: Photo preview on click (shows full image in preview area before attaching)
+   - ADDED: "Attach Photo" button to stage selected photo (does NOT write to Firestore)
+   - ADDED: window._stagedPhoto state for tracking staged photo
+   - ADDED: clearStagedPhoto() and getStagedPhoto() functions
+   - REMOVED: Auto-apply on photo click (no more confirm popup)
+   - CHANGED: Photo click now selects/previews, does NOT update record
+   - CHANGED: loadInlinePhotos() now generates thumbnails using getPhotoDownloadUrl()
+   - PRESERVED: All existing rendering functions from v1.04
+DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
