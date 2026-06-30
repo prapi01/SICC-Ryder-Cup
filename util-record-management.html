@@ -1,10 +1,13 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - MOVED: Version badges from tab buttons to tab headers (next to "COPY", etc.)
-   - CHANGED: renderVersionBadges() now targets header badges instead of tab badges
-   - PRESERVED: All existing functionality from v1.22
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - CHANGED: Toned down DELETE tab colors - #ff6b6b → #c0392b (professional red)
+   - CHANGED: DELETE tab checkbox accent colors to match professional theme
+   - CHANGED: Border and background colors for DELETE tab elements
+   - CHANGED: Card title danger color to #c0392b
+   - CHANGED: Info overlay danger text to #c0392b
+   - PRESERVED: All existing functionality from v1.23
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
@@ -44,7 +47,7 @@ STATUS: Ready for integration
         h1 { font-size: 1.4rem; font-weight: 700; color: #4caf50; text-align: center; margin-bottom: 20px; }
         .card { background: #111111; border: 1px solid #333333; border-radius: 20px; padding: 16px; margin-bottom: 16px; overflow: hidden; }
         .card-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; margin-bottom: 12px; border-left: 2px solid #4caf50; padding-left: 10px; }
-        .card-title.danger { border-left-color: #ff6b6b; color: #ff6b6b; }
+        .card-title.danger { border-left-color: #c0392b; color: #c0392b; }
         .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
         
         /* Tab Navigation */
@@ -55,7 +58,7 @@ STATUS: Ready for integration
         .tab-btn:last-child { border-right: none; }
         .tab-btn:hover { color: #aaa; background: #111; }
         .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
-        .tab-btn.active.danger-active { background: #3a1a1a; color: #ff6b6b; box-shadow: inset 0 -2px 0 #ff6b6b; }
+        .tab-btn.active.danger-active { background: #2a1a1a; color: #c0392b; box-shadow: inset 0 -2px 0 #c0392b; }
         .tab-btn.active.photo-active { background: #2a2a0a; color: #ffaa44; box-shadow: inset 0 -2px 0 #ffaa44; }
         .tab-btn .tab-icon { margin-right: 6px; }
         .tab-content { display: none; }
@@ -64,10 +67,10 @@ STATUS: Ready for integration
         /* Tab Header with Info Button */
         .tab-header-with-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
         .tab-header-with-info .tab-title { font-size: 1rem; font-weight: 700; color: #4caf50; }
-        .tab-header-with-info .tab-title.danger { color: #ff6b6b; }
+        .tab-header-with-info .tab-title.danger { color: #c0392b; }
         .tab-header-with-info .tab-title.photo { color: #ffaa44; }
         .tab-header-with-info .version-badge { font-size: 0.55rem; font-weight: 400; color: #4caf50; background: rgba(76, 175, 80, 0.15); padding: 2px 8px; border-radius: 10px; font-family: monospace; margin-left: 6px; }
-        .tab-header-with-info .version-badge.danger { color: #ff6b6b; background: rgba(255, 107, 107, 0.15); }
+        .tab-header-with-info .version-badge.danger { color: #c0392b; background: rgba(192, 57, 43, 0.15); }
         .tab-header-with-info .version-badge.photo { color: #ffaa44; background: rgba(255, 170, 68, 0.15); }
         .btn-info-guide { padding: 6px 16px; border-radius: 30px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4a8af4; background: rgba(74, 138, 244, 0.1); color: #4a8af4; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; }
         .btn-info-guide:hover { background: rgba(74, 138, 244, 0.2); border-color: #4a8af4; }
@@ -89,7 +92,7 @@ STATUS: Ready for integration
         .env-row .env-side-label.dest { color: #ffaa44; }
         .env-row .env-side-label.left { color: #4caf50; }
         .env-row .env-side-label.right { color: #4a8af4; }
-        .env-row .env-side-label.delete { color: #ff6b6b; }
+        .env-row .env-side-label.delete { color: #c0392b; }
         .env-row .env-side-label.photo { color: #ffaa44; }
         
         /* Form Elements */
@@ -117,7 +120,7 @@ STATUS: Ready for integration
         .btn:active { transform: scale(0.97); }
         .btn-primary { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
         .btn-secondary { background: #1a1a1a; border: 1px solid #333; color: #ccc; }
-        .btn-danger { background: #3a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .btn-danger { background: #2a1a1a; border: 1px solid #c0392b; color: #c0392b; }
         .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-compare { background: #1a2a3a; border: 1px solid #4a8af4; color: #4a8af4; }
         .btn-load { background: #1a2a1a; border: 1px solid #4caf50; color: #4caf50; }
@@ -137,10 +140,10 @@ STATUS: Ready for integration
         /* Log */
         .log { background: #0a0a0a; border-radius: 12px; padding: 12px; margin-top: 16px; font-size: 0.7rem; font-family: monospace; max-height: 300px; overflow-y: auto; word-break: break-all; }
         .log-entry { padding: 4px 0; border-bottom: 1px solid #1a1a1a; }
-        .log-error { color: #ff6b6b; }
+        .log-error { color: #c0392b; }
         .log-success { color: #4caf50; }
         .log-info { color: #ffaa44; }
-        .log-diff { color: #ff6b6b; }
+        .log-diff { color: #c0392b; }
         .log-match { color: #4caf50; }
         .log-warning { color: #ffaa44; }
         
@@ -155,17 +158,17 @@ STATUS: Ready for integration
         .compare-actions .btn { margin-top: 0; }
         .compare-result-box { max-height: 400px; overflow-y: auto; margin-top: 8px; overflow-x: hidden; }
         .diff-item { padding: 6px 8px; border-radius: 6px; margin: 3px 0; font-size: 0.7rem; font-family: monospace; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; word-break: break-all; overflow: hidden; }
-        .diff-item.diff { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
+        .diff-item.diff { background: #2a0a0a; border: 1px solid #5a2a2a; color: #c0392b; }
         .diff-item.match { background: #0a1a0a; border: 1px solid #1a3a1a; color: #4caf50; }
         .diff-item .field-name { color: #888; font-weight: 400; word-break: break-all; }
         .diff-item .field-value-left { color: #4caf50; }
         .diff-item .field-value-right { color: #4a8af4; }
-        .diff-item .field-value-diff { color: #ff6b6b; }
+        .diff-item .field-value-diff { color: #c0392b; }
         .diff-summary { display: flex; gap: 16px; justify-content: center; padding: 8px; margin: 8px 0; background: #0a0a0a; border-radius: 8px; border: 1px solid #2a2a2a; flex-wrap: wrap; }
         .diff-summary-item { text-align: center; font-size: 0.7rem; }
         .diff-summary-item .count { font-weight: 700; font-size: 1.2rem; display: block; }
         .diff-summary-item .count.match { color: #4caf50; }
-        .diff-summary-item .count.diff { color: #ff6b6b; }
+        .diff-summary-item .count.diff { color: #c0392b; }
         .diff-summary-item .count.total { color: #ffaa44; }
         .diff-summary-item .label { color: #888; font-size: 0.6rem; }
         
@@ -178,7 +181,7 @@ STATUS: Ready for integration
         .validate-section-title { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: #4caf50; }
         .validate-status { padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 0.8rem; }
         .validate-status.success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #4caf50; }
-        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
+        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #c0392b; }
         .validate-status.info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #4a8af4; }
         .validate-status.warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffaa44; }
         .validate-fix-btn-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
@@ -193,13 +196,13 @@ STATUS: Ready for integration
         .validate-progress.active { display: block; }
         .validate-progress .step { padding: 2px 0; }
         .validate-progress .step.done { color: #4caf50; }
-        .validate-progress .step.error { color: #ff6b6b; }
+        .validate-progress .step.error { color: #c0392b; }
         .validate-progress .step.info { color: #4a8af4; }
         .validate-progress .step.warning { color: #ffaa44; }
         .validate-hole-list { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 4px; }
         .validate-hole-item { padding: 4px 6px; border-radius: 4px; text-align: center; font-size: 0.65rem; font-weight: 600; }
         .validate-hole-item.ok { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
-        .validate-hole-item.fix { background: #2a0a0a; color: #ff6b6b; border: 1px solid #5a2a2a; }
+        .validate-hole-item.fix { background: #2a0a0a; color: #c0392b; border: 1px solid #5a2a2a; }
         .validate-hole-item.unknown { background: #1a1a1a; color: #555; border: 1px solid #333; }
         .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.8rem; }
         .game-info-grid .label { color: #666; }
@@ -234,9 +237,9 @@ STATUS: Ready for integration
         .delete-records-container tr:hover { background: #1a1a1a; cursor: pointer; }
         .delete-records-container tr.selected { background: #1a2a1a; }
         .delete-records-container .checkbox-col { width: 32px; text-align: center; }
-        .delete-records-container input[type="checkbox"] { width: 16px; height: 16px; accent-color: #4caf50; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #4caf50; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
-        .delete-records-container input[type="checkbox"]:checked { background: #4caf50; }
-        .delete-records-container input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #000; font-size: 12px; font-weight: 700; }
+        .delete-records-container input[type="checkbox"] { width: 16px; height: 16px; accent-color: #c0392b; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #c0392b; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
+        .delete-records-container input[type="checkbox"]:checked { background: #c0392b; }
+        .delete-records-container input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 12px; font-weight: 700; }
         .delete-records-container .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.6rem; font-weight: 600; }
         .delete-records-container .status-badge.completed { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
         .delete-records-container .status-badge.pending { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
@@ -246,8 +249,8 @@ STATUS: Ready for integration
         .delete-toolbar .btn-small { padding: 6px 16px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4caf50; background: #1a3a1a; color: #4caf50; transition: all 0.2s; }
         .delete-toolbar .btn-small:hover { background: #2a4a2a; }
         .delete-toolbar .btn-small:active { transform: scale(0.95); }
-        .delete-toolbar .btn-small.danger { border-color: #ff6b6b; color: #ff6b6b; background: #3a1a1a; }
-        .delete-toolbar .btn-small.danger:hover { background: #4a2a2a; }
+        .delete-toolbar .btn-small.danger { border-color: #c0392b; color: #c0392b; background: #2a1a1a; }
+        .delete-toolbar .btn-small.danger:hover { background: #3a1a1a; }
         .delete-toolbar .btn-small:disabled { opacity: 0.4; cursor: not-allowed; }
         .delete-toolbar .btn-small.photo-toolbar { border-color: #ffaa44; color: #ffaa44; background: #2a2a0a; }
         .delete-toolbar .btn-small.photo-toolbar:hover { background: #3a3a0a; }
@@ -255,7 +258,7 @@ STATUS: Ready for integration
         .delete-progress.active { display: block; }
         .delete-progress .step { padding: 2px 0; }
         .delete-progress .step.done { color: #4caf50; }
-        .delete-progress .step.error { color: #ff6b6b; }
+        .delete-progress .step.error { color: #c0392b; }
         .delete-progress .step.info { color: #4a8af4; }
         .delete-progress .step.warning { color: #ffaa44; }
         
@@ -265,9 +268,9 @@ STATUS: Ready for integration
         #photoListContainer td { padding: 6px 6px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
         #photoListContainer tr:hover { background: #1a1a1a; cursor: pointer; }
         #photoListContainer .checkbox-col { width: 32px; text-align: center; }
-        #photoListContainer input[type="checkbox"] { width: 16px; height: 16px; accent-color: #ffaa44; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #ffaa44; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
-        #photoListContainer input[type="checkbox"]:checked { background: #ffaa44; }
-        #photoListContainer input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #000; font-size: 12px; font-weight: 700; }
+        #photoListContainer input[type="checkbox"] { width: 16px; height: 16px; accent-color: #c0392b; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #c0392b; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
+        #photoListContainer input[type="checkbox"]:checked { background: #c0392b; }
+        #photoListContainer input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 12px; font-weight: 700; }
         
         /* Info Overlay */
         .info-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 50000; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); animation: infoFadeIn 0.3s ease-out; }
@@ -281,16 +284,16 @@ STATUS: Ready for integration
         .info-close-btn:hover { background: rgba(76, 175, 80, 0.2); }
         .info-section { margin-bottom: 16px; }
         .info-section-title { font-size: 0.85rem; font-weight: 700; color: #4caf50; margin-bottom: 4px; }
-        .info-section-title.danger { color: #ff6b6b; }
+        .info-section-title.danger { color: #c0392b; }
         .info-text { font-size: 0.85rem; color: #ccc; line-height: 1.6; }
         .info-text strong { color: #4caf50; }
         .info-text .highlight { color: #ffaa44; }
-        .info-text .danger-text { color: #ff6b6b; }
+        .info-text .danger-text { color: #c0392b; }
         .info-steps { padding-left: 20px; margin: 4px 0 8px 0; }
         .info-steps li { font-size: 0.85rem; color: #ccc; line-height: 1.6; margin-bottom: 2px; }
         .info-steps li code { background: #0a0a0a; padding: 1px 8px; border-radius: 4px; font-size: 0.75rem; color: #4caf50; font-family: monospace; }
         .info-warnings { padding-left: 20px; margin: 4px 0 8px 0; }
-        .info-warnings li { font-size: 0.85rem; color: #ff6b6b; line-height: 1.6; margin-bottom: 2px; }
+        .info-warnings li { font-size: 0.85rem; color: #c0392b; line-height: 1.6; margin-bottom: 2px; }
         .info-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
         .info-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 8px 0; }
         .info-table th { text-align: left; color: #4caf50; padding: 6px 8px; border-bottom: 1px solid #2a2a2a; font-weight: 600; }
@@ -299,7 +302,7 @@ STATUS: Ready for integration
         .info-table .field-desc { color: #aaa; }
         .info-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.65rem; font-weight: 600; }
         .info-badge.green { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
-        .info-badge.red { background: #2a0a0a; color: #ff6b6b; border: 1px solid #5a2a2a; }
+        .info-badge.red { background: #2a0a0a; color: #c0392b; border: 1px solid #5a2a2a; }
         .info-badge.blue { background: #0a1a2a; color: #4a8af4; border: 1px solid #2a4a6a; }
         .info-badge.gold { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
         @keyframes infoFadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -626,7 +629,7 @@ STATUS: Ready for integration
                 <div id="validateTR"></div>
             </div>
             
-            <!-- Photo Status Section - MOVED to bottom, just above VALIDATION SUMMARY -->
+            <!-- Photo Status Section -->
             <div class="card" style="border-color: #ffaa44;">
                 <div class="card-title photo">📸 CELEBRATION PHOTO</div>
                 <div id="validatePhotoStatus"></div>
@@ -759,14 +762,14 @@ STATUS: Ready for integration
                 </div>
                 <span id="deleteIndicator" class="env-indicator-small none">Not connected</span>
             </div>
-            <div style="font-size:0.7rem; color:#ff6b6b; margin-top:4px;">
+            <div style="font-size:0.7rem; color:#c0392b; margin-top:4px;">
                 ⚠️ Deleting records is permanent and cannot be undone.
             </div>
         </div>
         <div class="card">
             <div class="card-title danger">📂 SELECT COLLECTION</div>
             <div class="select-wrapper">
-                <select id="deleteCollection" class="collection-select" style="border-color:#ff6b6b;" onchange="loadDeleteRecords()">
+                <select id="deleteCollection" class="collection-select" style="border-color:#c0392b;" onchange="loadDeleteRecords()">
                     <option value="scheduledGames">scheduledGames</option>
                     <option value="historyGames">historyGames</option>
                     <option value="backupFolder">backupFolder</option>
@@ -786,9 +789,9 @@ STATUS: Ready for integration
                 <div style="text-align:center; padding:20px; color:#555;">Loading records...</div>
             </div>
         </div>
-        <div class="card" style="border-color:#ff6b6b;">
+        <div class="card" style="border-color:#c0392b;">
             <div class="card-title danger">🗑️ DELETE RECORDS</div>
-            <div style="font-size:0.8rem; color:#ff6b6b; margin-bottom:12px;">
+            <div style="font-size:0.8rem; color:#c0392b; margin-bottom:12px;">
                 ⚠️ This action is <strong>PERMANENT</strong> and cannot be undone.
                 <br>Selected records will be removed from the database.
             </div>
@@ -833,15 +836,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.23</div>
+<div class="version-tag">v1.24</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.23
+// VERSION: 1.24
 // ============================================================
 
-var APP_VERSION = "1.23";
+var APP_VERSION = "1.24";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -898,7 +901,7 @@ function renderVersionBadges() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.23...');
+console.log('[REC-MGMT] Initializing v1.24...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -971,7 +974,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.23 ready', 'success');
+    log('Record Management v1.24 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -980,7 +983,7 @@ if (typeof log === 'function') {
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.23 ready');
+    console.log('[REC-MGMT] Record Management v1.24 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -990,11 +993,14 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - MOVED: Version badges from tab buttons to tab headers (next to "COPY", etc.)
-   - CHANGED: renderVersionBadges() now targets header badges instead of tab badges
-   - PRESERVED: All existing functionality from v1.22
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - CHANGED: Toned down DELETE tab colors - #ff6b6b → #c0392b (professional red)
+   - CHANGED: DELETE tab checkbox accent colors to match professional theme
+   - CHANGED: Border and background colors for DELETE tab elements
+   - CHANGED: Card title danger color to #c0392b
+   - CHANGED: Info overlay danger text to #c0392b
+   - PRESERVED: All existing functionality from v1.23
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
