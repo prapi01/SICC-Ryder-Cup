@@ -1,21 +1,38 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: All functions now properly exposed to window object
-   - FIXED: DEV button now properly works with fallback
-   - FIXED: Load image button now properly works
-   - ADDED: Debug logging for all button clicks
-   - ADDED: Manual initialization fallback
-   - REMOVED: Dependencies on main HTML log function (uses console fallback)
-DEPENDS ON: Firebase Storage, Firestore
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - CHANGED: findPhotoReferences() now uses window.prodDb and window.devDb
+   - CHANGED: savePhotoToFirestore() now uses window.prodDb and window.devDb
+   - ADDED: Fallback escapeHtml() function if util-core.js not loaded
+   - REMOVED: Direct prodDb/devDb dependency (now uses window.*)
+   - PRESERVED: All existing functionality from v1.10
+DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.10";
+window.PHOTO_UTIL_VERSION = "1.11";
 
-console.log('[PHOTO] Loading util-photo.js v1.10...');
+console.log('[PHOTO] Loading util-photo.js v1.11...');
+
+// ============================================================
+// FALLBACK HELPERS (if util-core.js not loaded)
+// ============================================================
+
+function photoEscapeHtml(str) {
+    if (typeof window.escapeHtml === 'function') {
+        return window.escapeHtml(str);
+    }
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
 
 // ============================================================
 // STATE
@@ -470,7 +487,8 @@ function findPhotoReferences(photoUrl, callback) {
         return;
     }
     
-    var db = photoStorageEnv === 'PROD' ? prodDb : devDb;
+    // Use window.prodDb and window.devDb from util-core.js
+    var db = photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
     if (!db) {
         var err = new Error("Database not available for " + photoStorageEnv);
         if (callback) callback(err);
@@ -483,14 +501,14 @@ function findPhotoReferences(photoUrl, callback) {
     var collections = ['scheduledGames', 'historyGames', 'backupFolder'];
     var promises = collections.map(function(collection) {
         return db.collection(collection)
-            .where('celebration', '==', photoUrl)
+            .where('celebration.imageUrl', '==', photoUrl)
             .get()
             .then(function(snapshot) {
                 snapshot.forEach(function(doc) {
                     results.push({
                         collection: collection,
                         docId: doc.id,
-                        fields: ['celebration']
+                        fields: ['celebration.imageUrl']
                     });
                 });
             })
@@ -600,11 +618,11 @@ function showPhotoInfo() {
         references.forEach(function(ref) {
             var badgeClass = ref.collection === 'historyGames' ? 'badge-history' :
                              ref.collection === 'scheduledGames' ? 'badge-sched' : 'badge-backup';
-            var fieldNames = ref.fields ? ref.fields.join(', ') : 'celebration';
+            var fieldNames = ref.fields ? ref.fields.join(', ') : 'celebration.imageUrl';
             html += '<tr>';
-            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a;"><span class="badge ${badgeClass}">${escapeHtml(ref.collection)}</span></td>`;
-            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; color:#e0e0e0;">${escapeHtml(ref.docId)}</td>`;
-            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; color:#ffaa44;">${escapeHtml(fieldNames)}</td>`;
+            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a;"><span class="badge ${badgeClass}">${photoEscapeHtml(ref.collection)}</span></td>`;
+            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; color:#e0e0e0;">${photoEscapeHtml(ref.docId)}</td>`;
+            html += `<td style="padding:4px 8px; border-bottom:1px solid #1a1a1a; font-family:monospace; color:#ffaa44;">${photoEscapeHtml(fieldNames)}</td>`;
             html += '</tr>';
         });
         
@@ -652,7 +670,8 @@ function savePhotoToFirestore() {
         return;
     }
     
-    var db = photoStorageEnv === 'PROD' ? prodDb : devDb;
+    // Use window.prodDb and window.devDb from util-core.js
+    var db = photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
     if (!db) {
         photoLog('❌ Database not available', 'error');
         return;
@@ -677,6 +696,36 @@ function savePhotoToFirestore() {
             if (statusDiv) {
                 statusDiv.innerHTML = '<span class="log-error">❌ Failed: ' + err.message + '</span>';
             }
+        });
+}
+
+// ============================================================
+// GET PHOTO DOWNLOAD URL
+// ============================================================
+
+function getPhotoDownloadUrl(path, callback) {
+    if (!photoStorage) {
+        var err = new Error("Select an environment first (PROD/DEV)");
+        if (callback) callback(err);
+        return;
+    }
+    
+    if (!path) {
+        var err = new Error("Photo path is required");
+        if (callback) callback(err);
+        return;
+    }
+    
+    photoLog('🔗 Getting download URL for: ' + path, 'info');
+    
+    photoStorage.ref(path).getDownloadURL()
+        .then(function(url) {
+            photoLog('✅ Download URL obtained', 'success');
+            if (callback) callback(null, url);
+        })
+        .catch(function(err) {
+            photoLog('❌ Failed to get download URL: ' + err.message, 'error');
+            if (callback) callback(err);
         });
 }
 
@@ -1183,6 +1232,7 @@ window.listPhotosInStorage = listPhotosInStorage;
 window.deletePhotosFromStorage = deletePhotosFromStorage;
 window.findPhotoReferences = findPhotoReferences;
 window.showPhotoInfoGuide = showPhotoInfoGuide;
+window.getPhotoDownloadUrl = getPhotoDownloadUrl;
 
 console.log('[PHOTO] ✅ All functions exposed globally');
 
@@ -1208,19 +1258,19 @@ function autoInit() {
 // Call autoInit
 autoInit();
 
-console.log('[PHOTO-UTIL] v1.10 loaded (auto-init enabled)');
+console.log('[PHOTO-UTIL] v1.11 loaded (auto-init enabled)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: All functions now properly exposed to window object
-   - FIXED: DEV button now properly works with fallback
-   - FIXED: Load image button now properly works
-   - ADDED: attachPhotoHandlers() function for manual handler attachment
-   - ADDED: Debug logging for all button clicks
-   - ADDED: Auto-init on DOM ready
-   - REMOVED: Dependencies on main HTML log function (uses console fallback)
-DEPENDS ON: Firebase Storage, Firestore
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - CHANGED: findPhotoReferences() now uses window.prodDb and window.devDb
+   - CHANGED: savePhotoToFirestore() now uses window.prodDb and window.devDb
+   - ADDED: Fallback escapeHtml() function if util-core.js not loaded
+   - ADDED: getPhotoDownloadUrl() function exposed globally
+   - REMOVED: Direct prodDb/devDb dependency (now uses window.*)
+   - PRESERVED: All existing functionality from v1.10
+DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
