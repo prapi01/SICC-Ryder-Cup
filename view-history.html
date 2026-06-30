@@ -1,16 +1,15 @@
 <!--
 FILE: view-history.html
-VERSION: 8.35
-KEY CHANGES from v8.34:
-   - REMOVED: Unused calculation modules from both modulesToLoad arrays
-     - game-match.js (no calculation needed - read stored data only)
-     - game-team.js (no calculation needed - read stored data only)
-     - game-stroke.js (no calculation needed - read stored data only)
-     - game-loader.js (no cache needed - data from history record)
-   - ADDED: Pass clinchedAt to GameScorecard.renderScorecard() as 16th parameter
-   - This enables green clinch highlights in history scorecard view
-   - PRESERVED: All existing functionality from v8.34
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
+VERSION: 8.36
+KEY CHANGES from v8.35:
+   - RE-ADDED: game-match.js, game-team.js, game-stroke.js to modulesToLoad
+     - These are DISPLAY HELPERS ONLY - they read stored data and format it
+     - NO CALCULATIONS are performed in view-history
+   - GameMatch.getMatchBubbleClass() is used to determine bubble colors for match results
+   - GameTeam and GameStroke provide display formatting helpers
+   - FIXED: "GameMatch is not defined" error when viewing scorecard
+   - PRESERVED: All existing functionality from v8.35
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
 
@@ -377,7 +376,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.35</div>
+<div class="version-tag">v8.36</div>
 
 <script>
 // ============================================================
@@ -390,10 +389,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.35: Added clinch highlight fix
+// VERSION CACHE-BUSTING - v8.36: Re-added display helper modules
 // ============================================================
-var APP_VERSION = "8.35";
-var CACHE_KEY = "view_history_version_v835";
+var APP_VERSION = "8.36";
+var CACHE_KEY = "view_history_version_v836";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -411,8 +410,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.35";
-console.log("[VIEW-HISTORY] Initializing v8.35 - Clinch highlight fix");
+window.VIEW_HISTORY_VERSION = "8.36";
+console.log("[VIEW-HISTORY] Initializing v8.36 - Re-added display helper modules");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -595,7 +594,7 @@ function getSavedHolesArray(flight, f1DataString, f2DataString, startingHole) {
 }
 
 // ============================================================
-// Show Scorecard View - v8.35: Removed unused modules, added clinch highlight
+// Show Scorecard View - v8.36: Re-added display helper modules
 // ============================================================
 
 function showScorecardView(game) {
@@ -616,10 +615,15 @@ function showScorecardView(game) {
     detailView.style.display = 'block';
     detailContent.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
-    // v8.35: Removed unnecessary calculation modules - history only displays stored data
+    // v8.36: Re-added game-match.js, game-team.js, game-stroke.js
+    // These are DISPLAY HELPERS ONLY - they read stored data and format it
+    // NO CALCULATIONS are performed in view-history
     var modulesToLoad = [
         'js/game-order.js',
         'js/game-data.js',
+        'js/game-match.js',     // Display helper for match bubbles - NO CALCULATION
+        'js/game-team.js',      // Display helper for team game - NO CALCULATION
+        'js/game-stroke.js',    // Display helper for stroke game - NO CALCULATION
         'js/game-scorecard.js',
         'js/game-ui.js',
         'js/ticker.js'
@@ -761,7 +765,7 @@ function renderScorecardView(game) {
     }
     
     function getAllOpponents(player) {
-        // v8.35: Use stored match data only - no calculation needed
+        // v8.36: Use stored match data only - no calculation needed
         var opponents = [];
         var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight && p.team !== player.team; });
         var otherFlightPlayers = allPlayers.filter(function(p) { return p.flight !== player.flight; });
@@ -833,6 +837,7 @@ function renderScorecardView(game) {
         var lastSyncedHole = resultsCache?.computedUpToHole || 18;
         
         // Use stored clinchedAt for history view
+        // GameMatch is a DISPLAY HELPER ONLY - it reads stored data
         return GameMatch.getMatchBubbleClass(
             matchValue, clinchedAt, player, opponent, currentHole,
             isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole,
@@ -924,7 +929,7 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    // v8.35: renderDetailView - Pass clinchedAt to GameScorecard
+    // v8.36: renderDetailView - Pass clinchedAt to GameScorecard
     function renderDetailView() {
         if (!f1DataString || !f2DataString) return;
         
@@ -963,7 +968,7 @@ function renderScorecardView(game) {
         
         var displayMode = GameUI.getDisplayMode();
         
-        // v8.35: Pass clinchedAt as 16th parameter to enable green highlights
+        // v8.36: Pass clinchedAt as 16th parameter to enable green highlights
         if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
             GameScorecard.renderScorecard(
                 "scorecardWrapper",
@@ -1278,10 +1283,15 @@ function loadGameListAndModules() {
             checkBothReady();
         });
     
-    // v8.35: Removed unnecessary calculation modules - history only displays stored data
+    // v8.36: Re-added game-match.js, game-team.js, game-stroke.js
+    // These are DISPLAY HELPERS ONLY - they read stored data and format it
+    // NO CALCULATIONS are performed in view-history
     var modulesToLoad = [
         'js/game-order.js',
         'js/game-data.js',
+        'js/game-match.js',     // Display helper for match bubbles - NO CALCULATION
+        'js/game-team.js',      // Display helper for team game - NO CALCULATION
+        'js/game-stroke.js',    // Display helper for stroke game - NO CALCULATION
         'js/game-scorecard.js',
         'js/game-ui.js',
         'js/ticker.js',
@@ -1354,16 +1364,15 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.35
-KEY CHANGES from v8.34:
-   - REMOVED: Unused calculation modules from both modulesToLoad arrays
-     - game-match.js (no calculation needed - read stored data only)
-     - game-team.js (no calculation needed - read stored data only)
-     - game-stroke.js (no calculation needed - read stored data only)
-     - game-loader.js (no cache needed - data from history record)
-   - ADDED: Pass clinchedAt to GameScorecard.renderScorecard() as 16th parameter
-   - This enables green clinch highlights in history scorecard view
-   - PRESERVED: All existing functionality from v8.34
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
+VERSION: 8.36
+KEY CHANGES from v8.35:
+   - RE-ADDED: game-match.js, game-team.js, game-stroke.js to modulesToLoad
+     - These are DISPLAY HELPERS ONLY - they read stored data and format it
+     - NO CALCULATIONS are performed in view-history
+   - GameMatch.getMatchBubbleClass() is used to determine bubble colors for match results
+   - GameTeam and GameStroke provide display formatting helpers
+   - FIXED: "GameMatch is not defined" error when viewing scorecard
+   - PRESERVED: All existing functionality from v8.35
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
