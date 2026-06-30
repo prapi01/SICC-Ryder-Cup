@@ -1,12 +1,19 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Removed imaginary util-firebase.js and util-logger.js references
-   - FIXED: Removed initFirebase() call (function never existed)
-   - FIXED: Firebase now initialized inline (was already working in v1.17)
-   - PRESERVED: All UI structure, CSS, and functionality from v1.19
-DEPENDS ON: js/firebase-config.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.22
+KEY CHANGES from v1.20:
+   - REMOVED: All duplicate JavaScript functions (now in .js files)
+   - REMOVED: log(), logStep() - now in util-core.js
+   - REMOVED: Firebase initialization - now in util-core.js
+   - REMOVED: initDateToggle() - now in util-core.js
+   - REMOVED: Tab switching logic - now in util-core.js
+   - REMOVED: All Validate tab functions - now in util-validate-app.js
+   - REMOVED: All Photo selector functions - now in util-validate-ui.js
+   - REMOVED: clearValidateResults() - now in util-validate-app.js
+   - ADDED: util-core.js to script includes
+   - CHANGED: Event bindings now call functions from .js files
+   - PRESERVED: All HTML structure and CSS from v1.20
+DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -26,8 +33,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
     <!-- Utility JS Files -->
+    <script src="js/util-core.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
+    <script src="js/util-validate-app.js"></script>
     <script src="js/util-copy-record.js"></script>
     <script src="js/util-compare-record.js"></script>
     <script src="js/util-delete-record.js"></script>
@@ -330,18 +339,23 @@ STATUS: Ready for integration
     <div class="tab-nav" id="tabNav">
         <button class="tab-btn active" data-tab="tabCopy">
             <span class="tab-icon">📝</span> COPY
+            <span class="version-badge" id="copyVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabCompare">
             <span class="tab-icon">🔍</span> COMPARE
+            <span class="version-badge" id="compareVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabValidate">
             <span class="tab-icon">🔬</span> VALIDATE
+            <span class="version-badge" id="validateVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabPhoto">
             <span class="tab-icon">🖼️</span> PHOTO
+            <span class="version-badge" id="photoVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabDelete">
             <span class="tab-icon">🗑️</span> DELETE
+            <span class="version-badge" id="deleteVersionBadge">v?</span>
         </button>
     </div>
     
@@ -586,12 +600,6 @@ STATUS: Ready for integration
                 <div id="validateGameInfo"></div>
             </div>
             
-            <!-- Photo Status Section -->
-            <div class="card" style="border-color: #ffaa44;">
-                <div class="card-title photo">📸 CELEBRATION PHOTO</div>
-                <div id="validatePhotoStatus"></div>
-            </div>
-            
             <div class="validate-grid">
                 <div class="validate-section">
                     <div class="validate-section-title">✈️ Flight 1</div>
@@ -626,6 +634,12 @@ STATUS: Ready for integration
             <div class="card">
                 <div class="card-title">🏆 TR — Per Hole</div>
                 <div id="validateTR"></div>
+            </div>
+            
+            <!-- Photo Status Section - MOVED to bottom, just above VALIDATION SUMMARY -->
+            <div class="card" style="border-color: #ffaa44;">
+                <div class="card-title photo">📸 CELEBRATION PHOTO</div>
+                <div id="validatePhotoStatus"></div>
             </div>
             
             <!-- Validation Summary Section -->
@@ -829,1000 +843,72 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.22</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.20
+// VERSION: 1.22
 // ============================================================
 
-var APP_VERSION = "1.20";
+var APP_VERSION = "1.22";
 
 // ============================================================
-// LOGGING
+// VERSION BADGE RENDERER
 // ============================================================
 
-function log(message, type) {
-    var timestamp = new Date().toLocaleTimeString();
-    
-    if (type === 'error') {
-        console.error('[REC-MGMT] ❌', message);
-    } else if (type === 'success') {
-        console.log('[REC-MGMT] ✅', message);
-    } else if (type === 'warning') {
-        console.warn('[REC-MGMT] ⚠️', message);
-    } else {
-        console.log('[REC-MGMT] ℹ️', message);
+function renderVersionBadges() {
+    // Validate tab - shows both record.js and ui.js versions
+    var validateBadge = document.getElementById('validateVersionBadge');
+    var recordVersion = window.UTIL_VALIDATE_VERSION || '?';
+    var uiVersion = window.UTIL_VALIDATE_UI_VERSION || '?';
+    var appVersion = window.UTIL_VALIDATE_APP_VERSION || '?';
+    if (validateBadge) {
+        validateBadge.textContent = 'r' + recordVersion + ' u' + uiVersion + ' a' + appVersion;
     }
     
-    var logDiv = document.getElementById('log');
-    if (logDiv) {
-        var entry = document.createElement('div');
-        entry.className = 'log-entry';
-        var color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#4caf50' : type === 'warning' ? '#ffaa44' : '#ffaa44';
-        entry.innerHTML = '<span style="color:' + color + ';">[' + timestamp + '] ' + message + '</span>';
-        logDiv.appendChild(entry);
-        logDiv.scrollTop = logDiv.scrollHeight;
-    }
-}
-
-function logStep(step, message, type) {
-    log(message, type);
-}
-
-window._log = log;
-
-// ============================================================
-// FIREBASE INITIALIZATION - Inline (no imaginary files)
-// ============================================================
-
-try {
-    var PROD_CONFIG = {
-        apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-        authDomain: "sicc-ryder-cup.firebaseapp.com",
-        projectId: "sicc-ryder-cup"
-    };
-    var DEV_CONFIG = {
-        apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
-        authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
-        projectId: "sicc-ryder-cup-dev"
-    };
-    var existingProd = firebase.apps.find(function(app) { return app.name === "prod"; });
-    var existingDev = firebase.apps.find(function(app) { return app.name === "dev"; });
-    if (!existingProd) { firebase.initializeApp(PROD_CONFIG, "prod"); }
-    if (!existingDev) { firebase.initializeApp(DEV_CONFIG, "dev"); }
-    window.prodDb = firebase.firestore(firebase.apps.find(function(app) { return app.name === "prod"; }));
-    window.devDb = firebase.firestore(firebase.apps.find(function(app) { return app.name === "dev"; }));
-    console.log('[REC-MGMT] Firebase initialized');
-} catch(e) {
-    console.error('[REC-MGMT] Firebase init error:', e);
-}
-
-// ============================================================
-// TAB SWITCHING - UI ONLY
-// ============================================================
-
-document.querySelectorAll('.tab-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var tabId = this.dataset.tab;
-        document.querySelectorAll('.tab-content').forEach(function(el) {
-            el.classList.remove('active');
-        });
-        document.querySelectorAll('.tab-btn').forEach(function(el) {
-            el.classList.remove('active');
-            el.classList.remove('danger-active');
-            el.classList.remove('photo-active');
-        });
-        document.getElementById(tabId).classList.add('active');
-        this.classList.add('active');
-        if (tabId === 'tabDelete') {
-            this.classList.add('danger-active');
-        }
-        if (tabId === 'tabPhoto') {
-            this.classList.add('photo-active');
-        }
-    });
-});
-
-// ============================================================
-// GLOBAL FUNCTIONS - EXTERNAL REFERENCES
-// ============================================================
-
-// These functions are defined in their respective .js files:
-// - COPY tab functions are in util-copy-record.js
-// - COMPARE tab functions are in util-compare-record.js
-// - VALIDATE tab functions are in util-validate-record.js
-// - DELETE tab functions are in util-delete-record.js
-// - PHOTO tab functions are in util-photo.js
-
-// ============================================================
-// INFO GUIDE FUNCTIONS - Callbacks from .js files
-// ============================================================
-
-// These functions are defined in their respective .js files:
-// - showCopyInfoGuide() in util-copy-record.js
-// - showCompareInfoGuide() in util-compare-record.js
-// - showValidateInfoGuide() in util-validate-record.js
-// - showDeleteInfoGuide() in util-delete-record.js
-// - showPhotoInfoGuide() in util-photo.js
-
-// ============================================================
-// VALIDATE TAB: STATE VARIABLES
-// ============================================================
-
-var validateRecords = [];
-var validateCurrentIndex = -1;
-var validateGameData = null;
-var validateCurrentValidation = null;
-
-// ============================================================
-// VALIDATE TAB: LOAD RECORDS
-// ============================================================
-
-function loadValidateRecords() {
-    var collection = document.getElementById('validateCollection').value;
-    var db = document.getElementById('validateIndicator').textContent === 'PROD' ? prodDb : devDb;
-    
-    if (!db) {
-        log('Select an environment first (PROD/DEV)', 'error');
-        return;
+    // Copy tab
+    var copyBadge = document.getElementById('copyVersionBadge');
+    if (copyBadge) {
+        var v = window.UTIL_COPY_VERSION || '?';
+        copyBadge.textContent = 'v' + v;
     }
     
-    var select = document.getElementById('validateRecordSelect');
-    select.innerHTML = '<option value="">Loading...</option>';
-    select.disabled = true;
-    
-    log('Loading records from: ' + collection + ' (' + (document.getElementById('validateIndicator').textContent) + ')', 'info');
-    
-    db.collection(collection).orderBy('date', 'desc').limit(100).get()
-        .then(function(snapshot) {
-            select.innerHTML = '<option value="">-- Select a record --</option>';
-            select.disabled = false;
-            validateRecords = [];
-            
-            if (snapshot.empty) {
-                select.innerHTML = '<option value="">-- No records found --</option>';
-                log('No records found in ' + collection, 'info');
-                return;
-            }
-            
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                var displayDate = data.date || 'No date';
-                var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
-                var status = data.status || 'unknown';
-                var label = doc.id + ' | ' + displayDate + ' | ' + courseName + ' (' + status + ')';
-                
-                var option = document.createElement('option');
-                option.value = validateRecords.length;
-                option.textContent = label;
-                option.dataset.id = doc.id;
-                option.dataset.rawData = JSON.stringify(data);
-                select.appendChild(option);
-                
-                validateRecords.push({
-                    id: doc.id,
-                    date: displayDate,
-                    course: courseName,
-                    status: status,
-                    rawData: data
-                });
-            });
-            
-            log('Loaded ' + snapshot.size + ' records from ' + collection, 'success');
-        })
-        .catch(function(err) {
-            log('Error loading records: ' + err.message, 'error');
-            select.innerHTML = '<option value="">-- Error loading records --</option>';
-            select.disabled = false;
-        });
-}
-
-// ============================================================
-// VALIDATE TAB: LOAD AND VALIDATE
-// ============================================================
-
-function loadAndValidate() {
-    var select = document.getElementById('validateRecordSelect');
-    var index = parseInt(select.value);
-    
-    if (isNaN(index) || index < 0 || index >= validateRecords.length) {
-        log('Select a record first', 'error');
-        return;
+    // Compare tab
+    var compareBadge = document.getElementById('compareVersionBadge');
+    if (compareBadge) {
+        var v = window.UTIL_COMPARE_VERSION || '?';
+        compareBadge.textContent = 'v' + v;
     }
     
-    var record = validateRecords[index];
-    var data = record.rawData;
-    data.id = record.id;
-    
-    validateGameData = data;
-    validateCurrentIndex = index;
-    
-    log('Validating: ' + record.id, 'info');
-    
-    if (typeof UtilValidate === 'undefined') {
-        log('UtilValidate not available', 'error');
-        return;
+    // Photo tab
+    var photoBadge = document.getElementById('photoVersionBadge');
+    if (photoBadge) {
+        var v = window.PHOTO_UTIL_VERSION || '?';
+        photoBadge.textContent = 'v' + v;
     }
     
-    var f1DataString = data.f1?.d || data.f1DataString || '';
-    var f2DataString = data.f2?.d || data.f2DataString || '';
-    
-    var cleanRecord = {
-        id: record.id,
-        f1DataString: f1DataString,
-        f2DataString: f2DataString,
-        players: data.players || [],
-        course: data.course || data.gameInfo?.course || {},
-        gameInfo: data.gameInfo || data,
-        results: data.results || {},
-        status: data.status || 'unknown',
-        signatures: data.signatures || { f1: { signed: false }, f2: { signed: false } },
-        celebration: data.celebration || {},
-        finalResults: data.finalResults || {},
-        gameId: data.gameId || record.id,
-        date: data.date || 'Unknown',
-        createdAt: data.createdAt || null
-    };
-    
-    var validation = UtilValidate.validateRecord(cleanRecord);
-    validateCurrentValidation = validation;
-    
-    renderValidateResults(cleanRecord, validation);
-    
-    if (validation.valid) {
-        log('✅ Record is valid!', 'success');
-    } else {
-        log('❌ Record needs fix: ' + validation.summary.mismatched + ' mismatches found', 'error');
-    }
-}
-
-// ============================================================
-// VALIDATE TAB: RENDER RESULTS
-// ============================================================
-
-function renderValidateResults(recordData, validation) {
-    var resultsDiv = document.getElementById('validateResults');
-    resultsDiv.classList.add('active');
-    
-    document.getElementById('validateStatus').style.display = 'none';
-    document.getElementById('validateFixCard').style.display = 'none';
-    document.getElementById('validateDetailsCard').style.display = 'none';
-    document.getElementById('validateProgress').className = 'validate-progress';
-    document.getElementById('validateProgress').innerHTML = '';
-    
-    if (typeof UtilValidateUI === 'undefined') {
-        log('UtilValidateUI not available', 'error');
-        return;
+    // Delete tab
+    var deleteBadge = document.getElementById('deleteVersionBadge');
+    if (deleteBadge) {
+        var v = window.UTIL_DELETE_VERSION || '?';
+        deleteBadge.textContent = 'v' + v;
     }
     
-    UtilValidateUI.renderGameInfo(recordData, 'validateGameInfo');
-    
-    var photoStatus = validation.photoStatus || { hasPhoto: false, path: null, url: null };
-    var isCompleted = validation.isCompletedGame || false;
-    
-    window._validatePhotoStatus = photoStatus;
-    window._validateRecordId = recordData.id;
-    window._validateCollection = document.getElementById('validateCollection').value;
-    
-    var photoContainer = document.getElementById('validatePhotoStatus');
-    if (photoContainer) {
-        var hasPhoto = photoStatus.hasPhoto;
-        var url = photoStatus.url || null;
-        var path = photoStatus.path || null;
-        var expectedPath = photoStatus.expectedPath || null;
-        
-        var html = '<div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">';
-        html += '<div style="font-size:0.75rem; font-weight:600; color:#ffaa44; margin-bottom:8px;">📸 CELEBRATION PHOTO</div>';
-        
-        if (hasPhoto && url) {
-            html += '<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
-            html += '<div style="width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid #4caf50; flex-shrink:0; background:#0a0a0a; display:flex; align-items:center; justify-content:center;">';
-            html += '<img src="' + UtilValidateUI.escapeHtml(url) + '" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display=\'none\'; this.parentNode.innerHTML=\'<span style=\'font-size:2rem;\'>📸</span>\';">';
-            html += '</div>';
-            html += '<div style="flex:1; min-width:120px;">';
-            html += '<div style="font-size:0.7rem; color:#4caf50;">✅ Photo present</div>';
-            html += '<div style="font-size:0.6rem; color:#888; word-break:break-all; margin-top:2px;">' + UtilValidateUI.escapeHtml(path || '') + '</div>';
-            html += '<button class="btn btn-secondary" style="margin-top:4px; padding:6px 12px; font-size:0.7rem; width:auto; display:inline-block;" onclick="openPhotoSelector(\'' + recordData.id + '\', \'' + document.getElementById('validateCollection').value + '\')">🔄 Change Photo</button>';
-            html += '</div>';
-            html += '</div>';
-        } else {
-            html += '<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
-            html += '<div style="width:80px; height:80px; border-radius:8px; border:1px solid #ff6b6b; flex-shrink:0; background:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:2rem; color:#555;">❌</div>';
-            html += '<div style="flex:1; min-width:120px;">';
-            html += '<div style="font-size:0.7rem; color:#ff6b6b;">❌ Photo MISSING</div>';
-            if (isCompleted) {
-                html += '<div style="font-size:0.65rem; color:#ffaa44;">⚠️ Required for completed games</div>';
-            }
-            if (expectedPath) {
-                html += '<div style="font-size:0.6rem; color:#888; word-break:break-all; margin-top:2px;">Expected: ' + UtilValidateUI.escapeHtml(expectedPath) + '</div>';
-            }
-            html += '<button class="btn btn-photo" style="margin-top:4px; padding:6px 12px; font-size:0.7rem; width:auto; display:inline-block;" onclick="openPhotoSelector(\'' + recordData.id + '\', \'' + document.getElementById('validateCollection').value + '\')">📂 Select Photo</button>';
-            html += '</div>';
-            html += '</div>';
-        }
-        
-        html += '</div>';
-        photoContainer.innerHTML = html;
-    }
-    
-    var f1Scores = validation.f1Scores || [];
-    var f2Scores = validation.f2Scores || [];
-    var players = validation.players || [];
-    
-    UtilValidateUI.renderFlightTable(f1Scores, players, 1, 'validateFlight1');
-    UtilValidateUI.renderFlightTable(f2Scores, players, 2, 'validateFlight2');
-    
-    var recalculated = validation.recalculated || {};
-    
-    var t1Calc = UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
-    var t2Calc = UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || []);
-    var strkCalc = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
-    
-    UtilValidateUI.renderTeamGameTable(t1Calc, 'validateT1', 'T-1');
-    UtilValidateUI.renderTeamGameTable(t2Calc, 'validateT2', 'T-2');
-    UtilValidateUI.renderStrkTable(strkCalc, 'validateStrk');
-    
-    var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || []);
-    var orderedPlayers = matchData.orderedPlayers || [];
-    var matchResults = matchData.results || [];
-    UtilValidateUI.renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
-    
-    var matchPointsPerHole = matchData.matchPointsPerHole || [];
-    UtilValidateUI.renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
-    
-    var summaryContainer = document.getElementById('validateSummary');
-    var summary = validation.summary || { totalFields: 0, mismatched: 0, matched: 0 };
-    var status = validation.status || 'unknown';
-    var bothSigned = validation.bothSigned || false;
-    var isValid = validation.valid;
-    
-    var html = '<div style="padding:12px 0;">';
-    
-    html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (isValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (isValid ? '#2a5a2a' : '#5a2a2a') + ';">';
-    html += '<span style="font-size:1.5rem;">' + (isValid ? '✅' : '❌') + '</span>';
-    html += '<div><div style="font-weight:700; color:' + (isValid ? '#4caf50' : '#ff6b6b') + ';">' + (isValid ? 'VALID' : 'NEEDS FIX') + '</div>';
-    html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention</div></div>';
-    html += '</div>';
-    
-    html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">';
-    html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
-    html += '<span style="color:#888;">Status</span><br><span style="color:' + (status === 'completed' ? '#4caf50' : '#ffaa44') + '; font-weight:600;">' + UtilValidateUI.escapeHtml(status) + '</span>';
-    html += '</div>';
-    html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
-    html += '<span style="color:#888;">Signatures</span><br><span style="color:' + (bothSigned ? '#4caf50' : '#888') + '; font-weight:600;">' + (bothSigned ? '✅ Both signed' : '⏳ Not both signed') + '</span>';
-    html += '</div>';
-    html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
-    html += '<span style="color:#888;">Completed Game</span><br><span style="color:' + (isCompleted ? '#4caf50' : '#888') + '; font-weight:600;">' + (isCompleted ? '✅ Yes' : 'No') + '</span>';
-    html += '</div>';
-    html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
-    html += '<span style="color:#888;">Celebration Photo</span><br><span style="color:' + (photoStatus.hasPhoto ? '#4caf50' : (isCompleted ? '#ff6b6b' : '#888')) + '; font-weight:600;">' + (photoStatus.hasPhoto ? '✅ Present' : (isCompleted ? '❌ MISSING' : 'Not required')) + '</span>';
-    html += '</div>';
-    html += '</div>';
-    
-    if (summary.totalFields > 0) {
-        html += '<div style="display:flex; gap:16px; flex-wrap:wrap; padding:8px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; font-size:0.75rem;">';
-        html += '<div><span style="color:#888;">Total Fields:</span> <strong style="color:#fff;">' + summary.totalFields + '</strong></div>';
-        html += '<div><span style="color:#4caf50;">✅ Matched:</span> <strong style="color:#4caf50;">' + summary.matched + '</strong></div>';
-        html += '<div><span style="color:#ff6b6b;">❌ Mismatched:</span> <strong style="color:#ff6b6b;">' + summary.mismatched + '</strong></div>';
-        html += '</div>';
-    }
-    
-    if (validation.mismatches && validation.mismatches.length > 0) {
-        html += '<div style="margin-top:12px; max-height:150px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:8px;">';
-        html += '<div style="font-size:0.65rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Mismatches (' + validation.mismatches.length + ')</div>';
-        for (var i = 0; i < Math.min(validation.mismatches.length, 10); i++) {
-            var m = validation.mismatches[i];
-            html += '<div style="font-size:0.7rem; padding:2px 4px; border-bottom:1px solid #1a1a1a; display:flex; justify-content:space-between; flex-wrap:wrap;">';
-            html += '<span style="color:#888;">' + UtilValidateUI.escapeHtml(m.field) + '</span>';
-            html += '<span style="color:#ff6b6b;">' + UtilValidateUI.escapeHtml(String(m.current)) + '</span>';
-            html += '<span style="color:#666;">→</span>';
-            html += '<span style="color:#4caf50;">' + UtilValidateUI.escapeHtml(String(m.expected)) + '</span>';
-            html += '</div>';
-        }
-        if (validation.mismatches.length > 10) {
-            html += '<div style="font-size:0.65rem; color:#666; text-align:center; padding:4px;">+ ' + (validation.mismatches.length - 10) + ' more mismatches</div>';
-        }
-        html += '</div>';
-        
-        document.getElementById('validateDetailsCard').style.display = 'block';
-        var detailsHtml = '<div style="font-size:0.7rem; font-family:monospace;">';
-        for (var i = 0; i < validation.mismatches.length; i++) {
-            var m = validation.mismatches[i];
-            detailsHtml += '<div style="padding:2px 0; border-bottom:1px solid #1a1a1a;">';
-            detailsHtml += '<span style="color:#888;">' + UtilValidateUI.escapeHtml(m.field) + '</span>: ';
-            detailsHtml += '<span style="color:#ff6b6b;">' + UtilValidateUI.escapeHtml(String(m.current)) + '</span>';
-            detailsHtml += ' <span style="color:#666;">→</span> ';
-            detailsHtml += '<span style="color:#4caf50;">' + UtilValidateUI.escapeHtml(String(m.expected)) + '</span>';
-            detailsHtml += '</div>';
-        }
-        detailsHtml += '</div>';
-        document.getElementById('validateDetails').innerHTML = detailsHtml;
-    } else {
-        document.getElementById('validateDetailsCard').style.display = 'none';
-    }
-    
-    html += '</div>';
-    summaryContainer.innerHTML = html;
-    
-    var fixCard = document.getElementById('validateFixCard');
-    if (!validation.valid) {
-        fixCard.style.display = 'block';
-        document.getElementById('validateBackupBtn').disabled = false;
-        document.getElementById('validateFixBtn').disabled = false;
-    } else {
-        fixCard.style.display = 'none';
-    }
-}
-
-// ============================================================
-// VALIDATE TAB: PHOTO SELECTOR FUNCTIONS
-// ============================================================
-
-function openPhotoSelector(recordId, collection) {
-    if (!recordId || !collection) {
-        log('Record ID and collection required', 'error');
-        return;
-    }
-    
-    if (typeof listPhotosInStorage !== 'function') {
-        log('Photo listing not available. Make sure util-photo.js is loaded.', 'error');
-        return;
-    }
-    
-    log('📂 Opening photo selector for record: ' + recordId, 'info');
-    
-    var modalHtml = `
-        <div class="modal-overlay" id="photoSelectorModal" style="z-index:20000;">
-            <div class="info-card" style="max-width:600px; border-color:#ffaa44;">
-                <div class="info-header">
-                    <div class="info-title" style="color:#ffaa44;">📸 Select Celebration Photo</div>
-                    <button class="info-close-btn" style="border-color:#ffaa44;color:#ffaa44;" onclick="closePhotoSelector()">✕ CLOSE</button>
-                </div>
-                <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
-                    Select a photo from Firebase Storage to link to this record.
-                    <br><strong style="color:#ffaa44;">Expected path:</strong> celebration/${recordId}.jpg
-                </div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-                    <input type="text" id="photoSelectorFolder" placeholder="Folder" value="celebration/" style="flex:2; min-width:150px;">
-                    <button class="btn btn-secondary" style="flex:0 0 auto; width:auto; padding:12px 24px;" onclick="loadPhotoSelector()">🔄 Load Photos</button>
-                </div>
-                <div id="photoSelectorList" style="max-height:300px; overflow-y:auto; background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:8px;">
-                    <div style="text-align:center; padding:20px; color:#555;">Click "Load Photos" to browse</div>
-                </div>
-                <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2a2a2a;">
-                    <div style="font-size:0.7rem; color:#888;" id="photoSelectorStatus">Ready</div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    window._photoSelectorRecordId = recordId;
-    window._photoSelectorCollection = collection;
-}
-
-function closePhotoSelector() {
-    var modal = document.getElementById('photoSelectorModal');
-    if (modal) modal.remove();
-    window._photoSelectorRecordId = null;
-    window._photoSelectorCollection = null;
-}
-
-function loadPhotoSelector() {
-    var folderInput = document.getElementById('photoSelectorFolder');
-    var folder = folderInput ? folderInput.value.trim() : 'celebration/';
-    var listContainer = document.getElementById('photoSelectorList');
-    var statusDiv = document.getElementById('photoSelectorStatus');
-    
-    if (!listContainer) return;
-    
-    if (typeof listPhotosInStorage !== 'function') {
-        listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">❌ Photo listing not available</div>';
-        return;
-    }
-    
-    listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">⏳ Loading photos...</div>';
-    if (statusDiv) statusDiv.textContent = '⏳ Loading from: ' + folder;
-    
-    listPhotosInStorage(folder, function(err, photos) {
-        if (err) {
-            listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">❌ Error: ' + err.message + '</div>';
-            if (statusDiv) statusDiv.textContent = '❌ Error loading photos';
-            return;
-        }
-        
-        if (!photos || photos.length === 0) {
-            listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">📭 No photos found in ' + folder + '</div>';
-            if (statusDiv) statusDiv.textContent = '📭 No photos found';
-            return;
-        }
-        
-        var html = '<div class="photo-grid">';
-        
-        photos.forEach(function(photo) {
-            var displayName = photo.name.length > 25 ? photo.name.substring(0, 22) + '...' : photo.name;
-            var size = photo.size > 1024 * 1024 ? (photo.size / (1024 * 1024)).toFixed(1) + ' MB' : 
-                       photo.size > 1024 ? (photo.size / 1024).toFixed(0) + ' KB' : 
-                       photo.size + ' B';
-            
-            html += '<div class="photo-item" onclick="selectPhotoFromList(\'' + UtilValidateUI.escapeHtml(photo.fullPath) + '\', \'' + UtilValidateUI.escapeHtml(photo.name) + '\')">';
-            html += '<div class="photo-thumb">📸</div>';
-            html += '<div class="photo-name">' + UtilValidateUI.escapeHtml(displayName) + '</div>';
-            html += '<div class="photo-size">' + size + '</div>';
-            html += '</div>';
-        });
-        
-        html += '</div>';
-        listContainer.innerHTML = html;
-        if (statusDiv) statusDiv.textContent = '📸 ' + photos.length + ' photos found';
-    });
-}
-
-function selectPhotoFromList(fullPath, fileName) {
-    if (!window._photoSelectorRecordId || !window._photoSelectorCollection) {
-        log('Missing record info for photo selection', 'error');
-        return;
-    }
-    
-    var recordId = window._photoSelectorRecordId;
-    var collection = window._photoSelectorCollection;
-    
-    if (!confirm('Link this photo to record ' + recordId + '?\n\n' + fullPath + '\n\nThis will update the celebration field.')) {
-        return;
-    }
-    
-    log('📸 Selected photo: ' + fullPath + ' for record: ' + recordId, 'info');
-    
-    if (typeof getPhotoDownloadUrl !== 'function') {
-        log('getPhotoDownloadUrl not available', 'error');
-        return;
-    }
-    
-    getPhotoDownloadUrl(fullPath, function(err, url) {
-        if (err) {
-            log('❌ Failed to get download URL: ' + err.message, 'error');
-            return;
-        }
-        applyPhotoToRecord(recordId, collection, fullPath, url);
-    });
-}
-
-function applyPhotoToRecord(recordId, collection, fullPath, url) {
-    if (!recordId || !collection || !fullPath || !url) {
-        log('Missing required data for photo update', 'error');
-        return;
-    }
-    
-    var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
-    if (!db) {
-        log('Database not available', 'error');
-        return;
-    }
-    
-    log('💾 Applying photo to record: ' + collection + '/' + recordId, 'info');
-    
-    var updateData = {
-        'celebration.imageRef': fullPath,
-        'celebration.imageUrl': url,
-        'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    db.collection(collection).doc(recordId).update(updateData)
-        .then(function() {
-            log('✅ Photo applied to record: ' + recordId, 'success');
-            closePhotoSelector();
-            loadAndValidate();
-        })
-        .catch(function(err) {
-            log('❌ Failed to apply photo: ' + err.message, 'error');
-        });
-}
-
-function clearValidateResults() {
-    document.getElementById('validateGameInfo').innerHTML = '';
-    document.getElementById('validatePhotoStatus').innerHTML = '';
-    document.getElementById('validateFlight1').innerHTML = '';
-    document.getElementById('validateFlight2').innerHTML = '';
-    document.getElementById('validateT1').innerHTML = '';
-    document.getElementById('validateT2').innerHTML = '';
-    document.getElementById('validateStrk').innerHTML = '';
-    document.getElementById('validateMatch').innerHTML = '';
-    document.getElementById('validateTR').innerHTML = '';
-    document.getElementById('validateSummary').innerHTML = '';
-    document.getElementById('validateDetails').innerHTML = '';
-    document.getElementById('validateDetailsCard').style.display = 'none';
-    document.getElementById('validateFixCard').style.display = 'none';
-    document.getElementById('validateStatus').style.display = 'none';
-    document.getElementById('validateProgress').className = 'validate-progress';
-    document.getElementById('validateProgress').innerHTML = '';
-    document.getElementById('validateBackupBtn').disabled = false;
-    document.getElementById('validateFixBtn').disabled = false;
-    
-    window._validatePhotoStatus = null;
-    window._validateRecordId = null;
-    window._validateCollection = null;
-}
-
-// ============================================================
-// VALIDATE TAB: BACKUP AND FIX FUNCTIONS
-// ============================================================
-
-function validateBackupOnly() {
-    if (!validateGameData || !validateGameData.id) {
-        log('Load a record first', 'error');
-        return;
-    }
-    
-    var collection = document.getElementById('validateCollection').value;
-    var db = document.getElementById('validateIndicator').textContent === 'PROD' ? prodDb : devDb;
-    
-    if (!db) {
-        log('Database not available', 'error');
-        return;
-    }
-    
-    var recordId = validateGameData.id;
-    var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
-    
-    log('💾 Creating backup: ' + backupId, 'info');
-    
-    db.collection(collection).doc(recordId).get()
-        .then(function(doc) {
-            if (!doc.exists) {
-                throw new Error('Record not found');
-            }
-            return db.collection('backupFolder').doc(backupId).set(doc.data());
-        })
-        .then(function() {
-            log('✅ Backup created: ' + backupId, 'success');
-            var statusDiv = document.getElementById('validateStatus');
-            statusDiv.style.display = 'block';
-            statusDiv.className = 'validate-status success';
-            statusDiv.innerHTML = '✅ Backup created successfully: ' + backupId;
-        })
-        .catch(function(err) {
-            log('❌ Backup failed: ' + err.message, 'error');
-            var statusDiv = document.getElementById('validateStatus');
-            statusDiv.style.display = 'block';
-            statusDiv.className = 'validate-status error';
-            statusDiv.innerHTML = '❌ Backup failed: ' + err.message;
-        });
-}
-
-function validateFixRecord() {
-    if (!validateGameData || !validateGameData.id) {
-        log('Load a record first', 'error');
-        return;
-    }
-    
-    if (!validateCurrentValidation) {
-        log('Validate the record first', 'error');
-        return;
-    }
-    
-    if (validateCurrentValidation.valid) {
-        log('Record is already valid. No fix needed.', 'info');
-        return;
-    }
-    
-    var recordId = validateGameData.id;
-    var collection = document.getElementById('validateCollection').value;
-    var db = document.getElementById('validateIndicator').textContent === 'PROD' ? prodDb : devDb;
-    
-    if (!db) {
-        log('Database not available', 'error');
-        return;
-    }
-    
-    var recalculated = validateCurrentValidation.recalculated;
-    var previewData = UtilValidate.buildFixPreview(validateGameData, recalculated);
-    
-    if (!previewData.hasChanges) {
-        log('No changes needed', 'info');
-        return;
-    }
-    
-    UtilValidateUI.showFixPreview(
-        validateGameData,
-        recalculated,
-        previewData,
-        null,
-        function() {
-            applyFixToRecord(recordId, collection, db, recalculated);
-        }
-    );
-}
-
-function applyFixToRecord(recordId, collection, db, recalculated) {
-    var progressDiv = document.getElementById('validateProgress');
-    progressDiv.className = 'validate-progress active';
-    progressDiv.innerHTML = '<div class="step info">🔄 Creating backup...</div>';
-    
-    var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
-    
-    db.collection(collection).doc(recordId).get()
-        .then(function(doc) {
-            if (!doc.exists) {
-                throw new Error('Record not found');
-            }
-            progressDiv.innerHTML += '<div class="step done">✅ Backup created</div>';
-            return db.collection('backupFolder').doc(backupId).set(doc.data());
-        })
-        .then(function() {
-            progressDiv.innerHTML += '<div class="step done">✅ Backup saved to backupFolder/' + backupId + '</div>';
-            progressDiv.innerHTML += '<div class="step info">📝 Building fix payload...</div>';
-            
-            var fixResult = UtilValidate.buildFixPayload(validateGameData, recalculated);
-            
-            if (!fixResult.hasChanges) {
-                progressDiv.innerHTML += '<div class="step warning">⚠️ No changes to apply</div>';
-                return Promise.reject(new Error('No changes to apply'));
-            }
-            
-            progressDiv.innerHTML += '<div class="step info">✍️ Applying ' + fixResult.fieldsUpdated.length + ' updates...</div>';
-            progressDiv.innerHTML += '<div class="step info">Fields: ' + fixResult.fieldsUpdated.join(', ') + '</div>';
-            
-            return db.collection(collection).doc(recordId).update(fixResult.updatePayload);
-        })
-        .then(function() {
-            progressDiv.innerHTML += '<div class="step done">✅ Fix applied successfully!</div>';
-            log('✅ Record fixed: ' + recordId, 'success');
-            
-            setTimeout(function() {
-                loadAndValidate();
-            }, 1000);
-        })
-        .catch(function(err) {
-            progressDiv.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
-            log('❌ Fix failed: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// VALIDATE TAB: EVENT BINDINGS
-// ============================================================
-
-document.getElementById('validateProdBtn').onclick = function() {
-    var indicator = document.getElementById('validateIndicator');
-    indicator.textContent = 'PROD';
-    indicator.className = 'env-indicator-small prod';
-    log('Validate environment set to: PROD', 'success');
-    loadValidateRecords();
-};
-
-document.getElementById('validateDevBtn').onclick = function() {
-    var indicator = document.getElementById('validateIndicator');
-    indicator.textContent = 'DEV';
-    indicator.className = 'env-indicator-small dev';
-    log('Validate environment set to: DEV', 'success');
-    loadValidateRecords();
-};
-
-document.getElementById('validateLoadBtn').onclick = function() {
-    loadAndValidate();
-};
-
-document.getElementById('validateRefreshBtn').onclick = function() {
-    loadValidateRecords();
-};
-
-document.getElementById('validateBackupBtn').onclick = function() {
-    validateBackupOnly();
-};
-
-document.getElementById('validateFixBtn').onclick = function() {
-    validateFixRecord();
-};
-
-document.getElementById('validateCollection').onchange = function() {
-    loadValidateRecords();
-};
-
-document.getElementById('validateRecordSelect').onchange = function() {
-    var index = parseInt(this.value);
-    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
-        validateCurrentIndex = index;
-        validateGameData = validateRecords[index].rawData;
-        validateGameData.id = validateRecords[index].id;
-        clearValidateResults();
-        loadAndValidate();
-    } else {
-        validateCurrentIndex = -1;
-        validateGameData = null;
-        clearValidateResults();
-    }
-};
-
-// ============================================================
-// COPY TAB: EVENT BINDINGS (delegates to util-copy-record.js)
-// ============================================================
-
-document.getElementById('copySourceProdBtn').onclick = function() {
-    setCopySourceEnvironment('PROD');
-};
-
-document.getElementById('copySourceDevBtn').onclick = function() {
-    setCopySourceEnvironment('DEV');
-};
-
-document.getElementById('copyDestProdBtn').onclick = function() {
-    setCopyDestEnvironment('PROD');
-};
-
-document.getElementById('copyDestDevBtn').onclick = function() {
-    setCopyDestEnvironment('DEV');
-};
-
-document.getElementById('loadSourceBtn').onclick = function() {
-    loadSourceRecords();
-};
-
-document.getElementById('loadDestBtn').onclick = function() {
-    loadDestinationRecords();
-};
-
-document.getElementById('copyBtn').onclick = function() {
-    copyRecord();
-};
-
-document.getElementById('checkBtn').onclick = function() {
-    checkDestination();
-};
-
-document.getElementById('deleteCopyDestBtn').onclick = function() {
-    deleteDestination();
-};
-
-document.getElementById('sourceCollection').onchange = function() {
-    loadSourceRecords();
-    document.getElementById('gameInfo').style.display = 'none';
-    currentGameData = null;
-    currentGameId = null;
-};
-
-document.getElementById('destCollection').onchange = function() {
-    loadDestinationRecords();
-    document.getElementById('destDocId').value = '';
-};
-
-document.getElementById('gameSelect').onchange = function() {
-    var idx = this.value;
-    if (idx !== '') {
-        loadGameData(idx);
-    } else {
-        document.getElementById('gameInfo').style.display = 'none';
-        currentGameData = null;
-        currentGameId = null;
-    }
-};
-
-function onDestExistingSelect() {
-    var select = document.getElementById('destExistingSelect');
-    var destDocId = document.getElementById('destDocId');
-    if (select.value) {
-        destDocId.value = select.value;
-    }
-}
-
-// ============================================================
-// COMPARE TAB: EVENT BINDINGS (delegates to util-compare-record.js)
-// ============================================================
-
-document.getElementById('compareLeftProdBtn').onclick = function() {
-    setCompareLeftEnvironment('PROD');
-};
-
-document.getElementById('compareLeftDevBtn').onclick = function() {
-    setCompareLeftEnvironment('DEV');
-};
-
-document.getElementById('compareRightProdBtn').onclick = function() {
-    setCompareRightEnvironment('PROD');
-};
-
-document.getElementById('compareRightDevBtn').onclick = function() {
-    setCompareRightEnvironment('DEV');
-};
-
-document.getElementById('compareLoadBtn').onclick = function() {
-    loadCompareRecords();
-};
-
-document.getElementById('compareBtn').onclick = function() {
-    performCompare();
-};
-
-document.getElementById('compareLeftCollection').onchange = function() {
-    loadCompareRecordsLeft();
-};
-
-document.getElementById('compareRightCollection').onchange = function() {
-    loadCompareRecordsRight();
-};
-
-document.getElementById('compareLeftRecord').onchange = function() {
-    loadCompareRecordData('left');
-};
-
-document.getElementById('compareRightRecord').onchange = function() {
-    loadCompareRecordData('right');
-};
-
-// ============================================================
-// DELETE TAB: EVENT BINDINGS (delegates to util-delete-record.js)
-// ============================================================
-
-document.getElementById('deleteProdBtn').onclick = function() {
-    setDeleteEnvironment('PROD');
-};
-
-document.getElementById('deleteDevBtn').onclick = function() {
-    setDeleteEnvironment('DEV');
-};
-
-document.getElementById('deleteRefreshBtn').onclick = function() {
-    if (typeof deleteDb !== 'undefined' && deleteDb) {
-        loadDeleteRecords();
-    } else {
-        log('Select Delete environment first', 'error');
-    }
-};
-
-document.getElementById('deleteSelectAllBtn').onclick = function() {
-    selectAllDeleteRecords();
-};
-
-document.getElementById('deleteDeselectAllBtn').onclick = function() {
-    deselectAllDeleteRecords();
-};
-
-document.getElementById('deleteExecuteBtn').onclick = function() {
-    deleteSelectedRecords();
-};
-
-document.getElementById('deleteCollection').onchange = function() {
-    if (typeof deleteDb !== 'undefined' && deleteDb) {
-        loadDeleteRecords();
-    }
-};
-
-// ============================================================
-// DATE TOGGLE
-// ============================================================
-
-function initDateToggle() {
-    var radios = document.querySelectorAll('input[name="dateOption"]');
-    var customDateInput = document.getElementById('customDate');
-    
-    radios.forEach(function(radio) {
-        radio.addEventListener('change', function() {
-            var labels = document.querySelectorAll('.radio-group label');
-            labels.forEach(function(l) { l.classList.remove('active'); });
-            this.closest('label').classList.add('active');
-            
-            if (this.value === 'custom') {
-                customDateInput.style.display = 'block';
-                if (!customDateInput.value) {
-                    var today = new Date().toISOString().split('T')[0];
-                    customDateInput.value = today;
-                }
-            } else {
-                customDateInput.style.display = 'none';
-            }
-        });
-    });
+    console.log('[REC-MGMT] Version badges rendered');
+    console.log('  Core: ' + (window.UTIL_CORE_VERSION || '?'));
+    console.log('  Validate: r' + (window.UTIL_VALIDATE_VERSION || '?') + ' u' + (window.UTIL_VALIDATE_UI_VERSION || '?') + ' a' + (window.UTIL_VALIDATE_APP_VERSION || '?'));
+    console.log('  Copy: v' + (window.UTIL_COPY_VERSION || '?'));
+    console.log('  Compare: v' + (window.UTIL_COMPARE_VERSION || '?'));
+    console.log('  Photo: v' + (window.PHOTO_UTIL_VERSION || '?'));
+    console.log('  Delete: v' + (window.UTIL_DELETE_VERSION || '?'));
 }
 
 // ============================================================
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.20...');
-
-initDateToggle();
+console.log('[REC-MGMT] Initializing v1.22...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1879,7 +965,12 @@ if (typeof initPhotoTab === 'function') {
     initPhotoTab();
 }
 
-// Pre-load records
+// Render version badges after all .js files have loaded
+setTimeout(function() {
+    renderVersionBadges();
+}, 300);
+
+// Pre-load records using functions from .js files
 setTimeout(function() {
     if (typeof loadSourceRecords === 'function') loadSourceRecords();
     if (typeof loadDestinationRecords === 'function') loadDestinationRecords();
@@ -1888,39 +979,46 @@ setTimeout(function() {
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
 }, 500);
 
-log('Record Management v1.20 ready', 'success');
-log('=== TABS ===', 'info');
-log('📝 COPY    - Copy records between collections/environments', 'info');
-log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
-log('🔬 VALIDATE - Load, validate, and fix corrupted records', 'info');
-log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
-log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
-log('=====================================', 'info');
+// Log using the core logger
+if (typeof log === 'function') {
+    log('Record Management v1.22 ready', 'success');
+    log('=== TABS ===', 'info');
+    log('📝 COPY    - Copy records between collections/environments', 'info');
+    log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
+    log('🔬 VALIDATE - Load, validate, and fix corrupted records', 'info');
+    log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
+    log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
+    log('=====================================', 'info');
+} else {
+    console.log('[REC-MGMT] Record Management v1.22 ready');
+}
 
-// Make functions globally accessible
-window.openPhotoSelector = openPhotoSelector;
-window.closePhotoSelector = closePhotoSelector;
-window.loadPhotoSelector = loadPhotoSelector;
-window.selectPhotoFromList = selectPhotoFromList;
-window.applyPhotoToRecord = applyPhotoToRecord;
-window.clearValidateResults = clearValidateResults;
-window.loadValidateRecords = loadValidateRecords;
-window.loadAndValidate = loadAndValidate;
-window.validateBackupOnly = validateBackupOnly;
-window.validateFixRecord = validateFixRecord;
-window.renderValidateResults = renderValidateResults;
+// Make functions globally accessible (these are now in .js files)
+// window.openPhotoSelector, window.closePhotoSelector, window.loadPhotoSelector, 
+// window.selectPhotoFromList, window.applyPhotoToRecord are now in util-validate-ui.js
+// window.clearValidateResults, window.loadValidateRecords, window.loadAndValidate,
+// window.validateBackupOnly, window.validateFixRecord are now in util-validate-app.js
+
+console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Removed imaginary util-firebase.js and util-logger.js references
-   - FIXED: Removed initFirebase() call (function never existed)
-   - FIXED: Firebase now initialized inline (was already working in v1.17)
-   - PRESERVED: All UI structure, CSS, and functionality from v1.19
-DEPENDS ON: js/firebase-config.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.22
+KEY CHANGES from v1.20:
+   - REMOVED: All duplicate JavaScript functions (now in .js files)
+   - REMOVED: log(), logStep() - now in util-core.js
+   - REMOVED: Firebase initialization - now in util-core.js
+   - REMOVED: initDateToggle() - now in util-core.js
+   - REMOVED: Tab switching logic - now in util-core.js
+   - REMOVED: All Validate tab functions - now in util-validate-app.js
+   - REMOVED: All Photo selector functions - now in util-validate-ui.js
+   - REMOVED: clearValidateResults() - now in util-validate-app.js
+   - ADDED: util-core.js to script includes
+   - CHANGED: Event bindings now call functions from .js files
+   - PRESERVED: All HTML structure and CSS from v1.20
+DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
