@@ -1,31 +1,20 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: renderValidateResults() - Moved from HTML (main validation results renderer)
-   - ADDED: renderPhotoStatusInline() - Inline photo status renderer (no modal)
-   - ADDED: toggleInlinePhotoSelector() - Toggle inline photo selector
-   - ADDED: loadInlinePhotos() - Load photos for inline selector
-   - ADDED: applyInlinePhoto() - Apply selected photo inline
-   - ADDED: applyPhotoToRecordInline() - Save photo to Firestore (inline version)
-   - ADDED: clearPhotoFromRecord() - Remove photo from record
-   - ADDED: openPhotoSelector() - Open modal photo selector (legacy, kept for compatibility)
-   - ADDED: closePhotoSelector() - Close modal photo selector
-   - ADDED: loadPhotoSelector() - Load photos for modal selector
-   - ADDED: selectPhotoFromList() - Select photo from modal list
-   - ADDED: applyPhotoToRecord() - Apply photo to record (modal version)
-   - CHANGED: escapeHtml() now uses window.escapeHtml from util-core.js (with fallback)
-   - CHANGED: formatDate() now uses window.formatDate from util-core.js (with fallback)
-   - PRESERVED: All existing rendering functions from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: Exposed photo selector functions globally (openPhotoSelector, closePhotoSelector, etc.)
+   - FIXED: Exposed inline photo functions (toggleInlinePhotoSelector, loadInlinePhotos, etc.)
+   - FIXED: Exposed renderValidateResults globally for HTML onclick bindings
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: UtilValidate, util-core.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.03";
+window.UTIL_VALIDATE_UI_VERSION = "1.04";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.03");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.04");
     
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -1349,25 +1338,38 @@ var UtilValidateUI = (function() {
 
 window.UtilValidateUI = UtilValidateUI;
 
+// ============================================================
+// EXPOSE GLOBALLY FOR HTML ONCLICK BINDINGS
+// ============================================================
+
+// Photo selector functions (modal)
+window.openPhotoSelector = UtilValidateUI.openPhotoSelector;
+window.closePhotoSelector = UtilValidateUI.closePhotoSelector;
+window.loadPhotoSelector = UtilValidateUI.loadPhotoSelector;
+window.selectPhotoFromList = UtilValidateUI.selectPhotoFromList;
+window.applyPhotoToRecord = UtilValidateUI.applyPhotoToRecord;
+
+// Inline photo selector functions
+window.toggleInlinePhotoSelector = UtilValidateUI.toggleInlinePhotoSelector;
+window.closeInlinePhotoSelector = UtilValidateUI.closeInlinePhotoSelector;
+window.loadInlinePhotos = UtilValidateUI.loadInlinePhotos;
+window.applyInlinePhoto = UtilValidateUI.applyInlinePhoto;
+window.applyPhotoToRecordInline = UtilValidateUI.applyPhotoToRecordInline;
+window.clearPhotoFromRecord = UtilValidateUI.clearPhotoFromRecord;
+
+// Validation results renderer (for app.js to call)
+window.renderValidateResults = UtilValidateUI.renderValidateResults;
+
+console.log('[UTIL-VALIDATE-UI] v1.04 - All functions exposed globally');
+
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: renderValidateResults() - Moved from HTML (main validation results renderer)
-   - ADDED: renderPhotoStatusInline() - Inline photo status renderer (no modal)
-   - ADDED: toggleInlinePhotoSelector() - Toggle inline photo selector
-   - ADDED: loadInlinePhotos() - Load photos for inline selector
-   - ADDED: applyInlinePhoto() - Apply selected photo inline
-   - ADDED: applyPhotoToRecordInline() - Save photo to Firestore (inline version)
-   - ADDED: clearPhotoFromRecord() - Remove photo from record
-   - ADDED: openPhotoSelector() - Open modal photo selector (legacy, kept for compatibility)
-   - ADDED: closePhotoSelector() - Close modal photo selector
-   - ADDED: loadPhotoSelector() - Load photos for modal selector
-   - ADDED: selectPhotoFromList() - Select photo from modal list
-   - ADDED: applyPhotoToRecord() - Apply photo to record (modal version)
-   - CHANGED: escapeHtml() now uses window.escapeHtml from util-core.js (with fallback)
-   - CHANGED: formatDate() now uses window.formatDate from util-core.js (with fallback)
-   - PRESERVED: All existing rendering functions from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: Exposed photo selector functions globally (openPhotoSelector, closePhotoSelector, etc.)
+   - FIXED: Exposed inline photo functions (toggleInlinePhotoSelector, loadInlinePhotos, etc.)
+   - FIXED: Exposed renderValidateResults globally for HTML onclick bindings
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: UtilValidate, util-core.js
 STATUS: Ready for integration
 */
