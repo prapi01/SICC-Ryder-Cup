@@ -6,6 +6,7 @@ KEY CHANGES from v1.24:
    - This button allows users to apply a staged photo without needing data mismatches
    - Works even when the record is already valid
    - Button is styled with photo purple color (#8b5cf6)
+   - Added btn-photo-apply CSS class
    - PRESERVED: All existing functionality from v1.24
 DEPENDS ON: js/util-core.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-validate-app.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
@@ -17,23 +18,778 @@ STATUS: Ready for integration
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Record Management Tool v3.0</title>
+    
+    <!-- Load util-core FIRST (provides Firebase init, logging, etc.) -->
+    <script src="js/util-core.js"></script>
+    <script src="js/util-validate-record.js"></script>
+    <script src="js/util-validate-ui.js"></script>
+    <script src="js/util-validate-app.js"></script>
+    <script src="js/util-copy-record.js"></script>
+    <script src="js/util-compare-record.js"></script>
+    <script src="js/util-delete-record.js"></script>
+    <script src="js/util-photo.js"></script>
+
     <style>
-        /* ... existing styles ... */
+        /* ============================================================
+           RESET & BASE
+           ============================================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .app-container {
+            max-width: 500px;
+            width: 100%;
+            padding: 16px 16px 40px;
+            margin: 0 auto;
+        }
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .app-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #4caf50;
+            letter-spacing: 0.5px;
+        }
+        .app-title .version {
+            font-size: 0.65rem;
+            font-weight: 400;
+            color: #4caf50;
+            opacity: 0.6;
+            margin-left: 6px;
+        }
+        .env-indicator {
+            font-size: 0.6rem;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .env-indicator.prod {
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid #4caf50;
+        }
+        .env-indicator.dev {
+            color: #ffaa44;
+            background: rgba(255, 170, 68, 0.15);
+            border: 1px solid #ffaa44;
+        }
+        
+        /* ============================================================
+           TABS
+           ============================================================ */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: #111;
+            border-radius: 16px;
+            padding: 4px;
+            border: 1px solid #2a2a2a;
+            overflow-x: auto;
+            flex-wrap: nowrap;
+        }
+        .tab {
+            flex: 1;
+            min-width: 60px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 12px;
+            background: transparent;
+            color: #666;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            white-space: nowrap;
+            font-family: inherit;
+        }
+        .tab:hover {
+            color: #aaa;
+            background: rgba(255,255,255,0.05);
+        }
+        .tab.active {
+            background: #1a1a1a;
+            color: #4caf50;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.05);
+        }
+        .tab.active-danger {
+            background: #1a1a1a;
+            color: #c0392b;
+            box-shadow: 0 0 20px rgba(192, 57, 43, 0.05);
+        }
+        .tab .badge {
+            font-size: 0.5rem;
+            opacity: 0.5;
+            margin-left: 2px;
+        }
+        
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.25s ease;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* ============================================================
+           CARDS
+           ============================================================ */
+        .card {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .card-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #888;
+            margin-bottom: 12px;
+        }
+        .card-title.danger {
+            color: #c0392b;
+        }
+        .card-title.photo {
+            color: #8b5cf6;
+        }
+        
+        /* ============================================================
+           ENV ROW
+           ============================================================ */
+        .env-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .env-side-label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #666;
+            letter-spacing: 0.5px;
+        }
+        .env-side-label.delete {
+            color: #c0392b;
+        }
+        .env-selector {
+            display: flex;
+            gap: 4px;
+            background: #0a0a0a;
+            border-radius: 20px;
+            padding: 3px;
+            border: 1px solid #2a2a2a;
+        }
+        .env-btn-small {
+            padding: 4px 14px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            background: transparent;
+            color: #555;
+        }
+        .env-btn-small.active-prod {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+        }
+        .env-btn-small.active-dev {
+            background: rgba(255, 170, 68, 0.2);
+            color: #ffaa44;
+        }
+        .env-btn-small:hover:not(.active-prod):not(.active-dev) {
+            color: #aaa;
+        }
+        .env-indicator-small {
+            font-size: 0.55rem;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 12px;
+            letter-spacing: 0.5px;
+        }
+        .env-indicator-small.prod {
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.12);
+        }
+        .env-indicator-small.dev {
+            color: #ffaa44;
+            background: rgba(255, 170, 68, 0.12);
+        }
+        
+        /* ============================================================
+           SELECTS & BUTTONS
+           ============================================================ */
+        .select-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .select-wrapper .collection-select {
+            flex: 2;
+        }
+        .select-wrapper .record-select {
+            flex: 3;
+        }
+        select {
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            color: #e0e0e0;
+            font-size: 0.8rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            min-width: 0;
+            width: 100%;
+        }
+        select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        select option {
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        select:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #4caf50;
+            color: #fff;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #43a047;
+            transform: scale(0.98);
+        }
+        .btn-secondary {
+            background: #2a2a2a;
+            color: #aaa;
+            border: 1px solid #3a3a3a;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background: #333;
+            color: #fff;
+        }
+        .btn-success {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #1a4a1a;
+        }
+        .btn-danger {
+            background: #2a0a0a;
+            color: #c0392b;
+            border: 1px solid #c0392b;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: #3a0a0a;
+        }
+        .btn-photo {
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.1);
+        }
+        .btn-photo:hover:not(:disabled) {
+            background: rgba(139, 92, 246, 0.2);
+        }
         .btn-photo-apply {
             border-color: #8b5cf6;
             color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.08);
         }
-        .btn-photo-apply:hover {
-            background: rgba(139, 92, 246, 0.1);
+        .btn-photo-apply:hover:not(:disabled) {
+            background: rgba(139, 92, 246, 0.2);
         }
-        /* ... rest of existing styles ... */
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.6rem;
+            border-radius: 8px;
+            border: 1px solid #3a3a3a;
+            background: #1a1a1a;
+            color: #aaa;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .btn-small:hover {
+            background: #2a2a2a;
+            color: #fff;
+        }
+        .btn-small.danger {
+            border-color: #c0392b;
+            color: #c0392b;
+        }
+        .btn-small.danger:hover {
+            background: rgba(192, 57, 43, 0.15);
+        }
+        
+        .btn-info-guide {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.55rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4a8af4;
+            background: rgba(74, 138, 244, 0.1);
+            color: #4a8af4;
+            font-family: inherit;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .btn-info-guide:hover {
+            background: rgba(74, 138, 244, 0.2);
+        }
+        
+        .tab-header-with-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .tab-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #e0e0e0;
+        }
+        .tab-title.danger {
+            color: #c0392b;
+        }
+        .version-badge {
+            font-size: 0.5rem;
+            font-weight: 400;
+            color: #4caf50;
+            opacity: 0.5;
+            margin-left: 4px;
+            font-family: monospace;
+        }
+        .version-badge.danger {
+            color: #c0392b;
+        }
+        .version-badge.photo {
+            color: #8b5cf6;
+        }
+        
+        /* ============================================================
+           RESULTS PANEL
+           ============================================================ */
+        .results-panel {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        .results-panel.active {
+            display: block;
+        }
+        
+        .game-info-grid {
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .status-badge.completed {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+        }
+        .status-badge.in-progress {
+            background: rgba(255, 170, 68, 0.2);
+            color: #ffaa44;
+        }
+        .status-badge.scheduled {
+            background: rgba(74, 138, 244, 0.2);
+            color: #4a8af4;
+        }
+        .status-badge.unknown {
+            background: rgba(136, 136, 136, 0.2);
+            color: #888;
+        }
+        
+        .validate-status {
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            margin-bottom: 8px;
+        }
+        .validate-status.success {
+            background: rgba(76, 175, 80, 0.12);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .validate-status.error {
+            background: rgba(192, 57, 43, 0.12);
+            border: 1px solid #c0392b;
+            color: #c0392b;
+        }
+        .validate-status.info {
+            background: rgba(74, 138, 244, 0.12);
+            border: 1px solid #4a8af4;
+            color: #4a8af4;
+        }
+        
+        .validate-progress {
+            display: none;
+            padding: 8px 0;
+        }
+        .validate-progress.active {
+            display: block;
+        }
+        .validate-progress .step {
+            font-size: 0.7rem;
+            padding: 4px 0;
+            border-bottom: 1px solid #1a1a1a;
+            color: #888;
+        }
+        .validate-progress .step.done {
+            color: #4caf50;
+        }
+        .validate-progress .step.error {
+            color: #c0392b;
+        }
+        .validate-progress .step.warning {
+            color: #ffaa44;
+        }
+        .validate-progress .step.info {
+            color: #4a8af4;
+        }
+        
+        .delete-progress {
+            display: none;
+            padding: 8px 0;
+        }
+        .delete-progress.active {
+            display: block;
+        }
+        .delete-progress .step {
+            font-size: 0.7rem;
+            padding: 4px 0;
+            border-bottom: 1px solid #1a1a1a;
+            color: #888;
+        }
+        .delete-progress .step.done {
+            color: #4caf50;
+        }
+        .delete-progress .step.error {
+            color: #c0392b;
+        }
+        .delete-progress .step.info {
+            color: #4a8af4;
+        }
+        
+        .delete-count {
+            font-size: 0.65rem;
+            font-weight: 400;
+            color: #888;
+            margin-left: 8px;
+        }
+        .delete-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .delete-records-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            background: #0a0a0a;
+        }
+        .delete-records-container table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7rem;
+        }
+        .delete-records-container th {
+            background: #0a0a0a;
+            color: #888;
+            font-weight: 600;
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 2px solid #2a2a2a;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .delete-records-container td {
+            padding: 6px 10px;
+            border-bottom: 1px solid #1a1a1a;
+            vertical-align: middle;
+        }
+        .delete-records-container tr:hover {
+            background: rgba(255,255,255,0.03);
+        }
+        .delete-records-container input[type="checkbox"] {
+            accent-color: #4caf50;
+            cursor: pointer;
+        }
+        
+        .photo-item-inline {
+            transition: all 0.2s;
+        }
+        .photo-item-inline:hover {
+            border-color: #4caf50 !important;
+            background: #1a1a1a !important;
+        }
+        .photo-item-inline.selected {
+            border-color: #4caf50 !important;
+            background: #1a2a1a !important;
+        }
+        .photo-thumb-inline {
+            background: #0a0a0a;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 80px;
+        }
+        .photo-thumb-inline img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .photo-toolbar {
+            background: #1a1a1a;
+            color: #aaa;
+        }
+        .photo-toolbar:hover {
+            background: #2a2a2a;
+            color: #fff;
+        }
+        
+        /* ============================================================
+           OVERLAY / MODAL
+           ============================================================ */
+        .info-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20000;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+            animation: overlayFadeIn 0.25s ease-out;
+        }
+        @keyframes overlayFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .info-card {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid #4a8af4;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+            animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes infoSlideUp {
+            from { opacity: 0; transform: translateY(30px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .info-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            padding-bottom: 12px;
+        }
+        .info-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4a8af4;
+        }
+        .info-close-btn {
+            padding: 8px 24px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4a8af4;
+            background: rgba(74, 138, 244, 0.1);
+            color: #4a8af4;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .info-close-btn:hover {
+            background: rgba(74, 138, 244, 0.2);
+        }
+        .info-section {
+            margin-bottom: 16px;
+        }
+        .info-section-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #e0e0e0;
+            margin-bottom: 8px;
+        }
+        .info-text {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.6;
+        }
+        .info-text code {
+            background: #0a0a0a;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: #4a8af4;
+            font-family: monospace;
+        }
+        .info-text .highlight {
+            color: #4caf50;
+            font-weight: 600;
+        }
+        .info-steps {
+            padding-left: 20px;
+            margin: 6px 0;
+            color: #ccc;
+            font-size: 0.85rem;
+            line-height: 1.8;
+        }
+        .info-steps strong {
+            color: #e0e0e0;
+        }
+        .info-divider {
+            border: none;
+            border-top: 1px solid #2a2a2a;
+            margin: 16px 0;
+        }
+        .info-warnings {
+            padding-left: 20px;
+            margin: 6px 0;
+            color: #ffaa44;
+            font-size: 0.8rem;
+            line-height: 1.8;
+        }
+        .info-warnings strong {
+            color: #fff;
+        }
+        
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        @media (max-width: 420px) {
+            .app-container { padding: 12px 10px 30px; }
+            .tab { font-size: 0.6rem; padding: 6px 8px; min-width: 50px; }
+            .card { padding: 12px; }
+            .btn { font-size: 0.6rem; padding: 8px 12px; }
+            .env-btn-small { font-size: 0.5rem; padding: 3px 10px; }
+            select { font-size: 0.7rem; padding: 8px 10px; }
+            .info-card { padding: 20px; }
+        }
+        
+        /* ============================================================
+           MISC HELPERS
+           ============================================================ */
+        .text-muted { color: #666; }
+        .text-center { text-align: center; }
+        .mt-8 { margin-top: 8px; }
+        .mb-8 { margin-bottom: 8px; }
+        .flex { display: flex; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-8 { gap: 8px; }
+        .gap-12 { gap: 12px; }
+        .items-center { align-items: center; }
     </style>
 </head>
 <body>
-    <!-- ... existing HTML ... -->
-    <div id="validateTab" class="tab-content">
+<div class="app-container" id="app">
+    
+    <!-- HEADER -->
+    <div class="app-header">
+        <div class="app-title">
+            🛠️ Record Management
+            <span class="version">v3.0</span>
+        </div>
+        <div id="globalEnvIndicator" class="env-indicator prod">PROD</div>
+    </div>
+    
+    <!-- TABS -->
+    <div class="tabs" id="tabContainer">
+        <button class="tab active" data-tab="validate">🔬 VALIDATE <span class="badge">v1.03</span></button>
+        <button class="tab" data-tab="copy">📋 COPY <span class="badge">v1.04</span></button>
+        <button class="tab" data-tab="compare">📊 COMPARE <span class="badge">v1.04</span></button>
+        <button class="tab" data-tab="photo">📸 PHOTO <span class="badge">v1.12</span></button>
+        <button class="tab tab-danger" data-tab="delete">🗑️ DELETE <span class="badge">v1.04</span></button>
+    </div>
+    
+    <!-- ============================================================
+    TAB: VALIDATE
+    ============================================================ -->
+    <div id="validateTab" class="tab-content active">
         <div class="tab-header-with-info">
-            <span class="tab-title">🔬 VALIDATE <span class="version-badge" id="validateVersionBadge">r1.09 u1.05 a1.03</span></span>
+            <span class="tab-title">🔬 VALIDATE <span class="version-badge" id="validateVersionBadge">r1.09 u1.05 a1.05</span></span>
             <button class="btn-info-guide" onclick="showValidateInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -52,19 +808,19 @@ STATUS: Ready for integration
             <div class="select-wrapper">
                 <select id="validateCollection" class="collection-select">
                     <option value="scheduledGames">scheduledGames</option>
-                    <option value="historyGames">historyGames</option>
+                    <option value="historyGames" selected>historyGames</option>
                     <option value="backupFolder">backupFolder</option>
                 </select>
-                <button id="validateRefreshBtn" class="btn btn-secondary">↻</button>
+                <button id="validateRefreshBtn" class="btn btn-secondary" title="Refresh records">↻</button>
             </div>
             <div class="select-wrapper" style="margin-top:8px;">
                 <select id="validateRecordSelect" class="record-select">
                     <option value="">-- Select a record --</option>
                 </select>
-                <button id="validateLoadBtn" class="btn btn-primary">▶ LOAD & VALIDATE</button>
+                <button id="validateLoadBtn" class="btn btn-primary">▶ LOAD &amp; VALIDATE</button>
             </div>
         </div>
-
+        
         <!-- RESULTS -->
         <div id="validateResults" class="results-panel">
             <div class="card">
@@ -74,8 +830,7 @@ STATUS: Ready for integration
             <div class="card">
                 <div class="card-title">📸 CELEBRATION PHOTO</div>
                 <div id="validatePhotoStatus"></div>
-                <!-- v1.25: Apply Staged Photo button -->
-                <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
                     <button id="validateApplyPhotoBtn" class="btn btn-photo-apply" disabled style="opacity:0.5;">
                         📸 APPLY STAGED PHOTO
                     </button>
@@ -128,6 +883,364 @@ STATUS: Ready for integration
             </div>
         </div>
     </div>
-    <!-- ... rest of existing HTML ... -->
+    
+    <!-- ============================================================
+    TAB: COPY
+    ============================================================ -->
+    <div id="copyTab" class="tab-content">
+        <div class="tab-header-with-info">
+            <span class="tab-title">📋 COPY <span class="version-badge" id="copyVersionBadge">v1.04</span></span>
+            <button class="btn-info-guide" onclick="showCopyInfoGuide()">ℹ️ Information</button>
+        </div>
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label">📋 COPY</span>
+                <div class="env-selector">
+                    <button class="env-btn-small active-prod" id="copyProdBtn">PROD</button>
+                    <button class="env-btn-small" id="copyDevBtn">DEV</button>
+                </div>
+                <span id="copyIndicator" class="env-indicator-small prod">PROD</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">📂 SOURCE RECORD</div>
+            <div class="select-wrapper">
+                <select id="copyCollection" class="collection-select">
+                    <option value="scheduledGames">scheduledGames</option>
+                    <option value="historyGames" selected>historyGames</option>
+                    <option value="backupFolder">backupFolder</option>
+                </select>
+                <button id="copyRefreshBtn" class="btn btn-secondary" title="Refresh records">↻</button>
+            </div>
+            <div class="select-wrapper" style="margin-top:8px;">
+                <select id="copyRecordSelect" class="record-select">
+                    <option value="">-- Select a record --</option>
+                </select>
+                <button id="copyLoadBtn" class="btn btn-primary">▶ LOAD</button>
+            </div>
+        </div>
+        <div id="copyDetails" class="results-panel">
+            <div class="card">
+                <div class="card-title">📋 RECORD DETAILS</div>
+                <div id="copyRecordInfo"></div>
+            </div>
+            <div class="card" style="border-color:#4caf50;">
+                <div class="card-title">📋 COPY TO</div>
+                <div class="select-wrapper" style="margin-bottom:8px;">
+                    <select id="copyTargetCollection" class="collection-select">
+                        <option value="scheduledGames">scheduledGames</option>
+                        <option value="historyGames" selected>historyGames</option>
+                        <option value="backupFolder">backupFolder</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <button id="copyExecuteBtn" class="btn btn-success" disabled>📋 COPY RECORD</button>
+                </div>
+                <div id="copyProgress" class="validate-progress"></div>
+                <div id="copyStatus" class="validate-status" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ============================================================
+    TAB: COMPARE
+    ============================================================ -->
+    <div id="compareTab" class="tab-content">
+        <div class="tab-header-with-info">
+            <span class="tab-title">📊 COMPARE <span class="version-badge" id="compareVersionBadge">v1.04</span></span>
+            <button class="btn-info-guide" onclick="showCompareInfoGuide()">ℹ️ Information</button>
+        </div>
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label">📊 COMPARE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small active-prod" id="compareProdBtn">PROD</button>
+                    <button class="env-btn-small" id="compareDevBtn">DEV</button>
+                </div>
+                <span id="compareIndicator" class="env-indicator-small prod">PROD</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">📂 COLLECTION</div>
+            <div class="select-wrapper">
+                <select id="compareCollection" class="collection-select">
+                    <option value="scheduledGames">scheduledGames</option>
+                    <option value="historyGames" selected>historyGames</option>
+                    <option value="backupFolder">backupFolder</option>
+                </select>
+                <button id="compareRefreshBtn" class="btn btn-secondary" title="Refresh records">↻</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">📋 LEFT RECORD</div>
+            <div class="select-wrapper">
+                <select id="compareLeftSelect" class="record-select">
+                    <option value="">-- Select left record --</option>
+                </select>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">📋 RIGHT RECORD</div>
+            <div class="select-wrapper">
+                <select id="compareRightSelect" class="record-select">
+                    <option value="">-- Select right record --</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+            <button id="compareBtn" class="btn btn-primary">📊 COMPARE</button>
+            <button id="compareClearBtn" class="btn btn-secondary">✖ Clear</button>
+        </div>
+        <div id="compareResults" class="results-panel">
+            <div class="card">
+                <div class="card-title">📋 COMPARISON SUMMARY</div>
+                <div id="compareSummary"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔍 DIFFERENCES</div>
+                <div id="compareDiff"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ============================================================
+    TAB: PHOTO
+    ============================================================ -->
+    <div id="photoTab" class="tab-content">
+        <div class="tab-header-with-info">
+            <span class="tab-title">📸 PHOTO <span class="version-badge photo" id="photoVersionBadge">v1.12</span></span>
+            <button class="btn-info-guide" onclick="showPhotoInfoGuide()">ℹ️ Information</button>
+        </div>
+        <div class="card">
+            <div class="card-title">📸 CELEBRATION PHOTO</div>
+            <div id="photoStatusContainer"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">📂 PHOTO BROWSER</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <input type="text" id="photoFolder" value="celebration/" style="flex:2; min-width:150px; padding:8px 12px; border-radius:12px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff; font-size:0.8rem; font-family:inherit;">
+                <button id="photoLoadBtn" class="btn btn-primary">🔄 Load Photos</button>
+            </div>
+            <div id="photoListContainer" style="max-height:400px; overflow-y:auto; border:1px solid #2a2a2a; border-radius:10px; background:#0a0a0a; padding:8px;">
+                <div style="text-align:center; padding:20px; color:#555;">Click "Load Photos" to browse</div>
+            </div>
+            <div id="photoStatus" style="font-size:0.7rem; color:#888; padding:8px 0;">Ready</div>
+        </div>
+    </div>
+    
+    <!-- ============================================================
+    TAB: DELETE
+    ============================================================ -->
+    <div id="deleteTab" class="tab-content">
+        <div class="tab-header-with-info">
+            <span class="tab-title danger">🗑️ DELETE <span class="version-badge danger" id="deleteVersionBadge">v1.07</span></span>
+            <button class="btn-info-guide" onclick="showDeleteInfoGuide()">ℹ️ Information</button>
+        </div>
+        <div class="card">
+            <div class="card-title danger">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label delete">🗑️ DELETE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small active-prod" id="deleteProdBtn">PROD</button>
+                    <button class="env-btn-small" id="deleteDevBtn">DEV</button>
+                </div>
+                <span id="deleteIndicator" class="env-indicator-small prod">PROD</span>
+            </div>
+            <div style="font-size:0.7rem; color:#c0392b; margin-top:4px;">
+                ⚠️ Deleting records is permanent and cannot be undone.
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title danger">📂 SELECT COLLECTION</div>
+            <div class="select-wrapper">
+                <select id="deleteCollection" class="collection-select" style="border-color:#c0392b;">
+                    <option value="scheduledGames">scheduledGames</option>
+                    <option value="historyGames" selected>historyGames</option>
+                    <option value="backupFolder">backupFolder</option>
+                </select>
+            </div>
+            <button id="deleteRefreshBtn" class="btn btn-secondary" style="margin-top:8px;">↻ Refresh Records</button>
+        </div>
+        <div class="card">
+            <div class="card-title danger">📋 DOCUMENTS <span class="delete-count" id="deleteCount">Loading...</span></div>
+            <div class="delete-toolbar">
+                <button class="btn-small" id="deleteSelectAllBtn" onclick="selectAllDeleteRecords()">☑ Select All</button>
+                <button class="btn-small" id="deleteDeselectAllBtn" onclick="deselectAllDeleteRecords()">☐ Deselect All</button>
+                <span style="flex:1;"></span>
+                <span id="deleteSelectedCount" style="font-size:0.7rem; color:#888;">0 selected</span>
+            </div>
+            <div class="delete-records-container" id="deleteRecordsContainer">
+                <div style="text-align:center; padding:20px; color:#555;">Loading records...</div>
+            </div>
+        </div>
+        <div class="card" style="border-color:#c0392b;">
+            <div class="card-title danger">🗑️ DELETE RECORDS</div>
+            <div style="font-size:0.8rem; color:#c0392b; margin-bottom:12px;">
+                ⚠️ This action is <strong>PERMANENT</strong> and cannot be undone.
+                <br>Selected records will be removed from the database.
+            </div>
+            <div id="deleteProgress" class="delete-progress"></div>
+            <button id="deleteExecuteBtn" class="btn btn-danger" disabled style="opacity:0.5;">🗑️ DELETE SELECTED (0 records)</button>
+        </div>
+        
+        <!-- DELETE TAB: PHOTOS SECTION -->
+        <div class="card" style="border-color:#ffaa44; margin-top:16px;">
+            <div class="card-title photo">🖼️ PHOTOS IN STORAGE</div>
+            <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
+                Manage photos stored in Firebase Storage. Select photos to delete.
+                <br><strong style="color:#ffaa44;">Note:</strong> This deletes the photo file. To also remove Firestore references, use the PHOTO tab's "Show Info" to see where the photo is referenced.
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebrations/)" value="celebration/" style="flex:2; min-width:150px; padding:8px 12px; border-radius:12px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff; font-size:0.8rem; font-family:inherit;">
+                <button id="photoListRefreshBtn" class="btn btn-secondary" style="flex:0 0 auto; width:auto; padding:12px 24px;">🔄 List Photos</button>
+            </div>
+            <div class="delete-toolbar">
+                <button class="btn-small photo-toolbar" id="photoSelectAllBtn">☑ Select All</button>
+                <button class="btn-small photo-toolbar" id="photoDeselectAllBtn">☐ Deselect All</button>
+                <span style="flex:1;"></span>
+                <span id="photoSelectedCount" style="font-size:0.7rem; color:#888;">0 selected</span>
+            </div>
+            <div class="delete-records-container" id="photoListContainer" style="max-height:300px;">
+                <div style="text-align:center; padding:20px; color:#555;">Click "List Photos" to load</div>
+            </div>
+            <button id="photoDeleteSelectedBtn" class="btn btn-danger" disabled style="margin-top:8px;">
+                🗑️ DELETE SELECTED PHOTOS (0)
+            </button>
+            <div id="photoDeleteProgress" class="delete-progress"></div>
+        </div>
+    </div>
+    
+</div><!-- end app-container -->
+
+<script>
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    var tabs = document.querySelectorAll('.tab');
+    var contents = {
+        validate: document.getElementById('validateTab'),
+        copy: document.getElementById('copyTab'),
+        compare: document.getElementById('compareTab'),
+        photo: document.getElementById('photoTab'),
+        delete: document.getElementById('deleteTab')
+    };
+    
+    tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            var target = this.dataset.tab;
+            // Update tab buttons
+            tabs.forEach(function(t) { t.classList.remove('active', 'active-danger'); });
+            this.classList.add('active');
+            if (target === 'delete') {
+                this.classList.add('active-danger');
+            }
+            // Update content
+            Object.keys(contents).forEach(function(key) {
+                contents[key].classList.toggle('active', key === target);
+            });
+            // Trigger load for the tab if needed
+            if (target === 'copy' && typeof loadCopyRecords === 'function') {
+                setTimeout(loadCopyRecords, 100);
+            }
+            if (target === 'compare' && typeof loadCompareRecords === 'function') {
+                setTimeout(loadCompareRecords, 100);
+            }
+            if (target === 'delete' && typeof loadDeleteRecords === 'function') {
+                setTimeout(loadDeleteRecords, 100);
+            }
+            if (target === 'photo' && typeof loadPhotos === 'function') {
+                setTimeout(loadPhotos, 100);
+            }
+            if (target === 'validate' && typeof loadValidateRecords === 'function') {
+                setTimeout(loadValidateRecords, 100);
+            }
+        });
+    });
+    
+    // Enable the Apply Photo button when a photo is staged
+    // This is a simple polling check - the button will be enabled/disabled by the validation logic
+    setInterval(function() {
+        var applyBtn = document.getElementById('validateApplyPhotoBtn');
+        if (!applyBtn) return;
+        if (window._stagedPhoto && window._stagedPhoto.fullPath && window._stagedPhoto.downloadUrl) {
+            applyBtn.disabled = false;
+            applyBtn.style.opacity = '1';
+        } else {
+            applyBtn.disabled = true;
+            applyBtn.style.opacity = '0.5';
+        }
+    }, 500);
+    
+    console.log('[RMT] Tab switching initialized');
+});
+
+// ============================================================
+// EXPOSE GLOBALLY FOR ONCLICK BINDINGS
+// ============================================================
+// These functions are defined in the respective util-*.js files
+// They are exposed globally there.
+
+// ============================================================
+// VERSION BADGE UPDATE - Auto-update from loaded modules
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    // Validate version badge
+    var validateBadge = document.getElementById('validateVersionBadge');
+    if (validateBadge) {
+        var rVer = window.UTIL_VALIDATE_VERSION || '1.09';
+        var uiVer = window.UTIL_VALIDATE_UI_VERSION || '1.05';
+        var appVer = window.UTIL_VALIDATE_APP_VERSION || '1.05';
+        validateBadge.textContent = 'r' + rVer + ' u' + uiVer + ' a' + appVer;
+    }
+    
+    // Copy version badge
+    var copyBadge = document.getElementById('copyVersionBadge');
+    if (copyBadge) {
+        var cVer = window.UTIL_COPY_VERSION || '1.04';
+        copyBadge.textContent = 'v' + cVer;
+    }
+    
+    // Compare version badge
+    var compareBadge = document.getElementById('compareVersionBadge');
+    if (compareBadge) {
+        var cmpVer = window.UTIL_COMPARE_VERSION || '1.04';
+        compareBadge.textContent = 'v' + cmpVer;
+    }
+    
+    // Photo version badge
+    var photoBadge = document.getElementById('photoVersionBadge');
+    if (photoBadge) {
+        var pVer = window.UTIL_PHOTO_VERSION || '1.12';
+        photoBadge.textContent = 'v' + pVer;
+    }
+    
+    // Delete version badge
+    var deleteBadge = document.getElementById('deleteVersionBadge');
+    if (deleteBadge) {
+        var dVer = window.UTIL_DELETE_VERSION || '1.07';
+        deleteBadge.textContent = 'v' + dVer;
+    }
+});
+
+console.log('[RMT] Record Management Tool v1.25 loaded');
+
+/*
+FILE: util-record-management.html
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: "APPLY STAGED PHOTO" button in the VALIDATE tab
+   - This button allows users to apply a staged photo without needing data mismatches
+   - Works even when the record is already valid
+   - Button is styled with photo purple color (#8b5cf6)
+   - Added btn-photo-apply CSS class
+   - Auto-enables the button when a photo is staged (polling check)
+   - PRESERVED: All existing functionality from v1.24
+DEPENDS ON: js/util-core.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-validate-app.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+STATUS: Ready for integration
+*/
+</script>
 </body>
 </html>
