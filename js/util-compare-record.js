@@ -1,37 +1,64 @@
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: showCompareInfoGuide() function - full-page information overlay
-   - ADDED: Detailed COMPARE tab documentation with step-by-step instructions
-   - ADDED: Warnings and important notes for comparing records
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
+   - CHANGED: Now uses window.log and window.escapeHtml from util-core.js
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
+   - ADDED: Explicit state variables leftData, rightData, leftId, rightId
+   - PRESERVED: All existing functionality from v1.03
+DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
-/*
-============================================================
-SHARED STATE (defined in main HTML)
-============================================================
-- prodDb: PROD Firestore instance
-- devDb: DEV Firestore instance
-- compareLeftDb: Firestore instance for Left (set by setCompareLeftEnvironment)
-- compareRightDb: Firestore instance for Right (set by setCompareRightEnvironment)
-- compareLeftEnv: 'PROD' or 'DEV' for Left
-- compareRightEnv: 'PROD' or 'DEV' for Right
-- leftData: Left record data (loaded from Firestore)
-- rightData: Right record data (loaded from Firestore)
-- leftId: Left record ID
-- rightId: Right record ID
-============================================================
-*/
+// Version exposure
+window.UTIL_COMPARE_VERSION = "1.04";
+console.log("[UTIL-COMPARE] Initializing v1.04");
 
-// Compare-specific environment variables
+// ============================================================
+// FALLBACK HELPERS (if util-core.js not loaded)
+// ============================================================
+
+function compareLog(message, type) {
+    if (typeof window.log === 'function') {
+        window.log(message, type);
+    } else {
+        console.log('[COMPARE-UTIL] ' + message);
+    }
+}
+
+function compareEscapeHtml(str) {
+    if (typeof window.escapeHtml === 'function') {
+        return window.escapeHtml(str);
+    }
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// ============================================================
+// SHARED STATE
+// ============================================================
+// prodDb, devDb are from util-core.js
+// compareLeftDb, compareRightDb: Firestore instances
+// compareLeftEnv, compareRightEnv: 'PROD' or 'DEV'
+// leftData, rightData: Loaded record data
+// leftId, rightId: Record IDs
+// ============================================================
+
 var compareLeftDb = null;
 var compareRightDb = null;
 var compareLeftEnv = null;
 var compareRightEnv = null;
+var leftData = null;
+var rightData = null;
+var leftId = null;
+var rightId = null;
 
 // ============================================================
 // COMPARE TAB: ENVIRONMENT FUNCTIONS
@@ -39,29 +66,23 @@ var compareRightEnv = null;
 
 function setCompareLeftEnvironment(env) {
     if (env === 'PROD') {
-        if (!prodDb) {
-            initFirebase();
-            if (!prodDb) {
-                log("Cannot connect to PRODUCTION for Left", "error");
-                return;
-            }
+        if (!window.prodDb) {
+            compareLog("Cannot connect to PRODUCTION for Left", "error");
+            return;
         }
-        compareLeftDb = prodDb;
+        compareLeftDb = window.prodDb;
         compareLeftEnv = 'PROD';
         updateCompareLeftUI('PROD');
-        log('Left environment set to: PRODUCTION', 'info');
+        compareLog('Left environment set to: PRODUCTION', 'info');
     } else if (env === 'DEV') {
-        if (!devDb) {
-            initFirebase();
-            if (!devDb) {
-                log("Cannot connect to DEVELOPMENT for Left", "error");
-                return;
-            }
+        if (!window.devDb) {
+            compareLog("Cannot connect to DEVELOPMENT for Left", "error");
+            return;
         }
-        compareLeftDb = devDb;
+        compareLeftDb = window.devDb;
         compareLeftEnv = 'DEV';
         updateCompareLeftUI('DEV');
-        log('Left environment set to: DEVELOPMENT', 'info');
+        compareLog('Left environment set to: DEVELOPMENT', 'info');
     } else {
         compareLeftDb = null;
         compareLeftEnv = null;
@@ -76,29 +97,23 @@ function setCompareLeftEnvironment(env) {
 
 function setCompareRightEnvironment(env) {
     if (env === 'PROD') {
-        if (!prodDb) {
-            initFirebase();
-            if (!prodDb) {
-                log("Cannot connect to PRODUCTION for Right", "error");
-                return;
-            }
+        if (!window.prodDb) {
+            compareLog("Cannot connect to PRODUCTION for Right", "error");
+            return;
         }
-        compareRightDb = prodDb;
+        compareRightDb = window.prodDb;
         compareRightEnv = 'PROD';
         updateCompareRightUI('PROD');
-        log('Right environment set to: PRODUCTION', 'info');
+        compareLog('Right environment set to: PRODUCTION', 'info');
     } else if (env === 'DEV') {
-        if (!devDb) {
-            initFirebase();
-            if (!devDb) {
-                log("Cannot connect to DEVELOPMENT for Right", "error");
-                return;
-            }
+        if (!window.devDb) {
+            compareLog("Cannot connect to DEVELOPMENT for Right", "error");
+            return;
         }
-        compareRightDb = devDb;
+        compareRightDb = window.devDb;
         compareRightEnv = 'DEV';
         updateCompareRightUI('DEV');
-        log('Right environment set to: DEVELOPMENT', 'info');
+        compareLog('Right environment set to: DEVELOPMENT', 'info');
     } else {
         compareRightDb = null;
         compareRightEnv = null;
@@ -116,20 +131,26 @@ function updateCompareLeftUI(env) {
     var devBtn = document.getElementById('compareLeftDevBtn');
     var indicator = document.getElementById('compareLeftIndicator');
     
-    prodBtn.classList.remove('active-prod');
-    devBtn.classList.remove('active-dev');
+    if (prodBtn) prodBtn.classList.remove('active-prod');
+    if (devBtn) devBtn.classList.remove('active-dev');
     
     if (env === 'PROD') {
-        prodBtn.classList.add('active-prod');
-        indicator.className = 'env-indicator-small prod';
-        indicator.textContent = '🔴 PRODUCTION';
+        if (prodBtn) prodBtn.classList.add('active-prod');
+        if (indicator) {
+            indicator.className = 'env-indicator-small prod';
+            indicator.textContent = '🔴 PRODUCTION';
+        }
     } else if (env === 'DEV') {
-        devBtn.classList.add('active-dev');
-        indicator.className = 'env-indicator-small dev';
-        indicator.textContent = '🟡 DEVELOPMENT';
+        if (devBtn) devBtn.classList.add('active-dev');
+        if (indicator) {
+            indicator.className = 'env-indicator-small dev';
+            indicator.textContent = '🟡 DEVELOPMENT';
+        }
     } else {
-        indicator.className = 'env-indicator-small none';
-        indicator.textContent = 'Not connected';
+        if (indicator) {
+            indicator.className = 'env-indicator-small none';
+            indicator.textContent = 'Not connected';
+        }
     }
 }
 
@@ -138,20 +159,26 @@ function updateCompareRightUI(env) {
     var devBtn = document.getElementById('compareRightDevBtn');
     var indicator = document.getElementById('compareRightIndicator');
     
-    prodBtn.classList.remove('active-prod');
-    devBtn.classList.remove('active-dev');
+    if (prodBtn) prodBtn.classList.remove('active-prod');
+    if (devBtn) devBtn.classList.remove('active-dev');
     
     if (env === 'PROD') {
-        prodBtn.classList.add('active-prod');
-        indicator.className = 'env-indicator-small prod';
-        indicator.textContent = '🔴 PRODUCTION';
+        if (prodBtn) prodBtn.classList.add('active-prod');
+        if (indicator) {
+            indicator.className = 'env-indicator-small prod';
+            indicator.textContent = '🔴 PRODUCTION';
+        }
     } else if (env === 'DEV') {
-        devBtn.classList.add('active-dev');
-        indicator.className = 'env-indicator-small dev';
-        indicator.textContent = '🟡 DEVELOPMENT';
+        if (devBtn) devBtn.classList.add('active-dev');
+        if (indicator) {
+            indicator.className = 'env-indicator-small dev';
+            indicator.textContent = '🟡 DEVELOPMENT';
+        }
     } else {
-        indicator.className = 'env-indicator-small none';
-        indicator.textContent = 'Not connected';
+        if (indicator) {
+            indicator.className = 'env-indicator-small none';
+            indicator.textContent = 'Not connected';
+        }
     }
 }
 
@@ -164,20 +191,20 @@ function loadCompareRecords() {
     if (compareLeftDb) {
         loadCompareRecordsLeft();
     } else {
-        log("Select Left environment first", "error");
+        compareLog("Select Left environment first", "error");
     }
     
     // Load RIGHT records
     if (compareRightDb) {
         loadCompareRecordsRight();
     } else {
-        log("Select Right environment first", "error");
+        compareLog("Select Right environment first", "error");
     }
 }
 
 function loadCompareRecordsLeft() {
     if (!compareLeftDb) {
-        log("Select Left environment first", "error");
+        compareLog("Select Left environment first", "error");
         return;
     }
     
@@ -189,7 +216,7 @@ function loadCompareRecordsLeft() {
     select.innerHTML = '<option value="">Loading...</option>';
     select.disabled = true;
     
-    log('Loading Left records from: ' + collection + ' (' + envLabel + ')', 'info');
+    compareLog('Loading Left records from: ' + collection + ' (' + envLabel + ')', 'info');
     
     compareLeftDb.collection(collection)
         .orderBy('date', 'desc')
@@ -227,21 +254,22 @@ function loadCompareRecordsLeft() {
             } else {
                 leftData = null;
                 leftId = null;
-                document.getElementById('compareLeftInfo').style.display = 'none';
+                var infoDiv = document.getElementById('compareLeftInfo');
+                if (infoDiv) infoDiv.style.display = 'none';
             }
             
-            log('Loaded ' + snapshot.size + ' Left records from ' + collection + ' (' + envLabel + ')', 'success');
+            compareLog('Loaded ' + snapshot.size + ' Left records from ' + collection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
             select.innerHTML = '<option value="">-- Error loading --</option>';
             select.disabled = false;
-            log('Error loading Left records: ' + err.message, 'error');
+            compareLog('Error loading Left records: ' + err.message, 'error');
         });
 }
 
 function loadCompareRecordsRight() {
     if (!compareRightDb) {
-        log("Select Right environment first", "error");
+        compareLog("Select Right environment first", "error");
         return;
     }
     
@@ -253,7 +281,7 @@ function loadCompareRecordsRight() {
     select.innerHTML = '<option value="">Loading...</option>';
     select.disabled = true;
     
-    log('Loading Right records from: ' + collection + ' (' + envLabel + ')', 'info');
+    compareLog('Loading Right records from: ' + collection + ' (' + envLabel + ')', 'info');
     
     compareRightDb.collection(collection)
         .orderBy('date', 'desc')
@@ -291,15 +319,16 @@ function loadCompareRecordsRight() {
             } else {
                 rightData = null;
                 rightId = null;
-                document.getElementById('compareRightInfo').style.display = 'none';
+                var infoDiv = document.getElementById('compareRightInfo');
+                if (infoDiv) infoDiv.style.display = 'none';
             }
             
-            log('Loaded ' + snapshot.size + ' Right records from ' + collection + ' (' + envLabel + ')', 'success');
+            compareLog('Loaded ' + snapshot.size + ' Right records from ' + collection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
             select.innerHTML = '<option value="">-- Error loading --</option>';
             select.disabled = false;
-            log('Error loading Right records: ' + err.message, 'error');
+            compareLog('Error loading Right records: ' + err.message, 'error');
         });
 }
 
@@ -312,7 +341,7 @@ function loadCompareRecordData(side) {
     var env = side === 'left' ? compareLeftEnv : compareRightEnv;
     
     if (!db) {
-        log("Select " + (side === 'left' ? 'Left' : 'Right') + " environment first", "error");
+        compareLog("Select " + (side === 'left' ? 'Left' : 'Right') + " environment first", "error");
         return;
     }
     
@@ -325,14 +354,16 @@ function loadCompareRecordData(side) {
     var envLabel = env || 'Unknown';
     
     if (!recordId) {
-        document.getElementById(infoId).style.display = 'none';
+        var infoDiv = document.getElementById(infoId);
+        if (infoDiv) infoDiv.style.display = 'none';
         if (side === 'left') { leftData = null; leftId = null; }
         else { rightData = null; rightId = null; }
-        document.getElementById('compareResults').style.display = 'none';
+        var resultsDiv = document.getElementById('compareResults');
+        if (resultsDiv) resultsDiv.style.display = 'none';
         return;
     }
     
-    log('Loading ' + side + ' record: ' + recordId + ' from ' + collection + ' (' + envLabel + ')', 'info');
+    compareLog('Loading ' + side + ' record: ' + recordId + ' from ' + collection + ' (' + envLabel + ')', 'info');
     
     db.collection(collection).doc(recordId).get()
         .then(function(doc) {
@@ -347,6 +378,8 @@ function loadCompareRecordData(side) {
                 }
                 
                 var infoDiv = document.getElementById(infoId);
+                if (!infoDiv) return;
+                
                 var courseName = data.course ? data.course.name : 'Unknown';
                 var playerCount = data.players ? data.players.length : 0;
                 var envIcon = env === 'PROD' ? '🔴' : (env === 'DEV' ? '🟡' : '⚪');
@@ -359,15 +392,15 @@ function loadCompareRecordData(side) {
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">ID:</span>
-                            <span class="game-info-value gold" style="word-break:break-all;">${escapeHtml(recordId)}</span>
+                            <span class="game-info-value gold" style="word-break:break-all;">${compareEscapeHtml(recordId)}</span>
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Date:</span>
-                            <span class="game-info-value">${escapeHtml(data.date || 'Unknown')}</span>
+                            <span class="game-info-value">${compareEscapeHtml(data.date || 'Unknown')}</span>
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Course:</span>
-                            <span class="game-info-value">${escapeHtml(courseName)}</span>
+                            <span class="game-info-value">${compareEscapeHtml(courseName)}</span>
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Players:</span>
@@ -375,27 +408,31 @@ function loadCompareRecordData(side) {
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Status:</span>
-                            <span class="game-info-value">${escapeHtml(data.status || 'unknown')}</span>
+                            <span class="game-info-value">${compareEscapeHtml(data.status || 'unknown')}</span>
                         </div>
                     </div>
                 `;
                 infoDiv.style.display = 'block';
                 
-                log('Loaded ' + side + ' record: ' + recordId, 'success');
+                compareLog('Loaded ' + side + ' record: ' + recordId, 'success');
             } else {
-                document.getElementById(infoId).style.display = 'none';
+                var infoDiv = document.getElementById(infoId);
+                if (infoDiv) infoDiv.style.display = 'none';
                 if (side === 'left') { leftData = null; leftId = null; }
                 else { rightData = null; rightId = null; }
-                document.getElementById('compareResults').style.display = 'none';
-                log('Record not found: ' + recordId, 'error');
+                var resultsDiv = document.getElementById('compareResults');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+                compareLog('Record not found: ' + recordId, 'error');
             }
         })
         .catch(function(err) {
-            document.getElementById(infoId).style.display = 'none';
+            var infoDiv = document.getElementById(infoId);
+            if (infoDiv) infoDiv.style.display = 'none';
             if (side === 'left') { leftData = null; leftId = null; }
             else { rightData = null; rightId = null; }
-            document.getElementById('compareResults').style.display = 'none';
-            log('Error loading ' + side + ' record: ' + err.message, 'error');
+            var resultsDiv = document.getElementById('compareResults');
+            if (resultsDiv) resultsDiv.style.display = 'none';
+            compareLog('Error loading ' + side + ' record: ' + err.message, 'error');
         });
 }
 
@@ -405,37 +442,37 @@ function loadCompareRecordData(side) {
 
 function performCompare() {
     if (!compareLeftDb) {
-        log("Select Left environment first", "error");
+        compareLog("Select Left environment first", "error");
         return;
     }
     
     if (!compareRightDb) {
-        log("Select Right environment first", "error");
+        compareLog("Select Right environment first", "error");
         return;
     }
     
     if (!leftData || !leftId) {
-        log("Load a left record first", "error");
+        compareLog("Load a left record first", "error");
         return;
     }
     
     if (!rightData || !rightId) {
-        log("Load a right record first", "error");
+        compareLog("Load a right record first", "error");
         return;
     }
     
     var leftEnv = compareLeftEnv || 'Unknown';
     var rightEnv = compareRightEnv || 'Unknown';
     
-    log('=== START COMPARISON ===', 'info');
-    log('Left: ' + leftId + ' (' + leftEnv + ')', 'info');
-    log('Right: ' + rightId + ' (' + rightEnv + ')', 'info');
-    log('Comparing across: ' + leftEnv + ' ↔ ' + rightEnv, 'info');
+    compareLog('=== START COMPARISON ===', 'info');
+    compareLog('Left: ' + leftId + ' (' + leftEnv + ')', 'info');
+    compareLog('Right: ' + rightId + ' (' + rightEnv + ')', 'info');
+    compareLog('Comparing across: ' + leftEnv + ' ↔ ' + rightEnv, 'info');
     
     var results = compareObjects(leftData, rightData);
     displayCompareResults(results);
     
-    log('=== COMPARISON COMPLETE ===', 'success');
+    compareLog('=== COMPARISON COMPLETE ===', 'success');
 }
 
 // ============================================================
@@ -559,7 +596,8 @@ function displayCompareResults(results) {
     var matchCount = results.matches.length;
     var totalCount = diffCount + matchCount;
     
-    document.getElementById('compareResults').style.display = 'block';
+    var resultsDiv = document.getElementById('compareResults');
+    if (resultsDiv) resultsDiv.style.display = 'block';
     
     var summaryHtml = `
         <div class="diff-summary">
@@ -581,7 +619,8 @@ function displayCompareResults(results) {
             '<div style="text-align:center; padding:8px; color:#ff6b6b; font-weight:600;">🔴 ' + diffCount + ' difference(s) found</div>'
         }
     `;
-    document.getElementById('compareSummary').innerHTML = summaryHtml;
+    var summaryDiv = document.getElementById('compareSummary');
+    if (summaryDiv) summaryDiv.innerHTML = summaryHtml;
     
     var detailHtml = '';
     
@@ -590,11 +629,11 @@ function displayCompareResults(results) {
         results.diffs.forEach(function(diff) {
             detailHtml += `
                 <div class="diff-item diff">
-                    <span class="field-name">${escapeHtml(diff.path)}</span>
+                    <span class="field-name">${compareEscapeHtml(diff.path)}</span>
                     <span>
-                        <span class="field-value-left">${escapeHtml(diff.left)}</span>
+                        <span class="field-value-left">${compareEscapeHtml(diff.left)}</span>
                         <span style="color:#666; margin:0 4px;">≠</span>
-                        <span class="field-value-right">${escapeHtml(diff.right)}</span>
+                        <span class="field-value-right">${compareEscapeHtml(diff.right)}</span>
                     </span>
                 </div>
             `;
@@ -609,8 +648,8 @@ function displayCompareResults(results) {
         matchDisplay.forEach(function(match) {
             detailHtml += `
                 <div class="diff-item match">
-                    <span class="field-name">${escapeHtml(match.path)}</span>
-                    <span class="field-value-left">${escapeHtml(match.value)}</span>
+                    <span class="field-name">${compareEscapeHtml(match.path)}</span>
+                    <span class="field-value-left">${compareEscapeHtml(match.value)}</span>
                 </div>
             `;
         });
@@ -619,19 +658,20 @@ function displayCompareResults(results) {
         }
     }
     
-    document.getElementById('compareDetail').innerHTML = detailHtml;
+    var detailDiv = document.getElementById('compareDetail');
+    if (detailDiv) detailDiv.innerHTML = detailHtml;
     
-    log('Comparison complete: ' + matchCount + ' match, ' + diffCount + ' diff', 'info');
+    compareLog('Comparison complete: ' + matchCount + ' match, ' + diffCount + ' diff', 'info');
     if (diffCount > 0) {
-        log('Differences found in ' + diffCount + ' fields', 'diff');
+        compareLog('Differences found in ' + diffCount + ' fields', 'diff');
         results.diffs.slice(0, 10).forEach(function(diff) {
-            log('  ' + diff.path + ': ' + diff.left + ' ≠ ' + diff.right, 'diff');
+            compareLog('  ' + diff.path + ': ' + diff.left + ' ≠ ' + diff.right, 'diff');
         });
         if (results.diffs.length > 10) {
-            log('  ... and ' + (results.diffs.length - 10) + ' more differences', 'diff');
+            compareLog('  ... and ' + (results.diffs.length - 10) + ' more differences', 'diff');
         }
     } else {
-        log('Records are identical', 'match');
+        compareLog('Records are identical', 'match');
     }
 }
 
@@ -750,17 +790,19 @@ window.showCompareInfoGuide = showCompareInfoGuide;
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COMPARE_UTIL_VERSION = "1.03";
-console.log("[COMPARE-UTIL] v1.03 loaded");
+window.COMPARE_UTIL_VERSION = "1.04";
+console.log("[COMPARE-UTIL] v1.04 loaded");
 
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: showCompareInfoGuide() function - full-page information overlay
-   - ADDED: Detailed COMPARE tab documentation with step-by-step instructions
-   - ADDED: Warnings and important notes for comparing records
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
+   - CHANGED: Now uses window.log and window.escapeHtml from util-core.js
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
+   - ADDED: Explicit state variables leftData, rightData, leftId, rightId
+   - PRESERVED: All existing functionality from v1.03
+DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
