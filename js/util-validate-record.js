@@ -1,26 +1,31 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: parseDataString() now handles partial data strings (< 162 chars)
-   - FIXED: Records with incomplete flight data (partial saves) no longer fail validation
-   - FIXED: parseHoleData() handles partial data gracefully
-   - CHANGED: Missing holes are treated as "not saved" (saved = false)
-   - ADDED: Score validation to ensure parsed values are valid numbers
-   - PRESERVED: All calculation logic unchanged (AS = 0.5, game1/game2/game3 field names)
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - REMOVED: Validation checks for duplicated summary fields
+     - results.game1.pointsA (derived from matchResults)
+     - results.game1.pointsB (derived from matchResults)
+     - results.game2.pointsA (not used)
+     - results.game2.pointsB (not used)
+     - results.game3.pointsA (not used)
+     - results.game3.pointsB (not used)
+   - These fields were removed from the schema in v4.0
+   - VALIDATE now skips these fields entirely
+   - PRESERVED: All other validation logic unchanged
+   - PRESERVED: AS = 0.5, game1/game2/game3 field names
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.08";
+window.UTIL_VALIDATE_VERSION = "1.10";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.08");
-    
+    console.log("[UTIL-VALIDATE] Initializing v1.10 - Removed duplicated summary fields from validation");
+
     // ============================================================
-    // PARSING FUNCTIONS - FIXED to handle partial data
+    // PARSING FUNCTIONS - Handles partial data
     // ============================================================
     
     function parseDataString(dataStr) {
@@ -30,21 +35,17 @@ var UtilValidate = (function() {
         var totalHoles = 18;
         var expectedLength = totalHoles * charsPerHole; // 162
         
-        // If string is too short to contain even 1 complete hole, return null
         if (dataStr.length < charsPerHole) return null;
         
         var scores = [];
-        // Calculate how many complete holes we have
         var holesToParse = Math.floor(dataStr.length / charsPerHole);
         if (holesToParse > totalHoles) holesToParse = totalHoles;
         
         for (var i = 0; i < totalHoles; i++) {
             if (i < holesToParse) {
-                // We have data for this hole - parse it
                 var startIndex = i * charsPerHole;
                 var block = dataStr.substr(startIndex, charsPerHole);
                 
-                // Verify block is complete
                 if (block.length === charsPerHole) {
                     var saved = block[0] === 'T';
                     var a1 = parseInt(block.substr(1, 2), 10);
@@ -52,7 +53,6 @@ var UtilValidate = (function() {
                     var b1 = parseInt(block.substr(5, 2), 10);
                     var b2 = parseInt(block.substr(7, 2), 10);
                     
-                    // Validate scores are valid numbers (1-99 range)
                     if (!isNaN(a1) && !isNaN(a2) && !isNaN(b1) && !isNaN(b2) &&
                         a1 >= 0 && a2 >= 0 && b1 >= 0 && b2 >= 0) {
                         scores.push({
@@ -63,7 +63,6 @@ var UtilValidate = (function() {
                             b2: b2
                         });
                     } else {
-                        // Invalid scores - treat as not saved
                         scores.push({
                             saved: false,
                             a1: 0,
@@ -73,7 +72,6 @@ var UtilValidate = (function() {
                         });
                     }
                 } else {
-                    // Incomplete block - treat as not saved
                     scores.push({
                         saved: false,
                         a1: 0,
@@ -83,7 +81,6 @@ var UtilValidate = (function() {
                     });
                 }
             } else {
-                // No data for this hole - treat as not saved
                 scores.push({
                     saved: false,
                     a1: 0,
@@ -94,7 +91,6 @@ var UtilValidate = (function() {
             }
         }
         
-        // If all holes are not saved, return null (no data)
         var anySaved = false;
         for (var i = 0; i < scores.length; i++) {
             if (scores[i].saved) { anySaved = true; break; }
@@ -111,9 +107,7 @@ var UtilValidate = (function() {
         var charsPerHole = 9;
         var startIndex = (holeNumber - 1) * charsPerHole;
         
-        // Check if we have enough data for this hole
         if (startIndex + charsPerHole > dataStr.length) {
-            // Not enough data - hole not saved
             return { saved: false, scores: { a1: 0, a2: 0, b1: 0, b2: 0 } };
         }
         
@@ -128,7 +122,6 @@ var UtilValidate = (function() {
         var b1 = parseInt(segment.substr(5, 2), 10);
         var b2 = parseInt(segment.substr(7, 2), 10);
         
-        // Validate scores
         if (isNaN(a1) || isNaN(a2) || isNaN(b1) || isNaN(b2) ||
             a1 < 0 || a2 < 0 || b1 < 0 || b2 < 0) {
             return { saved: false, scores: { a1: 0, a2: 0, b1: 0, b2: 0 } };
@@ -849,7 +842,10 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // COMPREHENSIVE FIELD VALIDATION
+    // COMPREHENSIVE FIELD VALIDATION (v4.0 Schema)
+    // ============================================================
+    // v4.0 REMOVED: game1.pointsA/B, game2.pointsA/B, game3.pointsA/B
+    // These are duplicated summary fields no longer in the schema
     // ============================================================
     
     function validateAllFields(recordData, recalculated) {
@@ -945,53 +941,15 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 6. Match Play Points - READ FROM game1.pointsA/B (documented schema) - NO FALLBACK
-        var curMPA = (recordData.results?.game1?.pointsA) || [];
-        var curMPB = (recordData.results?.game1?.pointsB) || [];
-        var newMPA = recalculated.matchPlay.pointsA || [];
-        var newMPB = recalculated.matchPlay.pointsB || [];
-        for (var i = 0; i < 18; i++) {
-            if (curMPA[i] !== newMPA[i] || curMPB[i] !== newMPB[i]) {
-                mismatches.push({ field: 'Match Play H' + (i+1), current: curMPA[i] + '-' + curMPB[i], expected: newMPA[i] + '-' + newMPB[i] });
-                summary.mismatched++;
-            } else {
-                matches.push({ field: 'Match Play H' + (i+1), current: curMPA[i] + '-' + curMPB[i], expected: newMPA[i] + '-' + newMPB[i] });
-                summary.matched++;
-            }
-            summary.totalFields++;
-        }
+        // 6. Match Play Points - READ FROM game1.pointsA/B
+        // REMOVED in v4.0 - these are duplicated summary fields
+        // Match play points are derived from matchResults
         
-        // 7. Team Game Points - READ FROM game2.pointsA/B (documented schema) - NO FALLBACK
-        var curTGA = (recordData.results?.game2?.pointsA) || [];
-        var curTGB = (recordData.results?.game2?.pointsB) || [];
-        var newTGA = recalculated.teamGame.pointsA || [];
-        var newTGB = recalculated.teamGame.pointsB || [];
-        for (var i = 0; i < 18; i++) {
-            if (curTGA[i] !== newTGA[i] || curTGB[i] !== newTGB[i]) {
-                mismatches.push({ field: 'Team Game H' + (i+1), current: curTGA[i] + '-' + curTGB[i], expected: newTGA[i] + '-' + newTGB[i] });
-                summary.mismatched++;
-            } else {
-                matches.push({ field: 'Team Game H' + (i+1), current: curTGA[i] + '-' + curTGB[i], expected: newTGA[i] + '-' + newTGB[i] });
-                summary.matched++;
-            }
-            summary.totalFields++;
-        }
+        // 7. Team Game Points - READ FROM game2.pointsA/B
+        // REMOVED in v4.0 - these are duplicated summary fields
         
-        // 8. Stroke Game Points - READ FROM game3.pointsA/B (documented schema) - NO FALLBACK
-        var curSGA = (recordData.results?.game3?.pointsA) || [];
-        var curSGB = (recordData.results?.game3?.pointsB) || [];
-        var newSGA = recalculated.strokeGame.pointsA || [];
-        var newSGB = recalculated.strokeGame.pointsB || [];
-        for (var i = 0; i < 18; i++) {
-            if (curSGA[i] !== newSGA[i] || curSGB[i] !== newSGB[i]) {
-                mismatches.push({ field: 'Stroke Game H' + (i+1), current: curSGA[i] + '-' + curSGB[i], expected: newSGA[i] + '-' + newSGB[i] });
-                summary.mismatched++;
-            } else {
-                matches.push({ field: 'Stroke Game H' + (i+1), current: curSGA[i] + '-' + curSGB[i], expected: newSGA[i] + '-' + newSGB[i] });
-                summary.matched++;
-            }
-            summary.totalFields++;
-        }
+        // 8. Stroke Game Points - READ FROM game3.pointsA/B
+        // REMOVED in v4.0 - these are duplicated summary fields
         
         // 9. Player Totals
         var curTotals = recordData.results?.playerTotals || {};
@@ -1108,7 +1066,6 @@ var UtilValidate = (function() {
         var courseSi = (recordData.gameInfo?.course?.si) || (recordData.course?.si) || [];
         var coursePar = (recordData.gameInfo?.course?.par) || (recordData.course?.par) || [];
         
-        // Check if we have valid data for at least one flight
         if (!f1Scores && !f2Scores) {
             return { valid: false, error: 'No valid flight data found' };
         }
@@ -1116,16 +1073,13 @@ var UtilValidate = (function() {
             return { valid: false, error: 'No players found' };
         }
         
-        // If one flight is missing data, use empty array for that flight
         if (!f1Scores) {
-            // Create empty scores array for Flight 1 (all holes not saved)
             f1Scores = [];
             for (var i = 0; i < 18; i++) {
                 f1Scores.push({ saved: false, a1: 0, a2: 0, b1: 0, b2: 0 });
             }
         }
         if (!f2Scores) {
-            // Create empty scores array for Flight 2 (all holes not saved)
             f2Scores = [];
             for (var i = 0; i < 18; i++) {
                 f2Scores.push({ saved: false, a1: 0, a2: 0, b1: 0, b2: 0 });
@@ -1282,7 +1236,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD FIX PAYLOAD - Uses game1/game2/game3 (documented schema) - NO FALLBACK
+    // BUILD FIX PAYLOAD - v4.0: Removed duplicate summary fields
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1364,68 +1318,14 @@ var UtilValidate = (function() {
             updatePayload['results.game3.displayStrk'] = updatedStrk;
         }
         
-        // 5. Match Play Points - READ FROM game1.pointsA/B (documented schema) - NO FALLBACK
-        var curMPA = (recordData.results?.game1?.pointsA) || [];
-        var curMPB = (recordData.results?.game1?.pointsB) || [];
-        var newMPA = recalculated.matchPlay.pointsA || [];
-        var newMPB = recalculated.matchPlay.pointsB || [];
-        var mpMismatches = [];
-        for (var i = 0; i < 18; i++) {
-            if (curMPA[i] !== newMPA[i] || curMPB[i] !== newMPB[i]) mpMismatches.push(i);
-        }
-        if (mpMismatches.length > 0) {
-            var updatedMPA = curMPA.slice();
-            var updatedMPB = curMPB.slice();
-            for (var idx = 0; idx < mpMismatches.length; idx++) {
-                var holeIdx = mpMismatches[idx];
-                updatedMPA[holeIdx] = newMPA[holeIdx];
-                updatedMPB[holeIdx] = newMPB[holeIdx];
-            }
-            updatePayload['results.game1.pointsA'] = updatedMPA;
-            updatePayload['results.game1.pointsB'] = updatedMPB;
-        }
+        // 5. Match Play Points - REMOVED in v4.0
+        // These are duplicated summary fields no longer in the schema
         
-        // 6. Team Game Points - READ FROM game2.pointsA/B (documented schema) - NO FALLBACK
-        var curTGA = (recordData.results?.game2?.pointsA) || [];
-        var curTGB = (recordData.results?.game2?.pointsB) || [];
-        var newTGA = recalculated.teamGame.pointsA || [];
-        var newTGB = recalculated.teamGame.pointsB || [];
-        var tgMismatches = [];
-        for (var i = 0; i < 18; i++) {
-            if (curTGA[i] !== newTGA[i] || curTGB[i] !== newTGB[i]) tgMismatches.push(i);
-        }
-        if (tgMismatches.length > 0) {
-            var updatedTGA = curTGA.slice();
-            var updatedTGB = curTGB.slice();
-            for (var idx = 0; idx < tgMismatches.length; idx++) {
-                var holeIdx = tgMismatches[idx];
-                updatedTGA[holeIdx] = newTGA[holeIdx];
-                updatedTGB[holeIdx] = newTGB[holeIdx];
-            }
-            updatePayload['results.game2.pointsA'] = updatedTGA;
-            updatePayload['results.game2.pointsB'] = updatedTGB;
-        }
+        // 6. Team Game Points - REMOVED in v4.0
+        // These are duplicated summary fields no longer in the schema
         
-        // 7. Stroke Game Points - READ FROM game3.pointsA/B (documented schema) - NO FALLBACK
-        var curSGA = (recordData.results?.game3?.pointsA) || [];
-        var curSGB = (recordData.results?.game3?.pointsB) || [];
-        var newSGA = recalculated.strokeGame.pointsA || [];
-        var newSGB = recalculated.strokeGame.pointsB || [];
-        var sgMismatches = [];
-        for (var i = 0; i < 18; i++) {
-            if (curSGA[i] !== newSGA[i] || curSGB[i] !== newSGB[i]) sgMismatches.push(i);
-        }
-        if (sgMismatches.length > 0) {
-            var updatedSGA = curSGA.slice();
-            var updatedSGB = curSGB.slice();
-            for (var idx = 0; idx < sgMismatches.length; idx++) {
-                var holeIdx = sgMismatches[idx];
-                updatedSGA[holeIdx] = newSGA[holeIdx];
-                updatedSGB[holeIdx] = newSGB[holeIdx];
-            }
-            updatePayload['results.game3.pointsA'] = updatedSGA;
-            updatePayload['results.game3.pointsB'] = updatedSGB;
-        }
+        // 7. Stroke Game Points - REMOVED in v4.0
+        // These are duplicated summary fields no longer in the schema
         
         // 8. Player Totals
         if (!deepEqual(recordData.results?.playerTotals || {}, recalculated.playerTotals || {})) {
@@ -1516,14 +1416,19 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: parseDataString() now handles partial data strings (< 162 chars)
-   - FIXED: Records with incomplete flight data (partial saves) no longer fail validation
-   - FIXED: parseHoleData() handles partial data gracefully
-   - CHANGED: Missing holes are treated as "not saved" (saved = false)
-   - ADDED: Score validation to ensure parsed values are valid numbers
-   - PRESERVED: All calculation logic unchanged (AS = 0.5, game1/game2/game3 field names)
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - REMOVED: Validation checks for duplicated summary fields
+     - results.game1.pointsA (derived from matchResults)
+     - results.game1.pointsB (derived from matchResults)
+     - results.game2.pointsA (not used)
+     - results.game2.pointsB (not used)
+     - results.game3.pointsA (not used)
+     - results.game3.pointsB (not used)
+   - These fields were removed from the schema in v4.0
+   - VALIDATE now skips these fields entirely
+   - PRESERVED: All other validation logic unchanged
+   - PRESERVED: AS = 0.5, game1/game2/game3 field names
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
