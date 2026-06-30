@@ -1,11 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.37
-KEY CHANGES from v8.36:
-   - ADDED: Record name (archiveId) displayed below buttons in game card
-   - Styled as faint grey text, centralized, similar to version tag styling
-   - Helps identify which record is being viewed
-   - PRESERVED: All existing functionality from v8.36
+VERSION: 8.38
+KEY CHANGES from v8.37:
+   - FIXED: getAllOpponents() was incorrectly adding ALL players from the other flight
+   - Now only adds opponents from the OPPOSITE TEAM in the other flight
+   - This fixes the issue where 6 match bubbles were showing instead of 4
+   - Correct opponent count per player is now 4 (2 intra-flight + 2 cross-flight)
+   - PRESERVED: All existing functionality from v8.37
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -386,7 +387,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.37</div>
+<div class="version-tag">v8.38</div>
 
 <script>
 // ============================================================
@@ -399,10 +400,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.37: Added record name display
+// VERSION CACHE-BUSTING - v8.38: Fixed opponent generation
 // ============================================================
-var APP_VERSION = "8.37";
-var CACHE_KEY = "view_history_version_v837";
+var APP_VERSION = "8.38";
+var CACHE_KEY = "view_history_version_v838";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -420,8 +421,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.37";
-console.log("[VIEW-HISTORY] Initializing v8.37 - Added record name display");
+window.VIEW_HISTORY_VERSION = "8.38";
+console.log("[VIEW-HISTORY] Initializing v8.38 - Fixed opponent generation");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -774,22 +775,28 @@ function renderScorecardView(game) {
         return getStoredScore(player, currentHole);
     }
     
+    // v8.38: FIXED - getAllOpponents now correctly filters cross-flight opponents by team
     function getAllOpponents(player) {
-        // v8.36: Use stored match data only - no calculation needed
         var opponents = [];
-        var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight && p.team !== player.team; });
-        var otherFlightPlayers = allPlayers.filter(function(p) { return p.flight !== player.flight; });
         
         // Intra-flight opponents (same flight, different team)
+        var flightPlayers = allPlayers.filter(function(p) { 
+            return p.flight === player.flight && p.team !== player.team; 
+        });
         for (var i = 0; i < flightPlayers.length; i++) {
             if (flightPlayers[i].name !== player.name) {
                 opponents.push(flightPlayers[i]);
             }
         }
-        // Cross-flight opponents (different flight)
+        
+        // Cross-flight opponents (different flight, OPPOSITE TEAM only)
+        var otherFlightPlayers = allPlayers.filter(function(p) { 
+            return p.flight !== player.flight && p.team !== player.team; 
+        });
         for (var i = 0; i < otherFlightPlayers.length; i++) {
             opponents.push(otherFlightPlayers[i]);
         }
+        
         return opponents;
     }
     
@@ -1379,12 +1386,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.37
-KEY CHANGES from v8.36:
-   - ADDED: Record name (archiveId) displayed below buttons in game card
-   - Styled as faint grey text, centralized, similar to version tag styling
-   - Helps identify which record is being viewed
-   - PRESERVED: All existing functionality from v8.36
+VERSION: 8.38
+KEY CHANGES from v8.37:
+   - FIXED: getAllOpponents() was incorrectly adding ALL players from the other flight
+   - Now only adds opponents from the OPPOSITE TEAM in the other flight
+   - This fixes the issue where 6 match bubbles were showing instead of 4
+   - Correct opponent count per player is now 4 (2 intra-flight + 2 cross-flight)
+   - PRESERVED: All existing functionality from v8.37
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
