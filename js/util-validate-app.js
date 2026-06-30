@@ -1,22 +1,19 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES from v1.00:
-   - NEW: Created as orchestration layer for VALIDATE tab
-   - ADDED: loadValidateRecords() - Load records from Firestore into dropdown
-   - ADDED: loadAndValidate() - Load and validate a selected record
-   - ADDED: clearValidateResults() - Clear all validation display containers
-   - ADDED: validateBackupOnly() - Create a backup copy of a record
-   - ADDED: validateFixRecord() - Build fix preview and initiate fix process
-   - ADDED: applyFixToRecord() - Apply fix payload to Firestore
-   - ADDED: Event binding setup for VALIDATE tab
+   - ADDED: showValidateInfoGuide() - Full-page information overlay for VALIDATE tab
+   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
+   - ADDED: Warnings and important notes for validating records
+   - EXPOSED: showValidateInfoGuide() globally for HTML onclick binding
+   - PRESERVED: All existing functionality from v1.00
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.00";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.00");
+window.UTIL_VALIDATE_APP_VERSION = "1.01";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.01");
 
 // ============================================================
 // STATE VARIABLES
@@ -495,6 +492,89 @@ function initValidateTabEvents() {
 }
 
 // ============================================================
+// VALIDATE TAB: INFORMATION GUIDE
+// ============================================================
+
+function showValidateInfoGuide() {
+    // Remove existing overlay if present
+    var existing = document.querySelector('.info-overlay');
+    if (existing) existing.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.className = 'info-overlay';
+    overlay.innerHTML = `
+        <div class="info-card">
+            <div class="info-header">
+                <div class="info-title">🔬 VALIDATE TAB - Information & Guide</div>
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-section-title">🎯 What This Tab Does</div>
+                <div class="info-text">
+                    The <strong>VALIDATE</strong> tab checks the integrity of game records by:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>🔬 Recalculating all derived data from raw scores</li>
+                        <li>📊 Comparing recalculated values against stored values</li>
+                        <li>✅ Identifying mismatches that need fixing</li>
+                        <li>🔧 Fixing corrupted records with one click</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📖 How To Use</div>
+                <ol class="info-steps">
+                    <li><strong>Step 1 - Environment:</strong> Select PROD or DEV</li>
+                    <li><strong>Step 2 - Collection:</strong> Choose <code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code></li>
+                    <li><strong>Step 3 - Select Record:</strong> Choose a record from the dropdown</li>
+                    <li><strong>Step 4 - Load & Validate:</strong> Click <span class="highlight">"Load & Validate"</span></li>
+                    <li><strong>Step 5 - Review:</strong> Check the validation summary and mismatches</li>
+                    <li><strong>Step 6 - Fix:</strong> If needed, click <span class="highlight">"Fix Record"</span> to repair</li>
+                </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 What Gets Validated</div>
+                <div class="info-text">
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>🏆 <strong>TR Values:</strong> Team A and Team B totals per hole</li>
+                        <li>🏅 <strong>Match Play:</strong> 16 individual match results</li>
+                        <li>📊 <strong>Team Game:</strong> T-1 and T-2 flight results</li>
+                        <li>⛳ <strong>Stroke Game:</strong> Cumulative nett scores</li>
+                        <li>📋 <strong>Player Totals:</strong> Gross scores and relative to par</li>
+                        <li>🏆 <strong>Clinched At:</strong> Match clinch detection</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">⚠️ Important Notes</div>
+                <ul class="info-warnings">
+                    <li><strong>Read-only:</strong> Validation does not modify data unless you click "Fix Record"</li>
+                    <li><strong>Backup:</strong> A backup is created in <code>backupFolder</code> before fixing</li>
+                    <li><strong>Preserved:</strong> Raw scores, players, and course data are never modified</li>
+                    <li><strong>AS = 0.5:</strong> All "All Square" results correctly give 0.5 TR points each</li>
+                    <li><strong>Field Names:</strong> Uses documented schema (game1, game2, game3) with fallbacks</li>
+                </ul>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px;">
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
 // AUTO-INIT
 // ============================================================
 
@@ -528,21 +608,19 @@ window.validateBackupOnly = validateBackupOnly;
 window.validateFixRecord = validateFixRecord;
 window.applyFixToRecord = applyFixToRecord;
 window.initValidateTabEvents = initValidateTabEvents;
+window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.00 loaded');
+console.log('[UTIL-VALIDATE-APP] v1.01 loaded');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES from v1.00:
-   - NEW: Created as orchestration layer for VALIDATE tab
-   - ADDED: loadValidateRecords() - Load records from Firestore into dropdown
-   - ADDED: loadAndValidate() - Load and validate a selected record
-   - ADDED: clearValidateResults() - Clear all validation display containers
-   - ADDED: validateBackupOnly() - Create a backup copy of a record
-   - ADDED: validateFixRecord() - Build fix preview and initiate fix process
-   - ADDED: applyFixToRecord() - Apply fix payload to Firestore
-   - ADDED: Event binding setup for VALIDATE tab
+   - ADDED: showValidateInfoGuide() - Full-page information overlay for VALIDATE tab
+   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
+   - ADDED: Warnings and important notes for validating records
+   - EXPOSED: showValidateInfoGuide() globally for HTML onclick binding
+   - PRESERVED: All existing functionality from v1.00
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
