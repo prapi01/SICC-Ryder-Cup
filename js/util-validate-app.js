@@ -1,19 +1,18 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: applyStagedPhotoToRecord() now applies photo even if recordId doesn't match
-   - CHANGED: Removed the mismatch check that was silently skipping photo updates
-   - CHANGED: Now shows a warning but still applies the staged photo
-   - This fixes the issue where photos were not being applied after "Fix Record"
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: validateApplyPhotoOnly() function to apply staged photo without requiring data fix
+   - This allows users to apply a staged photo even when the record is already valid
+   - ADDED: Exposed validateApplyPhotoOnly globally for the new button
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.04";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.04 - Fixed photo staging");
+window.UTIL_VALIDATE_APP_VERSION = "1.05";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.05 - Added Apply Photo Only");
 
 // ============================================================
 // STATE VARIABLES
@@ -224,8 +223,11 @@ function clearValidateResults() {
     
     var backupBtn = document.getElementById('validateBackupBtn');
     var fixBtn = document.getElementById('validateFixBtn');
+    var applyPhotoBtn = document.getElementById('validateApplyPhotoBtn');
+    
     if (backupBtn) backupBtn.disabled = false;
     if (fixBtn) fixBtn.disabled = false;
+    if (applyPhotoBtn) applyPhotoBtn.disabled = false;
     
     window._validatePhotoStatus = null;
     window._validateRecordId = null;
@@ -346,9 +348,6 @@ function validateFixRecord() {
 // ============================================================
 // VALIDATE TAB: APPLY STAGED PHOTO TO RECORD
 // ============================================================
-// v1.04: FIXED - Now applies photo even if recordId doesn't match
-// The user selected the photo intentionally, so we should apply it
-// ============================================================
 
 function applyStagedPhotoToRecord(recordId, collection, db) {
     // Check if there's a staged photo
@@ -358,7 +357,6 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
     }
     
     // v1.04: Removed the recordId mismatch check that was silently skipping photo updates
-    // The user selected the photo intentionally, so we should apply it regardless
     if (window._stagedPhoto.recordId && window._stagedPhoto.recordId !== recordId) {
         appLog('⚠️ Staged photo was selected for a different record: ' + window._stagedPhoto.recordId + ' (current: ' + recordId + ')', 'warning');
         appLog('⚠️ Applying photo anyway (user selected it intentionally)', 'warning');
@@ -479,6 +477,86 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
 }
 
 // ============================================================
+// v1.05: VALIDATE TAB: APPLY PHOTO ONLY (no data fix)
+// ============================================================
+
+function validateApplyPhotoOnly() {
+    if (!validateGameData || !validateGameData.id) {
+        appLog('Load a record first', 'error');
+        return;
+    }
+    
+    var recordId = validateGameData.id;
+    var collection = document.getElementById('validateCollection').value;
+    var indicator = document.getElementById('validateIndicator');
+    var envText = indicator ? indicator.textContent : 'PROD';
+    var db = envText === 'PROD' ? window.prodDb : window.devDb;
+    
+    if (!db) {
+        appLog('Database not available', 'error');
+        return;
+    }
+    
+    // Check if there's a staged photo
+    if (!window._stagedPhoto || !window._stagedPhoto.fullPath || !window._stagedPhoto.downloadUrl) {
+        appLog('No staged photo to apply. Select a photo first using "Change Photo" or "Select Photo".', 'error');
+        return;
+    }
+    
+    appLog('📸 Applying staged photo to record: ' + recordId + ' (photo only, no data fix)', 'info');
+    appLog('📸 Photo: ' + window._stagedPhoto.fullPath, 'info');
+    
+    // Disable the button while processing
+    var applyPhotoBtn = document.getElementById('validateApplyPhotoBtn');
+    if (applyPhotoBtn) {
+        applyPhotoBtn.disabled = true;
+        applyPhotoBtn.textContent = '⏳ Applying...';
+    }
+    
+    applyStagedPhotoToRecord(recordId, collection, db)
+        .then(function() {
+            appLog('✅ Photo applied successfully!', 'success');
+            
+            // Re-enable the button
+            if (applyPhotoBtn) {
+                applyPhotoBtn.disabled = false;
+                applyPhotoBtn.textContent = '📸 APPLY STAGED PHOTO';
+            }
+            
+            // Refresh the validation display to show the updated photo
+            if (typeof loadAndValidate === 'function') {
+                setTimeout(function() {
+                    loadAndValidate();
+                }, 500);
+            }
+            
+            // Show success status
+            var statusDiv = document.getElementById('validateStatus');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'validate-status success';
+                statusDiv.innerHTML = '✅ Photo applied successfully to record: ' + recordId;
+            }
+        })
+        .catch(function(err) {
+            appLog('❌ Failed to apply photo: ' + err.message, 'error');
+            
+            // Re-enable the button
+            if (applyPhotoBtn) {
+                applyPhotoBtn.disabled = false;
+                applyPhotoBtn.textContent = '📸 APPLY STAGED PHOTO';
+            }
+            
+            var statusDiv = document.getElementById('validateStatus');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'validate-status error';
+                statusDiv.innerHTML = '❌ Failed to apply photo: ' + err.message;
+            }
+        });
+}
+
+// ============================================================
 // VALIDATE TAB: EVENT BINDINGS
 // ============================================================
 
@@ -540,6 +618,14 @@ function initValidateTabEvents() {
     if (fixBtn) {
         fixBtn.onclick = function() {
             validateFixRecord();
+        };
+    }
+    
+    // v1.05: Apply Photo Only button
+    var applyPhotoBtn = document.getElementById('validateApplyPhotoBtn');
+    if (applyPhotoBtn) {
+        applyPhotoBtn.onclick = function() {
+            validateApplyPhotoOnly();
         };
     }
     
@@ -615,7 +701,22 @@ function showValidateInfoGuide() {
                     <li><strong>Step 4 - Load & Validate:</strong> Click <span class="highlight">"Load & Validate"</span></li>
                     <li><strong>Step 5 - Review:</strong> Check the validation summary and mismatches</li>
                     <li><strong>Step 6 - Fix:</strong> If needed, click <span class="highlight">"Fix Record"</span> to repair</li>
+                    <li><strong>Step 7 - Photo:</strong> To update a photo, click <span class="highlight">"Change Photo"</span>, select a photo, then click <span class="highlight">"APPLY STAGED PHOTO"</span></li>
                 </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📸 Photo Update</div>
+                <div class="info-text">
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>🔄 Click <strong>"Change Photo"</strong> to select a photo from Firebase Storage</li>
+                        <li>📎 The photo is <strong>staged</strong> (not written to Firestore yet)</li>
+                        <li>💾 Click <strong>"APPLY STAGED PHOTO"</strong> to write the photo to the record</li>
+                        <li>✅ This works even when the record is already valid</li>
+                    </ul>
+                </div>
             </div>
             
             <hr class="info-divider">
@@ -690,20 +791,20 @@ window.validateBackupOnly = validateBackupOnly;
 window.validateFixRecord = validateFixRecord;
 window.applyFixToRecord = applyFixToRecord;
 window.applyStagedPhotoToRecord = applyStagedPhotoToRecord;
+window.validateApplyPhotoOnly = validateApplyPhotoOnly;  // v1.05: New function
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.04 loaded - Fixed photo staging');
+console.log('[UTIL-VALIDATE-APP] v1.05 loaded - Added Apply Photo Only');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: applyStagedPhotoToRecord() now applies photo even if recordId doesn't match
-   - CHANGED: Removed the mismatch check that was silently skipping photo updates
-   - CHANGED: Now shows a warning but still applies the staged photo
-   - This fixes the issue where photos were not being applied after "Fix Record"
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: validateApplyPhotoOnly() function to apply staged photo without requiring data fix
+   - This allows users to apply a staged photo even when the record is already valid
+   - ADDED: Exposed validateApplyPhotoOnly globally for the new button
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
