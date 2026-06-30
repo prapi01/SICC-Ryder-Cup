@@ -1,20 +1,58 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: showDeleteInfoGuide() now has complete content
-   - ADDED: Full DELETE tab documentation with step-by-step instructions
-   - ADDED: Strong warnings about permanent deletion
-   - ADDED: Explanation of batch delete functionality
-   - ADDED: Warnings about data recovery limitations
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, escapeHtml, formatDate, prodDb, devDb, getDbForEnv
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - REMOVED: Dependency on HTML for initFirebase, log, escapeHtml, formatDate
+   - CHANGED: Now uses window.log, window.escapeHtml, window.formatDate from util-core.js
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - ADDED: Fallback logging, escaping, and formatting functions if util-core.js not loaded
+   - REMOVED: getDbForEnv dependency (not used)
+   - PRESERVED: All existing functionality from v1.02
+DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.02";
-console.log("[UTIL-DELETE] v1.02 loaded");
+window.UTIL_DELETE_VERSION = "1.03";
+console.log("[UTIL-DELETE] v1.03 loaded");
+
+// ============================================================
+// FALLBACK HELPERS (if util-core.js not loaded)
+// ============================================================
+
+function deleteLog(message, type) {
+    if (typeof window.log === 'function') {
+        window.log(message, type);
+    } else {
+        console.log('[DELETE-UTIL] ' + message);
+    }
+}
+
+function deleteEscapeHtml(str) {
+    if (typeof window.escapeHtml === 'function') {
+        return window.escapeHtml(str);
+    }
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function deleteFormatDate(dateStr) {
+    if (typeof window.formatDate === 'function') {
+        return window.formatDate(dateStr);
+    }
+    if (!dateStr) return 'Unknown';
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0];
+    }
+    return dateStr;
+}
 
 // ============================================================
 // DELETE TAB: STATE VARIABLES
@@ -30,29 +68,23 @@ var deleteRecords = [];
 
 function setDeleteEnvironment(env) {
     if (env === 'PROD') {
-        if (!prodDb) {
-            initFirebase();
-            if (!prodDb) {
-                log("Cannot connect to PRODUCTION for Delete", "error");
-                return;
-            }
+        if (!window.prodDb) {
+            deleteLog("Cannot connect to PRODUCTION for Delete", "error");
+            return;
         }
-        deleteDb = prodDb;
+        deleteDb = window.prodDb;
         deleteEnv = 'PROD';
         updateDeleteUI('PROD');
-        log('Delete environment set to: PRODUCTION', 'info');
+        deleteLog('Delete environment set to: PRODUCTION', 'info');
     } else if (env === 'DEV') {
-        if (!devDb) {
-            initFirebase();
-            if (!devDb) {
-                log("Cannot connect to DEVELOPMENT for Delete", "error");
-                return;
-            }
+        if (!window.devDb) {
+            deleteLog("Cannot connect to DEVELOPMENT for Delete", "error");
+            return;
         }
-        deleteDb = devDb;
+        deleteDb = window.devDb;
         deleteEnv = 'DEV';
         updateDeleteUI('DEV');
-        log('Delete environment set to: DEVELOPMENT', 'info');
+        deleteLog('Delete environment set to: DEVELOPMENT', 'info');
     } else {
         deleteDb = null;
         deleteEnv = null;
@@ -98,7 +130,7 @@ function updateDeleteUI(env) {
 
 function loadDeleteRecords() {
     if (!deleteDb) {
-        log("Select Delete environment first", "error");
+        deleteLog("Select Delete environment first", "error");
         return;
     }
     
@@ -112,7 +144,7 @@ function loadDeleteRecords() {
     if (countEl) countEl.textContent = 'Loading...';
     
     var envLabel = deleteEnv || 'Unknown';
-    log('Loading records from: ' + collection + ' (' + envLabel + ')', 'info');
+    deleteLog('Loading records from: ' + collection + ' (' + envLabel + ')', 'info');
     
     deleteDb.collection(collection)
         .orderBy('date', 'desc')
@@ -124,7 +156,7 @@ function loadDeleteRecords() {
             if (snapshot.empty) {
                 container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">No records found in ' + collection + '</div>';
                 if (countEl) countEl.textContent = '0 found';
-                log('No records found in ' + collection, 'info');
+                deleteLog('No records found in ' + collection, 'info');
                 return;
             }
             
@@ -148,12 +180,12 @@ function loadDeleteRecords() {
             updateDeleteButtonState();
             updateSelectAllState();
             
-            log('Loaded ' + deleteRecords.length + ' records from ' + collection + ' (' + envLabel + ')', 'success');
+            deleteLog('Loaded ' + deleteRecords.length + ' records from ' + collection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
-            container.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">Error loading records: ' + escapeHtml(err.message) + '</div>';
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">Error loading records: ' + deleteEscapeHtml(err.message) + '</div>';
             if (countEl) countEl.textContent = 'Error';
-            log('Error loading delete records: ' + err.message, 'error');
+            deleteLog('Error loading delete records: ' + err.message, 'error');
             console.error(err);
         });
 }
@@ -183,14 +215,14 @@ function renderDeleteRecords(records) {
     for (var i = 0; i < records.length; i++) {
         var r = records[i];
         var statusClass = r.status === 'completed' ? 'completed' : (r.status === 'pending' ? 'pending' : 'unknown');
-        html += '<tr onclick="toggleDeleteCheckbox(\'' + escapeHtml(r.id) + '\')">';
+        html += '<tr onclick="toggleDeleteCheckbox(\'' + deleteEscapeHtml(r.id) + '\')">';
         html += '<td style="text-align:center; vertical-align:middle;">';
-        html += '<input type="checkbox" class="delete-checkbox" data-id="' + escapeHtml(r.id) + '" onchange="onDeleteCheckboxChange()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
+        html += '<input type="checkbox" class="delete-checkbox" data-id="' + deleteEscapeHtml(r.id) + '" onchange="onDeleteCheckboxChange()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
         html += '</td>';
-        html += '<td style="color:#e0e0e0;">' + escapeHtml(r.courseName) + '</td>';
-        html += '<td style="color:#ccc;">' + escapeHtml(formatDate(r.date)) + '</td>';
-        html += '<td><span class="status-badge ' + statusClass + '">' + escapeHtml(r.status) + '</span></td>';
-        html += '<td style="color:#4a8af4; font-family:monospace; font-size:0.65rem; word-break:break-all;">' + escapeHtml(r.id) + '</td>';
+        html += '<td style="color:#e0e0e0;">' + deleteEscapeHtml(r.courseName) + '</td>';
+        html += '<td style="color:#ccc;">' + deleteEscapeHtml(deleteFormatDate(r.date)) + '</td>';
+        html += '<td><span class="status-badge ' + statusClass + '">' + deleteEscapeHtml(r.status) + '</span></td>';
+        html += '<td style="color:#4a8af4; font-family:monospace; font-size:0.65rem; word-break:break-all;">' + deleteEscapeHtml(r.id) + '</td>';
         html += '</tr>';
     }
     
@@ -335,13 +367,13 @@ function deselectAllDeleteRecords() {
 
 function deleteSelectedRecords() {
     if (!deleteDb) {
-        log("Select Delete environment first", "error");
+        deleteLog("Select Delete environment first", "error");
         return;
     }
     
     var checkboxes = document.querySelectorAll('.delete-checkbox:checked');
     if (checkboxes.length === 0) {
-        log("No records selected for deletion", "error");
+        deleteLog("No records selected for deletion", "error");
         return;
     }
     
@@ -358,7 +390,7 @@ function deleteSelectedRecords() {
     confirmMsg += 'Selected IDs:\n' + selectedIds.join('\n');
     
     if (!confirm(confirmMsg)) {
-        log('Delete cancelled by user', 'info');
+        deleteLog('Delete cancelled by user', 'info');
         return;
     }
     
@@ -378,7 +410,7 @@ function deleteSelectedRecords() {
     var completed = 0;
     var errors = [];
     
-    log('🗑️ Deleting ' + total + ' records from ' + collection + ' (' + envLabel + ')', 'info');
+    deleteLog('🗑️ Deleting ' + total + ' records from ' + collection + ' (' + envLabel + ')', 'info');
     
     function deleteNext(index) {
         if (index >= selectedIds.length) {
@@ -389,7 +421,7 @@ function deleteSelectedRecords() {
                 if (progressEl) {
                     progressEl.innerHTML += '<div class="step error">⚠️ ' + errors.length + ' record(s) failed to delete</div>';
                     for (var e = 0; e < errors.length; e++) {
-                        progressEl.innerHTML += '<div class="step error">  - ' + escapeHtml(errors[e]) + '</div>';
+                        progressEl.innerHTML += '<div class="step error">  - ' + deleteEscapeHtml(errors[e]) + '</div>';
                     }
                 }
             } else {
@@ -397,7 +429,7 @@ function deleteSelectedRecords() {
                     progressEl.innerHTML += '<div class="step done">✅ All ' + completed + ' records deleted successfully</div>';
                 }
             }
-            log(msg, errors.length > 0 ? 'warning' : 'success');
+            deleteLog(msg, errors.length > 0 ? 'warning' : 'success');
             
             if (deleteBtn) {
                 deleteBtn.textContent = '✅ Done';
@@ -421,7 +453,7 @@ function deleteSelectedRecords() {
                 if (progressEl) {
                     progressEl.innerHTML += '<div class="step done">✅ Deleted: ' + id + '</div>';
                 }
-                log('Deleted: ' + id, 'success');
+                deleteLog('Deleted: ' + id, 'success');
                 deleteNext(index + 1);
             })
             .catch(function(err) {
@@ -429,7 +461,7 @@ function deleteSelectedRecords() {
                 if (progressEl) {
                     progressEl.innerHTML += '<div class="step error">❌ Failed: ' + id + ' - ' + err.message + '</div>';
                 }
-                log('Failed to delete: ' + id + ' - ' + err.message, 'error');
+                deleteLog('Failed to delete: ' + id + ' - ' + err.message, 'error');
                 deleteNext(index + 1);
             });
     }
@@ -570,14 +602,14 @@ window.showDeleteInfoGuide = showDeleteInfoGuide;
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: showDeleteInfoGuide() now has complete content
-   - ADDED: Full DELETE tab documentation with step-by-step instructions
-   - ADDED: Strong warnings about permanent deletion
-   - ADDED: Explanation of batch delete functionality
-   - ADDED: Warnings about data recovery limitations
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, escapeHtml, formatDate, prodDb, devDb, getDbForEnv
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - REMOVED: Dependency on HTML for initFirebase, log, escapeHtml, formatDate
+   - CHANGED: Now uses window.log, window.escapeHtml, window.formatDate from util-core.js
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - ADDED: Fallback logging, escaping, and formatting functions if util-core.js not loaded
+   - REMOVED: getDbForEnv dependency (not used)
+   - PRESERVED: All existing functionality from v1.02
+DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
