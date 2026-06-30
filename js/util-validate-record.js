@@ -1,23 +1,23 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateTeamGame()
-   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateStrokeGame()
-   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateMatchGamePerHole()
-   - CHANGED: Renamed Game1 → "Match Play", Game2 → "Team Game", Game3 → "Stroke Game"
-   - CHANGED: Removed dramatic colors in validation display (clean professional UI)
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: AS = 0.5 TR points in calculateTeamGame() (was incorrectly 0)
+   - FIXED: AS = 0.5 TR points in calculateStrokeGame() (was incorrectly 0)
+   - FIXED: AS = 0.5 TR points in calculateMatchGamePerHole() (was incorrectly 0)
+   - CORRECTED: v1.04 had backwards logic (AS = 0 instead of 0.5)
+   - ALIGNED: Now matches Game and TR points Definition.md v2.00
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.04";
+window.UTIL_VALIDATE_VERSION = "1.05";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.04");
+    console.log("[UTIL-VALIDATE] Initializing v1.05");
     
     // ============================================================
     // PARSING FUNCTIONS
@@ -245,7 +245,7 @@ var UtilValidate = (function() {
             var trPointsA, trPointsB;
             if (running > 0) { trPointsA = 1; trPointsB = 0; }
             else if (running < 0) { trPointsA = 0; trPointsB = 1; }
-            else { trPointsA = 0; trPointsB = 0; }  // FIXED: AS = 0 points each
+            else { trPointsA = 0.5; trPointsB = 0.5; }  // FIXED v1.05: AS = 0.5 points each (was 0)
             results.push({
                 hole: idx+1,
                 match1: match1,
@@ -288,7 +288,7 @@ var UtilValidate = (function() {
             else if (diff > 0) display = 'A' + Math.round(diff);
             else display = 'B' + Math.round(Math.abs(diff));
             var trPointsA, trPointsB;
-            if (Math.abs(diff) < 0.01) { trPointsA = 0; trPointsB = 0; }  // FIXED: AS = 0 points each
+            if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }  // FIXED v1.05: AS = 0.5 points each (was 0)
             else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
             else { trPointsA = 0; trPointsB = 1; }
             results.push({
@@ -386,10 +386,10 @@ var UtilValidate = (function() {
                 var pointsA, pointsB;
                 if (leadA > 0) { pointsA = 1; }
                 else if (leadA < 0) { pointsA = 0; }
-                else { pointsA = 0; }  // FIXED: AS = 0 points
+                else { pointsA = 0.5; }  // FIXED v1.05: AS = 0.5 points (was 0)
                 if (leadB > 0) { pointsB = 1; }
                 else if (leadB < 0) { pointsB = 0; }
-                else { pointsB = 0; }  // FIXED: AS = 0 points
+                else { pointsB = 0.5; }  // FIXED v1.05: AS = 0.5 points (was 0)
                 
                 var matchKey = match.playerA.name + "_vs_" + match.playerB.name;
                 holeMatchPoints[matchKey] = { pointsA: pointsA, pointsB: pointsB };
@@ -496,12 +496,12 @@ var UtilValidate = (function() {
                 mB += match.pointsB || 0;
             }
             
-            var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0;
-            var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0;
-            var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0;
-            var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0;
-            var sA = strk.strokeTR ? strk.strokeTR.A : 0;
-            var sB = strk.strokeTR ? strk.strokeTR.B : 0;
+            var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0.5;
+            var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0.5;
+            var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0.5;
+            var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0.5;
+            var sA = strk.strokeTR ? strk.strokeTR.A : 0.5;
+            var sB = strk.strokeTR ? strk.strokeTR.B : 0.5;
             
             var trA = mA + t1A + t2A + sA;
             var trB = mB + t1B + t2B + sB;
@@ -1405,14 +1405,14 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateTeamGame()
-   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateStrokeGame()
-   - FIXED: AS = 0 logic (was incorrectly 0.5) in calculateMatchGamePerHole()
-   - CHANGED: Renamed Game1 → "Match Play", Game2 → "Team Game", Game3 → "Stroke Game"
-   - CHANGED: Removed dramatic colors in validation display (clean professional UI)
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: AS = 0.5 TR points in calculateTeamGame() (was incorrectly 0)
+   - FIXED: AS = 0.5 TR points in calculateStrokeGame() (was incorrectly 0)
+   - FIXED: AS = 0.5 TR points in calculateMatchGamePerHole() (was incorrectly 0)
+   - CORRECTED: v1.04 had backwards logic (AS = 0 instead of 0.5)
+   - ALIGNED: Now matches Game and TR points Definition.md v2.00
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
