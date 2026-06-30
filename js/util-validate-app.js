@@ -1,19 +1,18 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: showValidateInfoGuide() - Full-page information overlay for VALIDATE tab
-   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
-   - ADDED: Warnings and important notes for validating records
-   - EXPOSED: showValidateInfoGuide() globally for HTML onclick binding
-   - PRESERVED: All existing functionality from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: applyStagedPhotoToRecord() - Writes staged photo to Firestore
+   - CHANGED: applyFixToRecord() now also writes staged photo after fix
+   - CHANGED: Clears staged photo after successful write
+   - PRESERVED: All existing functionality from v1.01
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.01";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.01");
+window.UTIL_VALIDATE_APP_VERSION = "1.02";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.02");
 
 // ============================================================
 // STATE VARIABLES
@@ -330,6 +329,52 @@ function validateFixRecord() {
 }
 
 // ============================================================
+// VALIDATE TAB: APPLY STAGED PHOTO TO RECORD
+// ============================================================
+
+function applyStagedPhotoToRecord(recordId, collection, db) {
+    // Check if there's a staged photo
+    if (!window._stagedPhoto || !window._stagedPhoto.fullPath || !window._stagedPhoto.downloadUrl) {
+        appLog('No staged photo to apply', 'info');
+        return Promise.resolve();
+    }
+    
+    // Verify the staged photo is for this record
+    if (window._stagedPhoto.recordId !== recordId || window._stagedPhoto.collection !== collection) {
+        appLog('Staged photo is for a different record: ' + window._stagedPhoto.recordId + ' (expected: ' + recordId + ')', 'warning');
+        return Promise.resolve();
+    }
+    
+    appLog('📸 Applying staged photo to record: ' + recordId, 'info');
+    
+    var photoUpdate = {
+        'celebration.imageRef': window._stagedPhoto.fullPath,
+        'celebration.imageUrl': window._stagedPhoto.downloadUrl,
+        'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    return db.collection(collection).doc(recordId).update(photoUpdate)
+        .then(function() {
+            appLog('✅ Photo applied to record: ' + recordId, 'success');
+            
+            // Clear the staged photo after successful write
+            if (typeof UtilValidateUI !== 'undefined' && typeof UtilValidateUI.clearStagedPhoto === 'function') {
+                UtilValidateUI.clearStagedPhoto();
+            }
+            window._stagedPhoto = {
+                fullPath: null,
+                downloadUrl: null,
+                recordId: null,
+                collection: null
+            };
+        })
+        .catch(function(err) {
+            appLog('❌ Failed to apply photo: ' + err.message, 'error');
+            throw err;
+        });
+}
+
+// ============================================================
 // VALIDATE TAB: APPLY FIX TO RECORD
 // ============================================================
 
@@ -376,6 +421,7 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
                 progressDiv.innerHTML += '<div class="step info">Fields: ' + fixResult.fieldsUpdated.join(', ') + '</div>';
             }
             
+            // Apply the fix payload
             return db.collection(collection).doc(recordId).update(fixResult.updatePayload);
         })
         .then(function() {
@@ -383,6 +429,17 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
                 progressDiv.innerHTML += '<div class="step done">✅ Fix applied successfully!</div>';
             }
             appLog('✅ Record fixed: ' + recordId, 'success');
+            
+            // Now apply the staged photo if there is one
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step info">📸 Applying staged photo...</div>';
+            }
+            return applyStagedPhotoToRecord(recordId, collection, db);
+        })
+        .then(function() {
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step done">✅ Photo applied successfully!</div>';
+            }
             
             setTimeout(function() {
                 loadAndValidate();
@@ -607,20 +664,20 @@ window.clearValidateResults = clearValidateResults;
 window.validateBackupOnly = validateBackupOnly;
 window.validateFixRecord = validateFixRecord;
 window.applyFixToRecord = applyFixToRecord;
+window.applyStagedPhotoToRecord = applyStagedPhotoToRecord;
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.01 loaded');
+console.log('[UTIL-VALIDATE-APP] v1.02 loaded');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: showValidateInfoGuide() - Full-page information overlay for VALIDATE tab
-   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
-   - ADDED: Warnings and important notes for validating records
-   - EXPOSED: showValidateInfoGuide() globally for HTML onclick binding
-   - PRESERVED: All existing functionality from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: applyStagedPhotoToRecord() - Writes staged photo to Firestore
+   - CHANGED: applyFixToRecord() now also writes staged photo after fix
+   - CHANGED: Clears staged photo after successful write
+   - PRESERVED: All existing functionality from v1.01
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
