@@ -1,14 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.36
-KEY CHANGES from v8.35:
-   - RE-ADDED: game-match.js, game-team.js, game-stroke.js to modulesToLoad
-     - These are DISPLAY HELPERS ONLY - they read stored data and format it
-     - NO CALCULATIONS are performed in view-history
-   - GameMatch.getMatchBubbleClass() is used to determine bubble colors for match results
-   - GameTeam and GameStroke provide display formatting helpers
-   - FIXED: "GameMatch is not defined" error when viewing scorecard
-   - PRESERVED: All existing functionality from v8.35
+VERSION: 8.37
+KEY CHANGES from v8.36:
+   - ADDED: Record name (archiveId) displayed below buttons in game card
+   - Styled as faint grey text, centralized, similar to version tag styling
+   - Helps identify which record is being viewed
+   - PRESERVED: All existing functionality from v8.36
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -251,6 +248,19 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
+        /* v8.37: Record name styling - faint grey, centralized */
+        .game-record-name {
+            font-size: 0.55rem;
+            color: #444444;
+            text-align: center;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #1a1a1a;
+            font-family: monospace;
+            letter-spacing: 0.3px;
+            opacity: 0.6;
+        }
+        
         /* v8.23: Grey icon screen for loading (replaces green spinner) */
         .grey-icon-container {
             display: flex;
@@ -376,7 +386,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.36</div>
+<div class="version-tag">v8.37</div>
 
 <script>
 // ============================================================
@@ -389,10 +399,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.36: Re-added display helper modules
+// VERSION CACHE-BUSTING - v8.37: Added record name display
 // ============================================================
-var APP_VERSION = "8.36";
-var CACHE_KEY = "view_history_version_v836";
+var APP_VERSION = "8.37";
+var CACHE_KEY = "view_history_version_v837";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -410,8 +420,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.36";
-console.log("[VIEW-HISTORY] Initializing v8.36 - Re-added display helper modules");
+window.VIEW_HISTORY_VERSION = "8.37";
+console.log("[VIEW-HISTORY] Initializing v8.37 - Added record name display");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1169,6 +1179,9 @@ function renderGameList(games) {
         // v8.34: Celebration image container with unique ID
         var celebrationContainerId = 'celebration_' + i;
         
+        // v8.37: Get archiveId for record name display
+        var archiveId = game.archiveId || game.originalGameId || '';
+        
         html += `
             <div class="game-card">
                 <div class="game-header">
@@ -1210,6 +1223,8 @@ function renderGameList(games) {
                     <button class="game-btn btn-scorecard game-btn-disabled" data-game-index="${i}">👁️ VIEW SCORECARD</button>
                     <button class="game-btn btn-handicap game-btn-disabled" data-game-index="${i}">🏌️ HANDICAP</button>
                 </div>
+                <!-- v8.37: Record name displayed below buttons -->
+                <div class="game-record-name">${escapeHtml(archiveId)}</div>
             </div>
         `;
     }
@@ -1364,15 +1379,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.36
-KEY CHANGES from v8.35:
-   - RE-ADDED: game-match.js, game-team.js, game-stroke.js to modulesToLoad
-     - These are DISPLAY HELPERS ONLY - they read stored data and format it
-     - NO CALCULATIONS are performed in view-history
-   - GameMatch.getMatchBubbleClass() is used to determine bubble colors for match results
-   - GameTeam and GameStroke provide display formatting helpers
-   - FIXED: "GameMatch is not defined" error when viewing scorecard
-   - PRESERVED: All existing functionality from v8.35
+VERSION: 8.37
+KEY CHANGES from v8.36:
+   - ADDED: Record name (archiveId) displayed below buttons in game card
+   - Styled as faint grey text, centralized, similar to version tag styling
+   - Helps identify which record is being viewed
+   - PRESERVED: All existing functionality from v8.36
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
