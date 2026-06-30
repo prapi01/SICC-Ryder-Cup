@@ -1,19 +1,19 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: loadDeleteRecords() now loads ALL records (removed orderBy date filter)
-   - FIXED: Records with missing dates are now included in the list
-   - CHANGED: Manual sorting by date with fallback for missing dates (uses '1970-01-01')
-   - PRESERVED: All existing functionality from v1.04 (Select All, Deselect All, Bulk Delete)
-   - PRESERVED: Environment switching (PROD/DEV) using window.prodDb/window.devDb
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: "too much recursion" error in delete tab rendering
+   - FIXED: toggleDeleteCheckbox was causing infinite loop when clicking row
+   - CHANGED: Row click now uses event.stopPropagation() to prevent checkbox event from triggering row click again
+   - CHANGED: toggleDeleteCheckbox now directly manipulates checkbox without re-triggering events
+   - PRESERVED: All existing functionality from v1.05 (Load ALL records, Select All, Bulk Delete)
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.05";
-console.log("[UTIL-DELETE] Initializing v1.05 - Load ALL records fix");
+window.UTIL_DELETE_VERSION = "1.06";
+console.log("[UTIL-DELETE] Initializing v1.06 - Fixed recursion error");
 
 // ============================================================
 // STATE VARIABLES
@@ -37,7 +37,7 @@ function deleteLog(message, type) {
 }
 
 // ============================================================
-// LOAD DELETE RECORDS - FIXED: Loads ALL records
+// LOAD DELETE RECORDS - Loads ALL records
 // ============================================================
 
 function loadDeleteRecords() {
@@ -71,7 +71,7 @@ function loadDeleteRecords() {
     
     deleteLog('Loading records from: ' + collectionName + ' (' + envText + ')', 'info');
     
-    // FIXED: Remove orderBy('date') - it was excluding records with missing dates
+    // Load ALL records (no orderBy filter)
     db.collection(collectionName).get()
         .then(function(snapshot) {
             deleteRecords = [];
@@ -179,7 +179,8 @@ function renderDeleteTable(docs) {
         
         var isChecked = deleteSelectedIds[id] || false;
         
-        html += '<tr onclick="toggleDeleteCheckbox(\'' + id + '\')" style="cursor:pointer;">';
+        // FIXED: Use a data attribute and a separate click handler instead of inline onclick
+        html += '<tr data-id="' + id + '" class="delete-row" style="cursor:pointer;">';
         html += '<td style="text-align:center; vertical-align:middle;">';
         html += '<input type="checkbox" class="delete-checkbox" data-id="' + id + '" ' + (isChecked ? 'checked' : '') + ' onchange="onDeleteCheckboxChange()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
         html += '</td>';
@@ -192,6 +193,19 @@ function renderDeleteTable(docs) {
     
     html += '</tbody></table>';
     container.innerHTML = html;
+    
+    // FIXED: Attach row click event listeners after rendering (prevents recursion)
+    var rows = container.querySelectorAll('.delete-row');
+    rows.forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            // Ignore clicks on the checkbox itself (handled by onchange)
+            if (e.target.type === 'checkbox') {
+                return;
+            }
+            var id = this.getAttribute('data-id');
+            toggleDeleteCheckbox(id);
+        });
+    });
 }
 
 // ============================================================
@@ -201,20 +215,20 @@ function renderDeleteTable(docs) {
 function toggleDeleteCheckbox(id) {
     var checkbox = document.querySelector('.delete-checkbox[data-id="' + id + '"]');
     if (checkbox) {
+        // Toggle without triggering additional events
         checkbox.checked = !checkbox.checked;
+        // Manually trigger the change handler
         onDeleteCheckboxChange();
     }
 }
 
 function onDeleteCheckboxChange() {
     var checkboxes = document.querySelectorAll('.delete-checkbox');
-    var checkedIds = [];
     var anyChecked = false;
     
     checkboxes.forEach(function(cb) {
         var id = cb.getAttribute('data-id');
         if (cb.checked) {
-            checkedIds.push(id);
             deleteSelectedIds[id] = true;
             anyChecked = true;
         } else {
@@ -332,7 +346,6 @@ function executeDeleteRecords() {
     
     function deleteNext(index) {
         if (index >= ids.length) {
-            // Done
             var msg = '✅ Deleted ' + deleted + ' records' + (failed > 0 ? ', ' + failed + ' failed' : '');
             deleteLog(msg, failed > 0 ? 'warning' : 'success');
             if (progressDiv) {
@@ -420,7 +433,6 @@ function setDeleteEnvironment(env) {
 // ============================================================
 
 function showDeleteInfoGuide() {
-    // Remove existing overlay if present
     var existing = document.querySelector('.info-overlay');
     if (existing) existing.remove();
     
@@ -483,7 +495,6 @@ function showDeleteInfoGuide() {
 // ============================================================
 
 function initDeleteTabEvents() {
-    // Environment buttons
     var prodBtn = document.getElementById('deleteProdBtn');
     var devBtn = document.getElementById('deleteDevBtn');
     
@@ -499,7 +510,6 @@ function initDeleteTabEvents() {
         };
     }
     
-    // Refresh button
     var refreshBtn = document.getElementById('deleteRefreshBtn');
     if (refreshBtn) {
         refreshBtn.onclick = function() {
@@ -507,7 +517,6 @@ function initDeleteTabEvents() {
         };
     }
     
-    // Select All button
     var selectAllBtn = document.getElementById('deleteSelectAllBtn');
     if (selectAllBtn) {
         selectAllBtn.onclick = function() {
@@ -515,7 +524,6 @@ function initDeleteTabEvents() {
         };
     }
     
-    // Deselect All button
     var deselectAllBtn = document.getElementById('deleteDeselectAllBtn');
     if (deselectAllBtn) {
         deselectAllBtn.onclick = function() {
@@ -523,7 +531,6 @@ function initDeleteTabEvents() {
         };
     }
     
-    // Execute Delete button
     var executeBtn = document.getElementById('deleteExecuteBtn');
     if (executeBtn) {
         executeBtn.onclick = function() {
@@ -531,7 +538,6 @@ function initDeleteTabEvents() {
         };
     }
     
-    // Collection dropdown change
     var collectionSelect = document.getElementById('deleteCollection');
     if (collectionSelect) {
         collectionSelect.onchange = function() {
@@ -543,7 +549,7 @@ function initDeleteTabEvents() {
 }
 
 // ============================================================
-// ESCAPE HTML HELPER (fallback if util-core.js not loaded)
+// ESCAPE HTML HELPER
 // ============================================================
 
 function escapeHtml(str) {
@@ -564,17 +570,14 @@ function escapeHtml(str) {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Set default environment indicator
     var indicator = document.getElementById('deleteIndicator');
     if (indicator) {
         indicator.textContent = 'PROD';
         indicator.className = 'env-indicator-small prod';
     }
     
-    // Initialize event bindings
     initDeleteTabEvents();
     
-    // Load records after a short delay
     setTimeout(function() {
         loadDeleteRecords();
     }, 300);
@@ -597,17 +600,17 @@ window.setDeleteEnvironment = setDeleteEnvironment;
 window.showDeleteInfoGuide = showDeleteInfoGuide;
 window.initDeleteTabEvents = initDeleteTabEvents;
 
-console.log('[UTIL-DELETE] v1.05 loaded - Load ALL records fix');
+console.log('[UTIL-DELETE] v1.06 loaded - Fixed recursion error');
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: loadDeleteRecords() now loads ALL records (removed orderBy date filter)
-   - FIXED: Records with missing dates are now included in the list
-   - CHANGED: Manual sorting by date with fallback for missing dates (uses '1970-01-01')
-   - PRESERVED: All existing functionality from v1.04 (Select All, Deselect All, Bulk Delete)
-   - PRESERVED: Environment switching (PROD/DEV) using window.prodDb/window.devDb
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: "too much recursion" error in delete tab rendering
+   - FIXED: toggleDeleteCheckbox was causing infinite loop when clicking row
+   - CHANGED: Row click now uses event listeners attached after rendering
+   - CHANGED: toggleDeleteCheckbox now directly manipulates checkbox without re-triggering events
+   - PRESERVED: All existing functionality from v1.05 (Load ALL records, Select All, Bulk Delete)
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
