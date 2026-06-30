@@ -1,38 +1,72 @@
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: showCopyInfoGuide() function - full-page information overlay
-   - ADDED: Detailed COPY tab documentation with step-by-step instructions
-   - ADDED: Warnings and important notes for copying records
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
+   - CHANGED: Now uses window.log, window.logStep, window.escapeHtml from util-core.js
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
+   - PRESERVED: All existing functionality from v1.03
+DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
-/*
-============================================================
-SHARED STATE (defined in main HTML)
-============================================================
-- prodDb: PROD Firestore instance
-- devDb: DEV Firestore instance
-- copySourceDb: Firestore instance for Source (set by setCopySourceEnvironment)
-- copyDestDb: Firestore instance for Destination (set by setCopyDestEnvironment)
-- copySourceEnv: 'PROD' or 'DEV' for Source
-- copyDestEnv: 'PROD' or 'DEV' for Destination
-- currentGameData: Source record data
-- currentGameId: Source record ID
-- currentSourceCollection: Source collection name
-- currentDestCollection: Destination collection name
-- destRecords: Array of destination records
-============================================================
-*/
+// Version exposure
+window.UTIL_COPY_VERSION = "1.04";
+console.log("[UTIL-COPY] Initializing v1.04");
 
-// Copy-specific environment variables
+// ============================================================
+// FALLBACK HELPERS (if util-core.js not loaded)
+// ============================================================
+
+function copyLog(message, type) {
+    if (typeof window.log === 'function') {
+        window.log(message, type);
+    } else {
+        console.log('[COPY-UTIL] ' + message);
+    }
+}
+
+function copyLogStep(step, message, type) {
+    if (typeof window.logStep === 'function') {
+        window.logStep(step, message, type);
+    } else {
+        console.log('[COPY-UTIL] [Step ' + step + '] ' + message);
+    }
+}
+
+function copyEscapeHtml(str) {
+    if (typeof window.escapeHtml === 'function') {
+        return window.escapeHtml(str);
+    }
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// ============================================================
+// SHARED STATE
+// ============================================================
+// prodDb, devDb are from util-core.js
+// copySourceDb, copyDestDb, copySourceEnv, copyDestEnv: Copy-specific
+// currentGameData, currentGameId: Source record data
+// currentSourceCollection, currentDestCollection: Collection names
+// destRecords: Array of destination records
+// ============================================================
+
 var copySourceDb = null;
 var copyDestDb = null;
 var copySourceEnv = null;
 var copyDestEnv = null;
+var currentGameData = null;
+var currentGameId = null;
+var currentSourceCollection = null;
+var currentDestCollection = null;
+var destRecords = [];
 
 // ============================================================
 // COPY TAB: ENVIRONMENT FUNCTIONS
@@ -40,36 +74,30 @@ var copyDestEnv = null;
 
 function setCopySourceEnvironment(env) {
     if (env === 'PROD') {
-        if (!prodDb) {
-            initFirebase();
-            if (!prodDb) {
-                log("Cannot connect to PRODUCTION for Source", "error");
-                return;
-            }
+        if (!window.prodDb) {
+            copyLog("Cannot connect to PRODUCTION for Source", "error");
+            return;
         }
-        copySourceDb = prodDb;
+        copySourceDb = window.prodDb;
         copySourceEnv = 'PROD';
         updateCopySourceUI('PROD');
-        log('Source environment set to: PRODUCTION', 'info');
+        copyLog('Source environment set to: PRODUCTION', 'info');
     } else if (env === 'DEV') {
-        if (!devDb) {
-            initFirebase();
-            if (!devDb) {
-                log("Cannot connect to DEVELOPMENT for Source", "error");
-                return;
-            }
+        if (!window.devDb) {
+            copyLog("Cannot connect to DEVELOPMENT for Source", "error");
+            return;
         }
-        copySourceDb = devDb;
+        copySourceDb = window.devDb;
         copySourceEnv = 'DEV';
         updateCopySourceUI('DEV');
-        log('Source environment set to: DEVELOPMENT', 'info');
+        copyLog('Source environment set to: DEVELOPMENT', 'info');
     } else {
         copySourceDb = null;
         copySourceEnv = null;
         updateCopySourceUI(null);
     }
     
-    // Load source records if both source and dest are set
+    // Load source records if source is set
     if (copySourceDb) {
         loadSourceRecords();
     }
@@ -77,29 +105,23 @@ function setCopySourceEnvironment(env) {
 
 function setCopyDestEnvironment(env) {
     if (env === 'PROD') {
-        if (!prodDb) {
-            initFirebase();
-            if (!prodDb) {
-                log("Cannot connect to PRODUCTION for Destination", "error");
-                return;
-            }
+        if (!window.prodDb) {
+            copyLog("Cannot connect to PRODUCTION for Destination", "error");
+            return;
         }
-        copyDestDb = prodDb;
+        copyDestDb = window.prodDb;
         copyDestEnv = 'PROD';
         updateCopyDestUI('PROD');
-        log('Destination environment set to: PRODUCTION', 'info');
+        copyLog('Destination environment set to: PRODUCTION', 'info');
     } else if (env === 'DEV') {
-        if (!devDb) {
-            initFirebase();
-            if (!devDb) {
-                log("Cannot connect to DEVELOPMENT for Destination", "error");
-                return;
-            }
+        if (!window.devDb) {
+            copyLog("Cannot connect to DEVELOPMENT for Destination", "error");
+            return;
         }
-        copyDestDb = devDb;
+        copyDestDb = window.devDb;
         copyDestEnv = 'DEV';
         updateCopyDestUI('DEV');
-        log('Destination environment set to: DEVELOPMENT', 'info');
+        copyLog('Destination environment set to: DEVELOPMENT', 'info');
     } else {
         copyDestDb = null;
         copyDestEnv = null;
@@ -117,20 +139,26 @@ function updateCopySourceUI(env) {
     var devBtn = document.getElementById('copySourceDevBtn');
     var indicator = document.getElementById('copySourceIndicator');
     
-    prodBtn.classList.remove('active-prod');
-    devBtn.classList.remove('active-dev');
+    if (prodBtn) prodBtn.classList.remove('active-prod');
+    if (devBtn) devBtn.classList.remove('active-dev');
     
     if (env === 'PROD') {
-        prodBtn.classList.add('active-prod');
-        indicator.className = 'env-indicator-small prod';
-        indicator.textContent = '🔴 PRODUCTION';
+        if (prodBtn) prodBtn.classList.add('active-prod');
+        if (indicator) {
+            indicator.className = 'env-indicator-small prod';
+            indicator.textContent = '🔴 PRODUCTION';
+        }
     } else if (env === 'DEV') {
-        devBtn.classList.add('active-dev');
-        indicator.className = 'env-indicator-small dev';
-        indicator.textContent = '🟡 DEVELOPMENT';
+        if (devBtn) devBtn.classList.add('active-dev');
+        if (indicator) {
+            indicator.className = 'env-indicator-small dev';
+            indicator.textContent = '🟡 DEVELOPMENT';
+        }
     } else {
-        indicator.className = 'env-indicator-small none';
-        indicator.textContent = 'Not connected';
+        if (indicator) {
+            indicator.className = 'env-indicator-small none';
+            indicator.textContent = 'Not connected';
+        }
     }
 }
 
@@ -139,20 +167,26 @@ function updateCopyDestUI(env) {
     var devBtn = document.getElementById('copyDestDevBtn');
     var indicator = document.getElementById('copyDestIndicator');
     
-    prodBtn.classList.remove('active-prod');
-    devBtn.classList.remove('active-dev');
+    if (prodBtn) prodBtn.classList.remove('active-prod');
+    if (devBtn) devBtn.classList.remove('active-dev');
     
     if (env === 'PROD') {
-        prodBtn.classList.add('active-prod');
-        indicator.className = 'env-indicator-small prod';
-        indicator.textContent = '🔴 PRODUCTION';
+        if (prodBtn) prodBtn.classList.add('active-prod');
+        if (indicator) {
+            indicator.className = 'env-indicator-small prod';
+            indicator.textContent = '🔴 PRODUCTION';
+        }
     } else if (env === 'DEV') {
-        devBtn.classList.add('active-dev');
-        indicator.className = 'env-indicator-small dev';
-        indicator.textContent = '🟡 DEVELOPMENT';
+        if (devBtn) devBtn.classList.add('active-dev');
+        if (indicator) {
+            indicator.className = 'env-indicator-small dev';
+            indicator.textContent = '🟡 DEVELOPMENT';
+        }
     } else {
-        indicator.className = 'env-indicator-small none';
-        indicator.textContent = 'Not connected';
+        if (indicator) {
+            indicator.className = 'env-indicator-small none';
+            indicator.textContent = 'Not connected';
+        }
     }
 }
 
@@ -162,7 +196,7 @@ function updateCopyDestUI(env) {
 
 function loadSourceRecords() {
     if (!copySourceDb) {
-        log("Select Source environment first", "error");
+        copyLog("Select Source environment first", "error");
         return;
     }
     
@@ -174,7 +208,7 @@ function loadSourceRecords() {
     select.disabled = true;
     
     var envLabel = copySourceEnv || 'Unknown';
-    logStep(2, 'Loading from: ' + sourceCollection + ' (' + envLabel + ')', 'info');
+    copyLogStep(2, 'Loading from: ' + sourceCollection + ' (' + envLabel + ')', 'info');
     
     copySourceDb.collection(sourceCollection)
         .orderBy('date', 'desc')
@@ -186,7 +220,7 @@ function loadSourceRecords() {
             
             if (snapshot.empty) {
                 select.innerHTML = '<option value="">-- No records found in ' + sourceCollection + ' --</option>';
-                logStep(2, 'No records found in ' + sourceCollection, 'info');
+                copyLogStep(2, 'No records found in ' + sourceCollection, 'info');
                 return;
             }
             
@@ -202,10 +236,10 @@ function loadSourceRecords() {
                 select.appendChild(option);
             });
             
-            logStep(2, 'Loaded ' + snapshot.size + ' records from ' + sourceCollection + ' (' + envLabel + ')', 'success');
+            copyLogStep(2, 'Loaded ' + snapshot.size + ' records from ' + sourceCollection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
-            logStep(2, 'Error loading records: ' + err.message, 'error');
+            copyLogStep(2, 'Error loading records: ' + err.message, 'error');
             console.error(err);
             select.innerHTML = '<option value="">-- Error loading records --</option>';
             select.disabled = false;
@@ -218,7 +252,7 @@ function loadSourceRecords() {
 
 function loadDestinationRecords() {
     if (!copyDestDb) {
-        log("Select Destination environment first", "error");
+        copyLog("Select Destination environment first", "error");
         return;
     }
     
@@ -233,7 +267,7 @@ function loadDestinationRecords() {
     datalist.innerHTML = '';
     
     var envLabel = copyDestEnv || 'Unknown';
-    logStep(2, 'Loading destination records from: ' + destCollection + ' (' + envLabel + ')', 'info');
+    copyLogStep(2, 'Loading destination records from: ' + destCollection + ' (' + envLabel + ')', 'info');
     
     copyDestDb.collection(destCollection)
         .orderBy('date', 'desc')
@@ -246,7 +280,7 @@ function loadDestinationRecords() {
             
             if (snapshot.empty) {
                 select.innerHTML = '<option value="">-- No records found in ' + destCollection + ' --</option>';
-                logStep(2, 'No records found in ' + destCollection, 'info');
+                copyLogStep(2, 'No records found in ' + destCollection, 'info');
                 return;
             }
             
@@ -268,10 +302,10 @@ function loadDestinationRecords() {
                 destRecords.push({ id: doc.id, date: displayDate, course: courseName });
             });
             
-            logStep(2, 'Loaded ' + snapshot.size + ' destination records from ' + destCollection + ' (' + envLabel + ')', 'success');
+            copyLogStep(2, 'Loaded ' + snapshot.size + ' destination records from ' + destCollection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
-            logStep(2, 'Error loading destination records: ' + err.message, 'error');
+            copyLogStep(2, 'Error loading destination records: ' + err.message, 'error');
             console.error(err);
             select.innerHTML = '<option value="">-- Error loading records --</option>';
             select.disabled = false;
@@ -284,7 +318,7 @@ function loadDestinationRecords() {
 
 function loadGameData(gameId) {
     if (!copySourceDb || !gameId) {
-        log("Select a Source environment and record first", "error");
+        copyLog("Select a Source environment and record first", "error");
         return;
     }
     
@@ -292,7 +326,7 @@ function loadGameData(gameId) {
     currentSourceCollection = sourceCollection;
     
     var envLabel = copySourceEnv || 'Unknown';
-    logStep(4, 'Loading record: ' + gameId + ' from ' + sourceCollection + ' (' + envLabel + ')', 'info');
+    copyLogStep(4, 'Loading record: ' + gameId + ' from ' + sourceCollection + ' (' + envLabel + ')', 'info');
     
     copySourceDb.collection(sourceCollection).doc(gameId).get()
         .then(function(doc) {
@@ -300,18 +334,18 @@ function loadGameData(gameId) {
                 currentGameData = doc.data();
                 currentGameId = gameId;
                 displayGameInfo(currentGameData);
-                logStep(4, 'Record loaded: ' + gameId, 'success');
+                copyLogStep(4, 'Record loaded: ' + gameId, 'success');
                 
                 var destInput = document.getElementById('destDocId');
                 if (!destInput.value || destInput.value === '') {
                     destInput.value = gameId + '_COPY';
                 }
             } else {
-                logStep(4, 'Record not found: ' + gameId, 'error');
+                copyLogStep(4, 'Record not found: ' + gameId, 'error');
             }
         })
         .catch(function(err) {
-            logStep(4, 'Error loading record: ' + err.message, 'error');
+            copyLogStep(4, 'Error loading record: ' + err.message, 'error');
         });
 }
 
@@ -343,15 +377,15 @@ function displayGameInfo(data) {
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">ID:</span>
-                <span class="game-info-value gold">${escapeHtml(currentGameId)}</span>
+                <span class="game-info-value gold">${copyEscapeHtml(currentGameId)}</span>
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Date:</span>
-                <span class="game-info-value">${escapeHtml(data.date || 'Unknown')}</span>
+                <span class="game-info-value">${copyEscapeHtml(data.date || 'Unknown')}</span>
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Course:</span>
-                <span class="game-info-value">${escapeHtml(courseName)}</span>
+                <span class="game-info-value">${copyEscapeHtml(courseName)}</span>
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Players:</span>
@@ -359,7 +393,7 @@ function displayGameInfo(data) {
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Status:</span>
-                <span class="game-info-value">${escapeHtml(status)}</span>
+                <span class="game-info-value">${copyEscapeHtml(status)}</span>
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Game Started:</span>
@@ -371,7 +405,7 @@ function displayGameInfo(data) {
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Format:</span>
-                <span class="game-info-value">${escapeHtml(teamGameFormat)}</span>
+                <span class="game-info-value">${copyEscapeHtml(teamGameFormat)}</span>
             </div>
         </div>
     `;
@@ -383,16 +417,22 @@ function displayGameInfo(data) {
 // ============================================================
 
 function getDateOverride() {
-    var option = document.querySelector('input[name="dateOption"]:checked').value;
+    var option = document.querySelector('input[name="dateOption"]:checked');
+    if (!option) {
+        copyLog("No date option selected", "error");
+        return null;
+    }
     
-    if (option === 'today') {
+    var value = option.value;
+    
+    if (value === 'today') {
         var today = new Date().toISOString().split('T')[0];
         return { type: 'custom', value: today };
     }
-    if (option === 'custom') {
+    if (value === 'custom') {
         var customDate = document.getElementById('customDate').value;
         if (!customDate) {
-            log("Please select a custom date", "error");
+            copyLog("Please select a custom date", "error");
             return null;
         }
         return { type: 'custom', value: customDate };
@@ -406,23 +446,23 @@ function getDateOverride() {
 
 function copyRecord() {
     if (!copySourceDb) {
-        log("Select Source environment first", "error");
+        copyLog("Select Source environment first", "error");
         return;
     }
     
     if (!copyDestDb) {
-        log("Select Destination environment first", "error");
+        copyLog("Select Destination environment first", "error");
         return;
     }
     
     if (!currentGameData || !currentGameId) {
-        log("Load a source record first", "error");
+        copyLog("Load a source record first", "error");
         return;
     }
     
     var destDocId = document.getElementById('destDocId').value.trim();
     if (!destDocId) {
-        log("Enter or select a destination document name", "error");
+        copyLog("Enter or select a destination document name", "error");
         return;
     }
     
@@ -433,16 +473,16 @@ function copyRecord() {
     var sourceEnv = copySourceEnv || 'Unknown';
     var destEnv = copyDestEnv || 'Unknown';
     
-    logStep(7, '=== START COPY ===', 'info');
-    logStep(7, 'Source: ' + sourceCollection + '/' + currentGameId + ' (' + sourceEnv + ')', 'info');
-    logStep(7, 'Destination: ' + destCollection + '/' + destDocId + ' (' + destEnv + ')', 'info');
-    logStep(7, 'Copying from ' + sourceEnv + ' to ' + destEnv, 'info');
+    copyLogStep(7, '=== START COPY ===', 'info');
+    copyLogStep(7, 'Source: ' + sourceCollection + '/' + currentGameId + ' (' + sourceEnv + ')', 'info');
+    copyLogStep(7, 'Destination: ' + destCollection + '/' + destDocId + ' (' + destEnv + ')', 'info');
+    copyLogStep(7, 'Copying from ' + sourceEnv + ' to ' + destEnv, 'info');
     
     // Check if destination document already exists
     copyDestDb.collection(destCollection).doc(destDocId).get()
         .then(function(doc) {
             if (doc.exists) {
-                logStep(7, '⚠️ Document already exists in destination', 'info');
+                copyLogStep(7, '⚠️ Document already exists in destination', 'info');
                 
                 return new Promise(function(resolve, reject) {
                     if (confirm('⚠️ Document "' + destDocId + '" already exists in ' + destCollection + ' (' + destEnv + ').\n\nREPLACE it with the source record?\n\nThis action CANNOT be undone.')) {
@@ -459,54 +499,54 @@ function copyRecord() {
             
             var dateOverride = getDateOverride();
             if (dateOverride === null) {
-                logStep(7, 'Date override cancelled', 'error');
+                copyLogStep(7, 'Date override cancelled', 'error');
                 return;
             }
             
             if (dateOverride.type === 'custom') {
                 var newDate = dateOverride.value;
                 copyData.date = newDate;
-                logStep(7, 'Date changed to: ' + newDate, 'info');
+                copyLogStep(7, 'Date changed to: ' + newDate, 'info');
             } else {
-                logStep(7, 'Date kept: ' + copyData.date, 'info');
+                copyLogStep(7, 'Date kept: ' + copyData.date, 'info');
             }
             
             var playerCount = copyData.players ? copyData.players.length : 0;
             var courseName = copyData.course ? copyData.course.name : 'Unknown';
-            logStep(7, 'Copying: ' + playerCount + ' players, Course: ' + courseName, 'info');
-            logStep(7, 'gameStarted: ' + (copyData.gameStarted ? 'true' : 'false'), 'info');
-            logStep(7, 'status: ' + copyData.status, 'info');
-            logStep(7, 'All fields preserved exactly as-is (except date if changed)', 'info');
+            copyLogStep(7, 'Copying: ' + playerCount + ' players, Course: ' + courseName, 'info');
+            copyLogStep(7, 'gameStarted: ' + (copyData.gameStarted ? 'true' : 'false'), 'info');
+            copyLogStep(7, 'status: ' + copyData.status, 'info');
+            copyLogStep(7, 'All fields preserved exactly as-is (except date if changed)', 'info');
             
-            logStep(7, 'Writing to ' + destCollection + '/' + destDocId + ' (' + destEnv + ')...', 'info');
+            copyLogStep(7, 'Writing to ' + destCollection + '/' + destDocId + ' (' + destEnv + ')...', 'info');
             
             return copyDestDb.collection(destCollection).doc(destDocId).set(copyData);
         })
         .then(function() {
-            logStep(7, '✅ COPY SUCCESSFUL', 'success');
-            logStep(7, 'Record copied from ' + sourceEnv + ' to ' + destEnv + ': ' + destCollection + '/' + destDocId, 'success');
+            copyLogStep(7, '✅ COPY SUCCESSFUL', 'success');
+            copyLogStep(7, 'Record copied from ' + sourceEnv + ' to ' + destEnv + ': ' + destCollection + '/' + destDocId, 'success');
             
             return copyDestDb.collection(destCollection).doc(destDocId).get();
         })
         .then(function(doc) {
             if (doc.exists) {
                 var verifyData = doc.data();
-                logStep(7, '✅ Verification: Document exists in destination (' + destEnv + ')', 'success');
-                logStep(7, '   Date: ' + verifyData.date, 'info');
-                logStep(7, '   gameStarted: ' + (verifyData.gameStarted ? 'true' : 'false'), 'info');
-                logStep(7, '   Status: ' + verifyData.status, 'info');
+                copyLogStep(7, '✅ Verification: Document exists in destination (' + destEnv + ')', 'success');
+                copyLogStep(7, '   Date: ' + verifyData.date, 'info');
+                copyLogStep(7, '   gameStarted: ' + (verifyData.gameStarted ? 'true' : 'false'), 'info');
+                copyLogStep(7, '   Status: ' + verifyData.status, 'info');
             } else {
-                logStep(7, '⚠️ Verification: Document not found after write', 'error');
+                copyLogStep(7, '⚠️ Verification: Document not found after write', 'error');
             }
-            logStep(7, '=== COPY COMPLETE ===', 'success');
+            copyLogStep(7, '=== COPY COMPLETE ===', 'success');
             
             loadDestinationRecords();
         })
         .catch(function(err) {
             if (err.message === 'User cancelled replacement') {
-                logStep(7, 'Copy cancelled by user', 'info');
+                copyLogStep(7, 'Copy cancelled by user', 'info');
             } else {
-                logStep(7, '❌ COPY FAILED: ' + err.message, 'error');
+                copyLogStep(7, '❌ COPY FAILED: ' + err.message, 'error');
                 console.error(err);
             }
         });
@@ -518,37 +558,37 @@ function copyRecord() {
 
 function checkDestination() {
     if (!copyDestDb) {
-        log("Select Destination environment first", "error");
+        copyLog("Select Destination environment first", "error");
         return;
     }
     
     var destDocId = document.getElementById('destDocId').value.trim();
     if (!destDocId) {
-        log("Enter a destination document name", "error");
+        copyLog("Enter a destination document name", "error");
         return;
     }
     
     var destCollection = document.getElementById('destCollection').value;
     var destEnv = copyDestEnv || 'Unknown';
     
-    logStep(7, 'Checking: ' + destCollection + '/' + destDocId + ' (' + destEnv + ')', 'info');
+    copyLogStep(7, 'Checking: ' + destCollection + '/' + destDocId + ' (' + destEnv + ')', 'info');
     
     copyDestDb.collection(destCollection).doc(destDocId).get()
         .then(function(doc) {
             if (doc.exists) {
                 var data = doc.data();
-                logStep(7, '✅ EXISTS in ' + destCollection + ' (' + destEnv + ')', 'success');
-                logStep(7, '   Date: ' + data.date, 'info');
-                logStep(7, '   Course: ' + (data.course ? data.course.name : 'Unknown'), 'info');
-                logStep(7, '   Status: ' + data.status, 'info');
-                logStep(7, '   Players: ' + (data.players ? data.players.length : 0), 'info');
-                logStep(7, '   gameStarted: ' + (data.gameStarted ? 'true' : 'false'), 'info');
+                copyLogStep(7, '✅ EXISTS in ' + destCollection + ' (' + destEnv + ')', 'success');
+                copyLogStep(7, '   Date: ' + data.date, 'info');
+                copyLogStep(7, '   Course: ' + (data.course ? data.course.name : 'Unknown'), 'info');
+                copyLogStep(7, '   Status: ' + data.status, 'info');
+                copyLogStep(7, '   Players: ' + (data.players ? data.players.length : 0), 'info');
+                copyLogStep(7, '   gameStarted: ' + (data.gameStarted ? 'true' : 'false'), 'info');
             } else {
-                logStep(7, '❌ NOT FOUND in ' + destCollection + ' (' + destEnv + ')', 'error');
+                copyLogStep(7, '❌ NOT FOUND in ' + destCollection + ' (' + destEnv + ')', 'error');
             }
         })
         .catch(function(err) {
-            logStep(7, 'Error checking: ' + err.message, 'error');
+            copyLogStep(7, 'Error checking: ' + err.message, 'error');
         });
 }
 
@@ -558,13 +598,13 @@ function checkDestination() {
 
 function deleteDestination() {
     if (!copyDestDb) {
-        log("Select Destination environment first", "error");
+        copyLog("Select Destination environment first", "error");
         return;
     }
     
     var destDocId = document.getElementById('destDocId').value.trim();
     if (!destDocId) {
-        log("Enter a destination document name", "error");
+        copyLog("Enter a destination document name", "error");
         return;
     }
     
@@ -572,19 +612,19 @@ function deleteDestination() {
     var destEnv = copyDestEnv || 'Unknown';
     
     if (!confirm('Delete ' + destCollection + '/' + destDocId + ' from ' + destEnv + '?\n\nThis cannot be undone.')) {
-        logStep(7, 'Delete cancelled', 'info');
+        copyLogStep(7, 'Delete cancelled', 'info');
         return;
     }
     
-    logStep(7, 'Deleting: ' + destCollection + '/' + destDocId + ' (' + destEnv + ')', 'info');
+    copyLogStep(7, 'Deleting: ' + destCollection + '/' + destDocId + ' (' + destEnv + ')', 'info');
     
     copyDestDb.collection(destCollection).doc(destDocId).delete()
         .then(function() {
-            logStep(7, '✅ DELETED: ' + destDocId + ' from ' + destEnv, 'success');
+            copyLogStep(7, '✅ DELETED: ' + destDocId + ' from ' + destEnv, 'success');
             loadDestinationRecords();
         })
         .catch(function(err) {
-            logStep(7, '❌ Delete failed: ' + err.message, 'error');
+            copyLogStep(7, '❌ Delete failed: ' + err.message, 'error');
         });
 }
 
@@ -596,7 +636,7 @@ function onDestExistingSelect() {
     var selectedId = document.getElementById('destExistingSelect').value;
     if (selectedId) {
         document.getElementById('destDocId').value = selectedId;
-        log('Selected existing destination: ' + selectedId, 'info');
+        copyLog('Selected existing destination: ' + selectedId, 'info');
     }
 }
 
@@ -700,17 +740,18 @@ window.showCopyInfoGuide = showCopyInfoGuide;
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COPY_UTIL_VERSION = "1.03";
-console.log("[COPY-UTIL] v1.03 loaded");
+window.COPY_UTIL_VERSION = "1.04";
+console.log("[COPY-UTIL] v1.04 loaded");
 
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: showCopyInfoGuide() function - full-page information overlay
-   - ADDED: Detailed COPY tab documentation with step-by-step instructions
-   - ADDED: Warnings and important notes for copying records
-   - PRESERVED: All existing functionality unchanged
-DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
+   - CHANGED: Now uses window.log, window.logStep, window.escapeHtml from util-core.js
+   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
+   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
+   - PRESERVED: All existing functionality from v1.03
+DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
