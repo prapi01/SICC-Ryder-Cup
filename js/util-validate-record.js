@@ -1,22 +1,22 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Field name validation now uses documented schema (game1, game2, game3)
-   - FIXED: validateAllFields() now reads game1/game2/game3 with fallback to matchPlay/teamGame/strokeGame
-   - FIXED: buildFixPayload() now reads from game1/game2/game3
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REMOVED: Fallback logic to matchPlay/teamGame/strokeGame (not used in codebase)
+   - CHANGED: validateAllFields() now reads directly from game1/game2/game3 only
+   - CHANGED: buildFixPayload() now reads from game1/game2/game3 only
+   - CLEAN: Removed unnecessary fallback conditions that were causing confusion
    - PRESERVED: All calculation logic unchanged (AS = 0.5, etc.)
-   - ALIGNED: Now matches Firestore Record Structure v3.0
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.06";
+window.UTIL_VALIDATE_VERSION = "1.07";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.06");
+    console.log("[UTIL-VALIDATE] Initializing v1.07");
     
     // ============================================================
     // PARSING FUNCTIONS
@@ -809,7 +809,7 @@ var UtilValidate = (function() {
         }
         
         // 3. T-1 Display - READ FROM game2.displayT1 (documented schema)
-        var curT1 = (recordData.results?.game2?.displayT1) || (recordData.results?.teamGame?.displayT1) || [];
+        var curT1 = (recordData.results?.game2?.displayT1) || [];
         var newT1 = recalculated.teamGame.displayT1 || [];
         for (var i = 0; i < 18; i++) {
             if (curT1[i] !== newT1[i]) {
@@ -823,7 +823,7 @@ var UtilValidate = (function() {
         }
         
         // 4. T-2 Display - READ FROM game2.displayT2 (documented schema)
-        var curT2 = (recordData.results?.game2?.displayT2) || (recordData.results?.teamGame?.displayT2) || [];
+        var curT2 = (recordData.results?.game2?.displayT2) || [];
         var newT2 = recalculated.teamGame.displayT2 || [];
         for (var i = 0; i < 18; i++) {
             if (curT2[i] !== newT2[i]) {
@@ -837,7 +837,7 @@ var UtilValidate = (function() {
         }
         
         // 5. Stroke Display - READ FROM game3.displayStrk (documented schema)
-        var curStrk = (recordData.results?.game3?.displayStrk) || (recordData.results?.strokeGame?.displayStrk) || [];
+        var curStrk = (recordData.results?.game3?.displayStrk) || [];
         var newStrk = recalculated.strokeGame.displayStrk || [];
         for (var i = 0; i < 18; i++) {
             if (curStrk[i] !== newStrk[i]) {
@@ -850,9 +850,9 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 6. Match Play Points - READ FROM game1.pointsA/B (documented schema)
-        var curMPA = (recordData.results?.game1?.pointsA) || (recordData.results?.matchPlay?.pointsA) || [];
-        var curMPB = (recordData.results?.game1?.pointsB) || (recordData.results?.matchPlay?.pointsB) || [];
+        // 6. Match Play Points - READ FROM game1.pointsA/B (documented schema) - NO FALLBACK
+        var curMPA = (recordData.results?.game1?.pointsA) || [];
+        var curMPB = (recordData.results?.game1?.pointsB) || [];
         var newMPA = recalculated.matchPlay.pointsA || [];
         var newMPB = recalculated.matchPlay.pointsB || [];
         for (var i = 0; i < 18; i++) {
@@ -866,9 +866,9 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 7. Team Game Points - READ FROM game2.pointsA/B (documented schema)
-        var curTGA = (recordData.results?.game2?.pointsA) || (recordData.results?.teamGame?.pointsA) || [];
-        var curTGB = (recordData.results?.game2?.pointsB) || (recordData.results?.teamGame?.pointsB) || [];
+        // 7. Team Game Points - READ FROM game2.pointsA/B (documented schema) - NO FALLBACK
+        var curTGA = (recordData.results?.game2?.pointsA) || [];
+        var curTGB = (recordData.results?.game2?.pointsB) || [];
         var newTGA = recalculated.teamGame.pointsA || [];
         var newTGB = recalculated.teamGame.pointsB || [];
         for (var i = 0; i < 18; i++) {
@@ -882,9 +882,9 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 8. Stroke Game Points - READ FROM game3.pointsA/B (documented schema)
-        var curSGA = (recordData.results?.game3?.pointsA) || (recordData.results?.strokeGame?.pointsA) || [];
-        var curSGB = (recordData.results?.game3?.pointsB) || (recordData.results?.strokeGame?.pointsB) || [];
+        // 8. Stroke Game Points - READ FROM game3.pointsA/B (documented schema) - NO FALLBACK
+        var curSGA = (recordData.results?.game3?.pointsA) || [];
+        var curSGB = (recordData.results?.game3?.pointsB) || [];
         var newSGA = recalculated.strokeGame.pointsA || [];
         var newSGB = recalculated.strokeGame.pointsB || [];
         for (var i = 0; i < 18; i++) {
@@ -1170,7 +1170,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD FIX PAYLOAD - Uses game1/game2/game3 for reading
+    // BUILD FIX PAYLOAD - Uses game1/game2/game3 (documented schema) - NO FALLBACK
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1208,7 +1208,7 @@ var UtilValidate = (function() {
         }
         
         // 2. T-1 Display - READ FROM game2.displayT1 (documented schema)
-        var curT1 = (recordData.results?.game2?.displayT1) || (recordData.results?.teamGame?.displayT1) || [];
+        var curT1 = (recordData.results?.game2?.displayT1) || [];
         var newT1 = recalculated.teamGame.displayT1 || [];
         var t1Mismatches = [];
         for (var i = 0; i < 18; i++) {
@@ -1219,13 +1219,11 @@ var UtilValidate = (function() {
             for (var idx = 0; idx < t1Mismatches.length; idx++) {
                 updatedT1[t1Mismatches[idx]] = newT1[t1Mismatches[idx]];
             }
-            // Write to both old and new locations for compatibility
             updatePayload['results.game2.displayT1'] = updatedT1;
-            updatePayload['results.teamGame.displayT1'] = updatedT1;
         }
         
         // 3. T-2 Display - READ FROM game2.displayT2 (documented schema)
-        var curT2 = (recordData.results?.game2?.displayT2) || (recordData.results?.teamGame?.displayT2) || [];
+        var curT2 = (recordData.results?.game2?.displayT2) || [];
         var newT2 = recalculated.teamGame.displayT2 || [];
         var t2Mismatches = [];
         for (var i = 0; i < 18; i++) {
@@ -1237,11 +1235,10 @@ var UtilValidate = (function() {
                 updatedT2[t2Mismatches[idx]] = newT2[t2Mismatches[idx]];
             }
             updatePayload['results.game2.displayT2'] = updatedT2;
-            updatePayload['results.teamGame.displayT2'] = updatedT2;
         }
         
         // 4. Stroke Display - READ FROM game3.displayStrk (documented schema)
-        var curStrk = (recordData.results?.game3?.displayStrk) || (recordData.results?.strokeGame?.displayStrk) || [];
+        var curStrk = (recordData.results?.game3?.displayStrk) || [];
         var newStrk = recalculated.strokeGame.displayStrk || [];
         var strkMismatches = [];
         for (var i = 0; i < 18; i++) {
@@ -1253,12 +1250,11 @@ var UtilValidate = (function() {
                 updatedStrk[strkMismatches[idx]] = newStrk[strkMismatches[idx]];
             }
             updatePayload['results.game3.displayStrk'] = updatedStrk;
-            updatePayload['results.strokeGame.displayStrk'] = updatedStrk;
         }
         
-        // 5. Match Play Points - READ FROM game1.pointsA/B (documented schema)
-        var curMPA = (recordData.results?.game1?.pointsA) || (recordData.results?.matchPlay?.pointsA) || [];
-        var curMPB = (recordData.results?.game1?.pointsB) || (recordData.results?.matchPlay?.pointsB) || [];
+        // 5. Match Play Points - READ FROM game1.pointsA/B (documented schema) - NO FALLBACK
+        var curMPA = (recordData.results?.game1?.pointsA) || [];
+        var curMPB = (recordData.results?.game1?.pointsB) || [];
         var newMPA = recalculated.matchPlay.pointsA || [];
         var newMPB = recalculated.matchPlay.pointsB || [];
         var mpMismatches = [];
@@ -1275,13 +1271,11 @@ var UtilValidate = (function() {
             }
             updatePayload['results.game1.pointsA'] = updatedMPA;
             updatePayload['results.game1.pointsB'] = updatedMPB;
-            updatePayload['results.matchPlay.pointsA'] = updatedMPA;
-            updatePayload['results.matchPlay.pointsB'] = updatedMPB;
         }
         
-        // 6. Team Game Points - READ FROM game2.pointsA/B (documented schema)
-        var curTGA = (recordData.results?.game2?.pointsA) || (recordData.results?.teamGame?.pointsA) || [];
-        var curTGB = (recordData.results?.game2?.pointsB) || (recordData.results?.teamGame?.pointsB) || [];
+        // 6. Team Game Points - READ FROM game2.pointsA/B (documented schema) - NO FALLBACK
+        var curTGA = (recordData.results?.game2?.pointsA) || [];
+        var curTGB = (recordData.results?.game2?.pointsB) || [];
         var newTGA = recalculated.teamGame.pointsA || [];
         var newTGB = recalculated.teamGame.pointsB || [];
         var tgMismatches = [];
@@ -1298,13 +1292,11 @@ var UtilValidate = (function() {
             }
             updatePayload['results.game2.pointsA'] = updatedTGA;
             updatePayload['results.game2.pointsB'] = updatedTGB;
-            updatePayload['results.teamGame.pointsA'] = updatedTGA;
-            updatePayload['results.teamGame.pointsB'] = updatedTGB;
         }
         
-        // 7. Stroke Game Points - READ FROM game3.pointsA/B (documented schema)
-        var curSGA = (recordData.results?.game3?.pointsA) || (recordData.results?.strokeGame?.pointsA) || [];
-        var curSGB = (recordData.results?.game3?.pointsB) || (recordData.results?.strokeGame?.pointsB) || [];
+        // 7. Stroke Game Points - READ FROM game3.pointsA/B (documented schema) - NO FALLBACK
+        var curSGA = (recordData.results?.game3?.pointsA) || [];
+        var curSGB = (recordData.results?.game3?.pointsB) || [];
         var newSGA = recalculated.strokeGame.pointsA || [];
         var newSGB = recalculated.strokeGame.pointsB || [];
         var sgMismatches = [];
@@ -1321,8 +1313,6 @@ var UtilValidate = (function() {
             }
             updatePayload['results.game3.pointsA'] = updatedSGA;
             updatePayload['results.game3.pointsB'] = updatedSGB;
-            updatePayload['results.strokeGame.pointsA'] = updatedSGA;
-            updatePayload['results.strokeGame.pointsB'] = updatedSGB;
         }
         
         // 8. Player Totals
@@ -1414,13 +1404,13 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Field name validation now uses documented schema (game1, game2, game3)
-   - FIXED: validateAllFields() now reads game1/game2/game3 with fallback to matchPlay/teamGame/strokeGame
-   - FIXED: buildFixPayload() now reads from game1/game2/game3 and writes to both old and new locations
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REMOVED: Fallback logic to matchPlay/teamGame/strokeGame (not used in codebase)
+   - CHANGED: validateAllFields() now reads directly from game1/game2/game3 only
+   - CHANGED: buildFixPayload() now reads from game1/game2/game3 only
+   - CLEAN: Removed unnecessary fallback conditions that were causing confusion
    - PRESERVED: All calculation logic unchanged (AS = 0.5, etc.)
-   - ALIGNED: Now matches Firestore Record Structure v3.0
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
