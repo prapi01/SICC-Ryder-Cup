@@ -1,18 +1,10 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.22
-KEY CHANGES from v1.20:
-   - REMOVED: All duplicate JavaScript functions (now in .js files)
-   - REMOVED: log(), logStep() - now in util-core.js
-   - REMOVED: Firebase initialization - now in util-core.js
-   - REMOVED: initDateToggle() - now in util-core.js
-   - REMOVED: Tab switching logic - now in util-core.js
-   - REMOVED: All Validate tab functions - now in util-validate-app.js
-   - REMOVED: All Photo selector functions - now in util-validate-ui.js
-   - REMOVED: clearValidateResults() - now in util-validate-app.js
-   - ADDED: util-core.js to script includes
-   - CHANGED: Event bindings now call functions from .js files
-   - PRESERVED: All HTML structure and CSS from v1.20
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - MOVED: Version badges from tab buttons to tab headers (next to "COPY", etc.)
+   - CHANGED: renderVersionBadges() now targets header badges instead of tab badges
+   - PRESERVED: All existing functionality from v1.22
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
@@ -74,6 +66,9 @@ STATUS: Ready for integration
         .tab-header-with-info .tab-title { font-size: 1rem; font-weight: 700; color: #4caf50; }
         .tab-header-with-info .tab-title.danger { color: #ff6b6b; }
         .tab-header-with-info .tab-title.photo { color: #ffaa44; }
+        .tab-header-with-info .version-badge { font-size: 0.55rem; font-weight: 400; color: #4caf50; background: rgba(76, 175, 80, 0.15); padding: 2px 8px; border-radius: 10px; font-family: monospace; margin-left: 6px; }
+        .tab-header-with-info .version-badge.danger { color: #ff6b6b; background: rgba(255, 107, 107, 0.15); }
+        .tab-header-with-info .version-badge.photo { color: #ffaa44; background: rgba(255, 170, 68, 0.15); }
         .btn-info-guide { padding: 6px 16px; border-radius: 30px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4a8af4; background: rgba(74, 138, 244, 0.1); color: #4a8af4; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; }
         .btn-info-guide:hover { background: rgba(74, 138, 244, 0.2); border-color: #4a8af4; }
         .btn-info-guide:active { transform: scale(0.95); }
@@ -339,23 +334,18 @@ STATUS: Ready for integration
     <div class="tab-nav" id="tabNav">
         <button class="tab-btn active" data-tab="tabCopy">
             <span class="tab-icon">📝</span> COPY
-            <span class="version-badge" id="copyVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabCompare">
             <span class="tab-icon">🔍</span> COMPARE
-            <span class="version-badge" id="compareVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabValidate">
             <span class="tab-icon">🔬</span> VALIDATE
-            <span class="version-badge" id="validateVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabPhoto">
             <span class="tab-icon">🖼️</span> PHOTO
-            <span class="version-badge" id="photoVersionBadge">v?</span>
         </button>
         <button class="tab-btn" data-tab="tabDelete">
             <span class="tab-icon">🗑️</span> DELETE
-            <span class="version-badge" id="deleteVersionBadge">v?</span>
         </button>
     </div>
     
@@ -364,7 +354,7 @@ STATUS: Ready for integration
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
         <div class="tab-header-with-info">
-            <span class="tab-title">📝 COPY</span>
+            <span class="tab-title">📝 COPY <span class="version-badge" id="copyVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showCopyInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -467,7 +457,7 @@ STATUS: Ready for integration
     <!-- ============================================================ -->
     <div class="tab-content" id="tabCompare">
         <div class="tab-header-with-info">
-            <span class="tab-title">🔍 COMPARE</span>
+            <span class="tab-title">🔍 COMPARE <span class="version-badge" id="compareVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showCompareInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -550,7 +540,7 @@ STATUS: Ready for integration
     <!-- ============================================================ -->
     <div class="tab-content" id="tabValidate">
         <div class="tab-header-with-info">
-            <span class="tab-title">🔬 VALIDATE</span>
+            <span class="tab-title">🔬 VALIDATE <span class="version-badge" id="validateVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showValidateInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -676,7 +666,7 @@ STATUS: Ready for integration
     <!-- ============================================================ -->
     <div class="tab-content" id="tabPhoto">
         <div class="tab-header-with-info">
-            <span class="tab-title photo">🖼️ PHOTO</span>
+            <span class="tab-title photo">🖼️ PHOTO <span class="version-badge photo" id="photoVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showPhotoInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -756,7 +746,7 @@ STATUS: Ready for integration
     <!-- ============================================================ -->
     <div class="tab-content" id="tabDelete">
         <div class="tab-header-with-info">
-            <span class="tab-title danger">🗑️ DELETE</span>
+            <span class="tab-title danger">🗑️ DELETE <span class="version-badge danger" id="deleteVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showDeleteInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -843,28 +833,28 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.22</div>
+<div class="version-tag">v1.23</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.22
+// VERSION: 1.23
 // ============================================================
 
-var APP_VERSION = "1.22";
+var APP_VERSION = "1.23";
 
 // ============================================================
 // VERSION BADGE RENDERER
 // ============================================================
 
 function renderVersionBadges() {
-    // Validate tab - shows both record.js and ui.js versions
+    // Validate tab - shows record.js, ui.js, and app.js versions
     var validateBadge = document.getElementById('validateVersionBadge');
-    var recordVersion = window.UTIL_VALIDATE_VERSION || '?';
-    var uiVersion = window.UTIL_VALIDATE_UI_VERSION || '?';
-    var appVersion = window.UTIL_VALIDATE_APP_VERSION || '?';
     if (validateBadge) {
-        validateBadge.textContent = 'r' + recordVersion + ' u' + uiVersion + ' a' + appVersion;
+        var rv = window.UTIL_VALIDATE_VERSION || '?';
+        var uv = window.UTIL_VALIDATE_UI_VERSION || '?';
+        var av = window.UTIL_VALIDATE_APP_VERSION || '?';
+        validateBadge.textContent = 'r' + rv + ' u' + uv + ' a' + av;
     }
     
     // Copy tab
@@ -908,7 +898,7 @@ function renderVersionBadges() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.22...');
+console.log('[REC-MGMT] Initializing v1.23...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -981,7 +971,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.22 ready', 'success');
+    log('Record Management v1.23 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -990,14 +980,8 @@ if (typeof log === 'function') {
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.22 ready');
+    console.log('[REC-MGMT] Record Management v1.23 ready');
 }
-
-// Make functions globally accessible (these are now in .js files)
-// window.openPhotoSelector, window.closePhotoSelector, window.loadPhotoSelector, 
-// window.selectPhotoFromList, window.applyPhotoToRecord are now in util-validate-ui.js
-// window.clearValidateResults, window.loadValidateRecords, window.loadAndValidate,
-// window.validateBackupOnly, window.validateFixRecord are now in util-validate-app.js
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
 </script>
@@ -1006,19 +990,11 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.22
-KEY CHANGES from v1.20:
-   - REMOVED: All duplicate JavaScript functions (now in .js files)
-   - REMOVED: log(), logStep() - now in util-core.js
-   - REMOVED: Firebase initialization - now in util-core.js
-   - REMOVED: initDateToggle() - now in util-core.js
-   - REMOVED: Tab switching logic - now in util-core.js
-   - REMOVED: All Validate tab functions - now in util-validate-app.js
-   - REMOVED: All Photo selector functions - now in util-validate-ui.js
-   - REMOVED: clearValidateResults() - now in util-validate-app.js
-   - ADDED: util-core.js to script includes
-   - CHANGED: Event bindings now call functions from .js files
-   - PRESERVED: All HTML structure and CSS from v1.20
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - MOVED: Version badges from tab buttons to tab headers (next to "COPY", etc.)
+   - CHANGED: renderVersionBadges() now targets header badges instead of tab badges
+   - PRESERVED: All existing functionality from v1.22
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
