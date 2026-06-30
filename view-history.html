@@ -1,11 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.39
-KEY CHANGES from v8.38:
-   - FIXED: getMatchValueFromStoredResults() was using wrong index for Team B players
-   - Now uses teamAPlayers and teamBPlayers directly for index lookup
-   - This fixes Team B match bubbles showing empty values
-   - PRESERVED: All existing functionality from v8.38
+VERSION: 8.40
+KEY CHANGES from v8.39:
+   - FIXED: view-history now reads celebration photo directly from the record's celebration field
+   - REMOVED: Dependency on getCelebrationPhoto() for thumbnail loading
+   - CHANGED: Game object now includes celebration data when loaded from Firestore
+   - CHANGED: renderGameList() now uses game.celebration.imageUrl directly
+   - FIXED: No longer shows fallback image when record has a valid photo pointer
+   - PRESERVED: All existing functionality from v8.39
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -117,10 +119,14 @@ STATUS: Ready for integration
             margin-top: 4px;
         }
         
-        /* v8.34: Celebration image in game card */
+        /* v8.40: Celebration image in game card - updated to use direct URL */
         .game-celebration {
             margin: 8px 0 12px 0;
             text-align: center;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .game-celebration img {
@@ -135,6 +141,18 @@ STATUS: Ready for integration
         
         .game-celebration img:hover {
             opacity: 0.8;
+        }
+        
+        .game-celebration img.loading {
+            opacity: 0.3;
+        }
+        
+        .game-celebration img.loaded {
+            opacity: 1;
+        }
+        
+        .game-celebration img.error {
+            display: none;
         }
         
         .game-celebration-placeholder {
@@ -386,7 +404,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.39</div>
+<div class="version-tag">v8.40</div>
 
 <script>
 // ============================================================
@@ -399,10 +417,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.39: Fixed match value index lookup for Team B
+// VERSION CACHE-BUSTING - v8.40: Direct celebration photo loading
 // ============================================================
-var APP_VERSION = "8.39";
-var CACHE_KEY = "view_history_version_v839";
+var APP_VERSION = "8.40";
+var CACHE_KEY = "view_history_version_v840";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -420,8 +438,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.39";
-console.log("[VIEW-HISTORY] Initializing v8.39 - Fixed match value index lookup");
+window.VIEW_HISTORY_VERSION = "8.40";
+console.log("[VIEW-HISTORY] Initializing v8.40 - Direct celebration photo loading");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -495,37 +513,26 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v8.34: Load and display celebration image
+// v8.40: Load and display celebration image DIRECTLY from record
 // ============================================================
 
-function loadCelebrationImage(gameId, containerId) {
+function loadCelebrationImageDirect(game, containerId) {
     var container = document.getElementById(containerId);
     if (!container) return;
     
-    // Show loading state
-    container.innerHTML = '<div class="game-celebration-loading">📸</div>';
+    // Check if the record has celebration data with a valid imageUrl
+    var celebration = game.celebration || null;
+    var imageUrl = celebration?.imageUrl || null;
     
-    if (typeof getCelebrationPhoto === 'function') {
-        getCelebrationPhoto(gameId, function(err, url) {
-            if (err || !url) {
-                console.log('[VIEW-HISTORY] No celebration photo for:', gameId);
-                container.innerHTML = '<div class="game-celebration-placeholder">🏌️</div>';
-                return;
-            }
-            
-            // Check if it's the GitHub fallback or a real photo
-            var isFallback = url.includes('pages.dev/images/celebration/C.jpg');
-            
-            var imgHtml = '<img src="' + url + '" alt="Celebration" loading="lazy" onclick="window.open(\'' + url + '\', \'_blank\')" title="Click to view full size">';
-            if (isFallback) {
-                imgHtml += '<div style="font-size:0.5rem;color:#444;margin-top:2px;">Default image</div>';
-            }
-            container.innerHTML = imgHtml;
-            console.log('[VIEW-HISTORY] Celebration image loaded for:', gameId);
-        });
+    if (imageUrl) {
+        // Directly display the photo from the record
+        var imgHtml = '<img src="' + imageUrl + '" alt="Celebration" loading="lazy" onclick="window.open(\'' + imageUrl + '\', \'_blank\')" title="Click to view full size" class="loading" onload="this.className=\'loaded\'" onerror="this.className=\'error\'">';
+        container.innerHTML = imgHtml;
+        console.log('[VIEW-HISTORY] Displaying direct photo for:', game.archiveId, 'URL:', imageUrl.substring(0, 80) + '...');
     } else {
+        // No photo in record - show placeholder
         container.innerHTML = '<div class="game-celebration-placeholder">🏌️</div>';
-        console.warn('[VIEW-HISTORY] getCelebrationPhoto not available');
+        console.log('[VIEW-HISTORY] No direct photo for:', game.archiveId);
     }
 }
 
@@ -1080,7 +1087,7 @@ function renderScorecardView(game) {
 }
 
 // ============================================================
-// v8.34: Game List Functions - UPDATED with celebration image
+// v8.40: Game List Functions - UPDATED to use direct photo loading
 // ============================================================
 
 function enableButtons() {
@@ -1159,6 +1166,7 @@ function checkBothReady() {
     }
 }
 
+// v8.40: renderGameList - UPDATED to use direct photo loading
 function renderGameList(games) {
     allGames = games;
     var container = document.getElementById('gameListContainer');
@@ -1196,15 +1204,18 @@ function renderGameList(games) {
         // v8.37: Get archiveId for record name display
         var archiveId = game.archiveId || game.originalGameId || '';
         
+        // v8.40: Check if record has a celebration photo
+        var hasPhoto = !!(game.celebration && game.celebration.imageUrl);
+        
         html += `
             <div class="game-card">
                 <div class="game-header">
                     <div class="game-course">⛳ ${escapeHtml(game.courseName)}</div>
                     <div class="game-date">${displayDate}</div>
                 </div>
-                <!-- v8.34: Celebration Image -->
+                <!-- v8.40: Direct photo loading from record -->
                 <div class="game-celebration" id="${celebrationContainerId}">
-                    <div class="game-celebration-loading">📸</div>
+                    ${hasPhoto ? '<div class="game-celebration-loading">📸</div>' : '<div class="game-celebration-placeholder">🏌️</div>'}
                 </div>
                 <div class="game-tr-result">
                     <div class="tr-scores">
@@ -1246,18 +1257,11 @@ function renderGameList(games) {
     container.innerHTML = html;
     console.log("[VIEW-HISTORY] Game list rendered with", games.length, "games");
     
-    // v8.34: Load celebration images for each game
+    // v8.40: Load celebration images directly from record data
     for (var i = 0; i < games.length; i++) {
         var game = games[i];
         var containerId = 'celebration_' + i;
-        if (game.originalGameId) {
-            loadCelebrationImage(game.originalGameId, containerId);
-        } else {
-            var containerEl = document.getElementById(containerId);
-            if (containerEl) {
-                containerEl.innerHTML = '<div class="game-celebration-placeholder">🏌️</div>';
-            }
-        }
+        loadCelebrationImageDirect(game, containerId);
     }
     
     dataLoaded = true;
@@ -1281,6 +1285,7 @@ function loadGameListAndModules() {
             var games = [];
             snapshot.forEach(function(doc) {
                 var data = doc.data();
+                // v8.40: Include celebration field directly from Firestore
                 games.push({
                     archiveId: doc.id,
                     originalGameId: data.originalGameId,
@@ -1292,7 +1297,8 @@ function loadGameListAndModules() {
                     f1DataString: data.f1DataString || "",
                     f2DataString: data.f2DataString || "",
                     adjustedHandicaps: data.adjustedHandicaps,
-                    completedAt: data.completedAt || data.createdAt
+                    completedAt: data.completedAt || data.createdAt,
+                    celebration: data.celebration || null  // v8.40: Include celebration data
                 });
             });
             
@@ -1393,12 +1399,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.39
-KEY CHANGES from v8.38:
-   - FIXED: getMatchValueFromStoredResults() was using wrong index for Team B players
-   - Now uses teamAPlayers and teamBPlayers directly for index lookup
-   - This fixes Team B match bubbles showing empty values
-   - PRESERVED: All existing functionality from v8.38
+VERSION: 8.40
+KEY CHANGES from v8.39:
+   - FIXED: view-history now reads celebration photo directly from the record's celebration field
+   - REMOVED: Dependency on getCelebrationPhoto() for thumbnail loading
+   - CHANGED: Game object now includes celebration data when loaded from Firestore
+   - CHANGED: renderGameList() now uses game.celebration.imageUrl directly
+   - FIXED: No longer shows fallback image when record has a valid photo pointer
+   - PRESERVED: All existing functionality from v8.39
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
