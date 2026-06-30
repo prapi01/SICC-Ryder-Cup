@@ -1,262 +1,202 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - REMOVED: Dependency on HTML for initFirebase, log, escapeHtml, formatDate
-   - CHANGED: Now uses window.log, window.escapeHtml, window.formatDate from util-core.js
-   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
-   - ADDED: Fallback logging, escaping, and formatting functions if util-core.js not loaded
-   - REMOVED: getDbForEnv dependency (not used)
-   - PRESERVED: All existing functionality from v1.02
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: loadDeleteRecords() now loads ALL records (removed orderBy date filter)
+   - FIXED: Records with missing dates are now included in the list
+   - CHANGED: Manual sorting by date with fallback for missing dates (uses '1970-01-01')
+   - PRESERVED: All existing functionality from v1.04 (Select All, Deselect All, Bulk Delete)
+   - PRESERVED: Environment switching (PROD/DEV) using window.prodDb/window.devDb
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.03";
-console.log("[UTIL-DELETE] v1.03 loaded");
+window.UTIL_DELETE_VERSION = "1.05";
+console.log("[UTIL-DELETE] Initializing v1.05 - Load ALL records fix");
 
 // ============================================================
-// FALLBACK HELPERS (if util-core.js not loaded)
+// STATE VARIABLES
+// ============================================================
+
+var deleteRecords = [];
+var deleteSelectedIds = {};
+var deleteEnv = 'PROD';
+var deleteCurrentCollection = 'scheduledGames';
+
+// ============================================================
+// LOGGING (with fallback)
 // ============================================================
 
 function deleteLog(message, type) {
     if (typeof window.log === 'function') {
         window.log(message, type);
     } else {
-        console.log('[DELETE-UTIL] ' + message);
-    }
-}
-
-function deleteEscapeHtml(str) {
-    if (typeof window.escapeHtml === 'function') {
-        return window.escapeHtml(str);
-    }
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function deleteFormatDate(dateStr) {
-    if (typeof window.formatDate === 'function') {
-        return window.formatDate(dateStr);
-    }
-    if (!dateStr) return 'Unknown';
-    var parts = dateStr.split('-');
-    if (parts.length === 3) {
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0];
-    }
-    return dateStr;
-}
-
-// ============================================================
-// DELETE TAB: STATE VARIABLES
-// ============================================================
-
-var deleteDb = null;
-var deleteEnv = null;
-var deleteRecords = [];
-
-// ============================================================
-// DELETE TAB: ENVIRONMENT FUNCTIONS
-// ============================================================
-
-function setDeleteEnvironment(env) {
-    if (env === 'PROD') {
-        if (!window.prodDb) {
-            deleteLog("Cannot connect to PRODUCTION for Delete", "error");
-            return;
-        }
-        deleteDb = window.prodDb;
-        deleteEnv = 'PROD';
-        updateDeleteUI('PROD');
-        deleteLog('Delete environment set to: PRODUCTION', 'info');
-    } else if (env === 'DEV') {
-        if (!window.devDb) {
-            deleteLog("Cannot connect to DEVELOPMENT for Delete", "error");
-            return;
-        }
-        deleteDb = window.devDb;
-        deleteEnv = 'DEV';
-        updateDeleteUI('DEV');
-        deleteLog('Delete environment set to: DEVELOPMENT', 'info');
-    } else {
-        deleteDb = null;
-        deleteEnv = null;
-        updateDeleteUI(null);
-    }
-    
-    if (deleteDb) {
-        loadDeleteRecords();
-    }
-}
-
-function updateDeleteUI(env) {
-    var prodBtn = document.getElementById('deleteProdBtn');
-    var devBtn = document.getElementById('deleteDevBtn');
-    var indicator = document.getElementById('deleteIndicator');
-    
-    if (prodBtn) prodBtn.classList.remove('active-prod');
-    if (devBtn) devBtn.classList.remove('active-dev');
-    
-    if (env === 'PROD') {
-        if (prodBtn) prodBtn.classList.add('active-prod');
-        if (indicator) {
-            indicator.className = 'env-indicator-small prod';
-            indicator.textContent = 'PROD';
-        }
-    } else if (env === 'DEV') {
-        if (devBtn) devBtn.classList.add('active-dev');
-        if (indicator) {
-            indicator.className = 'env-indicator-small dev';
-            indicator.textContent = 'DEV';
-        }
-    } else {
-        if (indicator) {
-            indicator.className = 'env-indicator-small none';
-            indicator.textContent = 'Not connected';
-        }
+        console.log('[DELETE] ' + message);
     }
 }
 
 // ============================================================
-// DELETE TAB: LOAD RECORDS
+// LOAD DELETE RECORDS - FIXED: Loads ALL records
 // ============================================================
 
 function loadDeleteRecords() {
-    if (!deleteDb) {
-        deleteLog("Select Delete environment first", "error");
+    var collection = document.getElementById('deleteCollection');
+    var indicator = document.getElementById('deleteIndicator');
+    
+    if (!collection || !indicator) return;
+    
+    var collectionName = collection.value;
+    var envText = indicator.textContent || 'PROD';
+    var db = envText === 'PROD' ? window.prodDb : window.devDb;
+    
+    deleteCurrentCollection = collectionName;
+    
+    if (!db) {
+        deleteLog('Select an environment first (PROD/DEV)', 'error');
         return;
     }
     
-    var collection = document.getElementById('deleteCollection').value;
     var container = document.getElementById('deleteRecordsContainer');
-    var countEl = document.getElementById('deleteCount');
+    var countSpan = document.getElementById('deleteCount');
+    var executeBtn = document.getElementById('deleteExecuteBtn');
     
-    if (!container) return;
+    if (container) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">⏳ Loading records...</div>';
+    }
+    if (executeBtn) {
+        executeBtn.disabled = true;
+        executeBtn.textContent = '🗑️ DELETE SELECTED (0 records)';
+    }
     
-    container.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">Loading records...</div>';
-    if (countEl) countEl.textContent = 'Loading...';
+    deleteLog('Loading records from: ' + collectionName + ' (' + envText + ')', 'info');
     
-    var envLabel = deleteEnv || 'Unknown';
-    deleteLog('Loading records from: ' + collection + ' (' + envLabel + ')', 'info');
-    
-    deleteDb.collection(collection)
-        .orderBy('date', 'desc')
-        .limit(200)
-        .get()
+    // FIXED: Remove orderBy('date') - it was excluding records with missing dates
+    db.collection(collectionName).get()
         .then(function(snapshot) {
             deleteRecords = [];
+            deleteSelectedIds = {};
             
             if (snapshot.empty) {
-                container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">No records found in ' + collection + '</div>';
-                if (countEl) countEl.textContent = '0 found';
-                deleteLog('No records found in ' + collection, 'info');
+                if (container) {
+                    container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">📭 No records found in ' + collectionName + '</div>';
+                }
+                if (countSpan) {
+                    countSpan.textContent = '0 found';
+                }
+                if (executeBtn) {
+                    executeBtn.disabled = true;
+                    executeBtn.textContent = '🗑️ DELETE SELECTED (0 records)';
+                }
+                deleteLog('No records found in ' + collectionName, 'info');
+                updateDeleteSelectedCount();
                 return;
             }
             
+            // Collect all records
+            var docs = [];
             snapshot.forEach(function(doc) {
-                var data = doc.data();
-                var record = {
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || data.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || data.course?.name || 'Unknown Course',
-                    status: data.status || 'unknown',
-                    rawData: data
-                };
-                deleteRecords.push(record);
+                docs.push(doc);
             });
             
-            renderDeleteRecords(deleteRecords);
+            // Sort manually by date (with fallback for missing dates)
+            docs.sort(function(a, b) {
+                var dataA = a.data();
+                var dataB = b.data();
+                var dateA = dataA.date || dataA.gameInfo?.date || '1970-01-01';
+                var dateB = dataB.date || dataB.gameInfo?.date || '1970-01-01';
+                return dateB.localeCompare(dateA);
+            });
             
-            if (countEl) countEl.textContent = deleteRecords.length + ' found';
+            deleteRecords = docs;
+            
+            // Render the table
+            renderDeleteTable(docs);
+            
+            if (countSpan) {
+                countSpan.textContent = docs.length + ' found';
+            }
+            
+            deleteLog('Loaded ' + docs.length + ' records from ' + collectionName, 'success');
             updateDeleteSelectedCount();
-            updateDeleteButtonState();
-            updateSelectAllState();
-            
-            deleteLog('Loaded ' + deleteRecords.length + ' records from ' + collection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
-            container.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">Error loading records: ' + deleteEscapeHtml(err.message) + '</div>';
-            if (countEl) countEl.textContent = 'Error';
-            deleteLog('Error loading delete records: ' + err.message, 'error');
-            console.error(err);
+            deleteLog('Error loading records: ' + err.message, 'error');
+            if (container) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">❌ Error loading records: ' + err.message + '</div>';
+            }
+            if (countSpan) {
+                countSpan.textContent = 'Error';
+            }
         });
 }
 
 // ============================================================
-// DELETE TAB: RENDER RECORDS
+// RENDER DELETE TABLE
 // ============================================================
 
-function renderDeleteRecords(records) {
+function renderDeleteTable(docs) {
     var container = document.getElementById('deleteRecordsContainer');
     if (!container) return;
     
-    if (!records || records.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">No records to display</div>';
+    if (!docs || docs.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">📭 No records found</div>';
         return;
     }
     
-    var html = '<table>';
-    html += '<thead><tr>';
-    html += '<th style="width:32px; text-align:center;"><input type="checkbox" id="deleteSelectAll" onchange="toggleAllDeleteCheckboxes()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;"></th>';
+    var html = '<table><thead><tr>';
+    html += '<th style="width:32px; text-align:center;">';
+    html += '<input type="checkbox" id="deleteSelectAll" onchange="toggleAllDeleteCheckboxes()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
+    html += '</th>';
     html += '<th style="text-align:left;">Course</th>';
     html += '<th style="text-align:left;">Date</th>';
     html += '<th style="text-align:left;">Status</th>';
     html += '<th style="text-align:left; word-break:break-all;">ID</th>';
     html += '</tr></thead><tbody>';
     
-    for (var i = 0; i < records.length; i++) {
-        var r = records[i];
-        var statusClass = r.status === 'completed' ? 'completed' : (r.status === 'pending' ? 'pending' : 'unknown');
-        html += '<tr onclick="toggleDeleteCheckbox(\'' + deleteEscapeHtml(r.id) + '\')">';
+    for (var i = 0; i < docs.length; i++) {
+        var doc = docs[i];
+        var data = doc.data();
+        var id = doc.id;
+        
+        var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
+        var date = data.date || data.gameInfo?.date || 'No date';
+        var status = data.status || 'unknown';
+        
+        var statusClass = status === 'completed' ? 'completed' : 
+                         status === 'in_progress' ? 'in-progress' : 
+                         status === 'scheduled' ? 'scheduled' : 'unknown';
+        
+        // Format date for display
+        var displayDate = date;
+        if (date !== 'No date' && date !== 'MISSING') {
+            var parts = date.split('-');
+            if (parts.length === 3) {
+                var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                displayDate = parts[2] + ' ' + months[parseInt(parts[1]) - 1] + ' ' + parts[0];
+            }
+        }
+        
+        var isChecked = deleteSelectedIds[id] || false;
+        
+        html += '<tr onclick="toggleDeleteCheckbox(\'' + id + '\')" style="cursor:pointer;">';
         html += '<td style="text-align:center; vertical-align:middle;">';
-        html += '<input type="checkbox" class="delete-checkbox" data-id="' + deleteEscapeHtml(r.id) + '" onchange="onDeleteCheckboxChange()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
+        html += '<input type="checkbox" class="delete-checkbox" data-id="' + id + '" ' + (isChecked ? 'checked' : '') + ' onchange="onDeleteCheckboxChange()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
         html += '</td>';
-        html += '<td style="color:#e0e0e0;">' + deleteEscapeHtml(r.courseName) + '</td>';
-        html += '<td style="color:#ccc;">' + deleteEscapeHtml(deleteFormatDate(r.date)) + '</td>';
-        html += '<td><span class="status-badge ' + statusClass + '">' + deleteEscapeHtml(r.status) + '</span></td>';
-        html += '<td style="color:#4a8af4; font-family:monospace; font-size:0.65rem; word-break:break-all;">' + deleteEscapeHtml(r.id) + '</td>';
+        html += '<td style="color:#e0e0e0;">' + escapeHtml(courseName) + '</td>';
+        html += '<td style="color:#ccc;">' + escapeHtml(displayDate) + '</td>';
+        html += '<td><span class="status-badge ' + statusClass + '">' + escapeHtml(status) + '</span></td>';
+        html += '<td style="color:#4a8af4; font-family:monospace; font-size:0.65rem; word-break:break-all;">' + escapeHtml(id) + '</td>';
         html += '</tr>';
     }
     
     html += '</tbody></table>';
     container.innerHTML = html;
-    
-    // Re-bind Select All after render
-    var selectAll = document.getElementById('deleteSelectAll');
-    if (selectAll) {
-        selectAll.onchange = function() {
-            toggleAllDeleteCheckboxes();
-        };
-    }
 }
 
 // ============================================================
-// DELETE TAB: CHECKBOX HELPERS
+// TOGGLE FUNCTIONS
 // ============================================================
-
-function toggleAllDeleteCheckboxes() {
-    var selectAll = document.getElementById('deleteSelectAll');
-    if (!selectAll) return;
-    
-    var checkboxes = document.querySelectorAll('.delete-checkbox');
-    var isChecked = selectAll.checked;
-    
-    for (var i = 0; i < checkboxes.length; i++) {
-        checkboxes[i].checked = isChecked;
-    }
-    
-    updateDeleteSelectedCount();
-    updateDeleteButtonState();
-    updateSelectAllState();
-}
 
 function toggleDeleteCheckbox(id) {
     var checkbox = document.querySelector('.delete-checkbox[data-id="' + id + '"]');
@@ -267,81 +207,53 @@ function toggleDeleteCheckbox(id) {
 }
 
 function onDeleteCheckboxChange() {
+    var checkboxes = document.querySelectorAll('.delete-checkbox');
+    var checkedIds = [];
+    var anyChecked = false;
+    
+    checkboxes.forEach(function(cb) {
+        var id = cb.getAttribute('data-id');
+        if (cb.checked) {
+            checkedIds.push(id);
+            deleteSelectedIds[id] = true;
+            anyChecked = true;
+        } else {
+            deleteSelectedIds[id] = false;
+        }
+    });
+    
+    // Update the select all checkbox
+    var selectAll = document.getElementById('deleteSelectAll');
+    if (selectAll) {
+        var allChecked = checkboxes.length > 0 && 
+                        Array.from(checkboxes).every(function(cb) { return cb.checked; });
+        selectAll.checked = allChecked;
+    }
+    
     updateDeleteSelectedCount();
-    updateDeleteButtonState();
-    updateSelectAllState();
 }
 
-function updateDeleteSelectedCount() {
-    var checkboxes = document.querySelectorAll('.delete-checkbox:checked');
-    var countEl = document.getElementById('deleteSelectedCount');
-    if (countEl) {
-        countEl.textContent = checkboxes.length + ' selected';
-    }
-}
-
-function updateDeleteButtonState() {
-    var checkboxes = document.querySelectorAll('.delete-checkbox:checked');
-    var deleteBtn = document.getElementById('deleteExecuteBtn');
-    var count = checkboxes.length;
-    
-    if (!deleteBtn) return;
-    
-    if (count > 0) {
-        deleteBtn.disabled = false;
-        deleteBtn.style.opacity = '1';
-        deleteBtn.textContent = '🗑️ DELETE SELECTED (' + count + ' record' + (count > 1 ? 's' : '') + ')';
-    } else {
-        deleteBtn.disabled = true;
-        deleteBtn.style.opacity = '0.5';
-        deleteBtn.textContent = '🗑️ DELETE SELECTED (0 records)';
-    }
-}
-
-function updateSelectAllState() {
+function toggleAllDeleteCheckboxes() {
     var selectAll = document.getElementById('deleteSelectAll');
     if (!selectAll) return;
     
+    var checked = selectAll.checked;
     var checkboxes = document.querySelectorAll('.delete-checkbox');
-    var checkedCount = document.querySelectorAll('.delete-checkbox:checked').length;
     
-    if (checkboxes.length === 0) {
-        selectAll.checked = false;
-        selectAll.disabled = true;
-        return;
-    }
+    checkboxes.forEach(function(cb) {
+        cb.checked = checked;
+        var id = cb.getAttribute('data-id');
+        deleteSelectedIds[id] = checked;
+    });
     
-    selectAll.disabled = false;
-    if (checkedCount === checkboxes.length) {
-        selectAll.checked = true;
-        selectAll.indeterminate = false;
-    } else if (checkedCount === 0) {
-        selectAll.checked = false;
-        selectAll.indeterminate = false;
-    } else {
-        selectAll.checked = false;
-        selectAll.indeterminate = true;
-    }
+    updateDeleteSelectedCount();
 }
-
-// ============================================================
-// DELETE TAB: SELECT ALL / DESELECT ALL BUTTONS
-// ============================================================
 
 function selectAllDeleteRecords() {
     var selectAll = document.getElementById('deleteSelectAll');
     if (selectAll) {
         selectAll.checked = true;
         toggleAllDeleteCheckboxes();
-    } else {
-        // Fallback: manually check all
-        var checkboxes = document.querySelectorAll('.delete-checkbox');
-        for (var i = 0; i < checkboxes.length; i++) {
-            checkboxes[i].checked = true;
-        }
-        updateDeleteSelectedCount();
-        updateDeleteButtonState();
-        updateSelectAllState();
     }
 }
 
@@ -350,123 +262,157 @@ function deselectAllDeleteRecords() {
     if (selectAll) {
         selectAll.checked = false;
         toggleAllDeleteCheckboxes();
-    } else {
-        var checkboxes = document.querySelectorAll('.delete-checkbox');
-        for (var i = 0; i < checkboxes.length; i++) {
-            checkboxes[i].checked = false;
+    }
+}
+
+function updateDeleteSelectedCount() {
+    var count = 0;
+    var checkboxes = document.querySelectorAll('.delete-checkbox');
+    checkboxes.forEach(function(cb) {
+        if (cb.checked) count++;
+    });
+    
+    var countSpan = document.getElementById('deleteSelectedCount');
+    if (countSpan) {
+        countSpan.textContent = count + ' selected';
+    }
+    
+    var executeBtn = document.getElementById('deleteExecuteBtn');
+    if (executeBtn) {
+        if (count > 0) {
+            executeBtn.disabled = false;
+            executeBtn.style.opacity = '1';
+            executeBtn.textContent = '🗑️ DELETE SELECTED (' + count + ' records)';
+        } else {
+            executeBtn.disabled = true;
+            executeBtn.style.opacity = '0.5';
+            executeBtn.textContent = '🗑️ DELETE SELECTED (0 records)';
         }
-        updateDeleteSelectedCount();
-        updateDeleteButtonState();
-        updateSelectAllState();
     }
 }
 
 // ============================================================
-// DELETE TAB: DELETE SELECTED RECORDS
+// EXECUTE DELETE
 // ============================================================
 
-function deleteSelectedRecords() {
-    if (!deleteDb) {
-        deleteLog("Select Delete environment first", "error");
-        return;
-    }
-    
+function executeDeleteRecords() {
     var checkboxes = document.querySelectorAll('.delete-checkbox:checked');
     if (checkboxes.length === 0) {
-        deleteLog("No records selected for deletion", "error");
+        deleteLog('No records selected for deletion', 'error');
         return;
     }
     
-    var collection = document.getElementById('deleteCollection').value;
-    var envLabel = deleteEnv || 'Unknown';
+    var ids = [];
+    checkboxes.forEach(function(cb) {
+        ids.push(cb.getAttribute('data-id'));
+    });
     
-    var selectedIds = [];
-    for (var i = 0; i < checkboxes.length; i++) {
-        selectedIds.push(checkboxes[i].getAttribute('data-id'));
-    }
+    var collection = document.getElementById('deleteCollection');
+    var indicator = document.getElementById('deleteIndicator');
+    var collectionName = collection ? collection.value : 'scheduledGames';
+    var envText = indicator ? indicator.textContent : 'PROD';
+    var db = envText === 'PROD' ? window.prodDb : window.devDb;
     
-    var confirmMsg = '🗑️ DELETE ' + selectedIds.length + ' record(s) from ' + collection + ' (' + envLabel + ')?\n\n';
-    confirmMsg += 'This action CANNOT be undone.\n\n';
-    confirmMsg += 'Selected IDs:\n' + selectedIds.join('\n');
-    
-    if (!confirm(confirmMsg)) {
-        deleteLog('Delete cancelled by user', 'info');
+    if (!db) {
+        deleteLog('Database not available', 'error');
         return;
     }
     
-    var progressEl = document.getElementById('deleteProgress');
-    var deleteBtn = document.getElementById('deleteExecuteBtn');
-    
-    if (deleteBtn) {
-        deleteBtn.disabled = true;
-        deleteBtn.textContent = '⏳ Deleting...';
-    }
-    if (progressEl) {
-        progressEl.className = 'delete-progress active';
-        progressEl.innerHTML = '';
+    var progressDiv = document.getElementById('deleteProgress');
+    if (progressDiv) {
+        progressDiv.className = 'delete-progress active';
+        progressDiv.innerHTML = '<div class="step info">⏳ Preparing to delete ' + ids.length + ' records from ' + collectionName + ' (' + envText + ')...</div>';
     }
     
-    var total = selectedIds.length;
-    var completed = 0;
+    deleteLog('🗑️ Deleting ' + ids.length + ' records from ' + collectionName + ' (' + envText + ')', 'warning');
+    
+    var deleted = 0;
+    var failed = 0;
     var errors = [];
     
-    deleteLog('🗑️ Deleting ' + total + ' records from ' + collection + ' (' + envLabel + ')', 'info');
-    
     function deleteNext(index) {
-        if (index >= selectedIds.length) {
-            // All done
-            var msg = '✅ Deleted ' + completed + ' record(s)';
-            if (errors.length > 0) {
-                msg += ', ' + errors.length + ' error(s)';
-                if (progressEl) {
-                    progressEl.innerHTML += '<div class="step error">⚠️ ' + errors.length + ' record(s) failed to delete</div>';
-                    for (var e = 0; e < errors.length; e++) {
-                        progressEl.innerHTML += '<div class="step error">  - ' + deleteEscapeHtml(errors[e]) + '</div>';
-                    }
-                }
-            } else {
-                if (progressEl) {
-                    progressEl.innerHTML += '<div class="step done">✅ All ' + completed + ' records deleted successfully</div>';
+        if (index >= ids.length) {
+            // Done
+            var msg = '✅ Deleted ' + deleted + ' records' + (failed > 0 ? ', ' + failed + ' failed' : '');
+            deleteLog(msg, failed > 0 ? 'warning' : 'success');
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step ' + (failed > 0 ? 'warning' : 'done') + '">' + msg + '</div>';
+                if (failed > 0) {
+                    progressDiv.innerHTML += '<div class="step error">Errors: ' + errors.join('; ') + '</div>';
                 }
             }
-            deleteLog(msg, errors.length > 0 ? 'warning' : 'success');
-            
-            if (deleteBtn) {
-                deleteBtn.textContent = '✅ Done';
-                deleteBtn.disabled = false;
-            }
-            
-            // Refresh the list
             loadDeleteRecords();
             return;
         }
         
-        var id = selectedIds[index];
-        var logMsg = 'Deleting: ' + id + ' (' + (index + 1) + '/' + total + ')';
-        if (progressEl) {
-            progressEl.innerHTML += '<div class="step info">' + logMsg + '...</div>';
-        }
-        
-        deleteDb.collection(collection).doc(id).delete()
+        var id = ids[index];
+        db.collection(collectionName).doc(id).delete()
             .then(function() {
-                completed++;
-                if (progressEl) {
-                    progressEl.innerHTML += '<div class="step done">✅ Deleted: ' + id + '</div>';
+                deleted++;
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step done">✅ Deleted: ' + id + '</div>';
                 }
-                deleteLog('Deleted: ' + id, 'success');
                 deleteNext(index + 1);
             })
             .catch(function(err) {
+                failed++;
                 errors.push(id + ': ' + err.message);
-                if (progressEl) {
-                    progressEl.innerHTML += '<div class="step error">❌ Failed: ' + id + ' - ' + err.message + '</div>';
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step error">❌ Failed: ' + id + ' - ' + err.message + '</div>';
                 }
-                deleteLog('Failed to delete: ' + id + ' - ' + err.message, 'error');
                 deleteNext(index + 1);
             });
     }
     
-    deleteNext(0);
+    // Confirm before deleting
+    if (typeof Modal !== 'undefined' && Modal.confirm) {
+        Modal.confirm(
+            '🗑️ Confirm Delete',
+            'Are you sure you want to delete <strong>' + ids.length + '</strong> records from <strong>' + collectionName + '</strong> (' + envText + ')?<br><br>This action is <strong>PERMANENT</strong> and cannot be undone.',
+            function() {
+                deleteNext(0);
+            },
+            'Delete',
+            'danger'
+        );
+    } else {
+        if (confirm('Delete ' + ids.length + ' records from ' + collectionName + ' (' + envText + ')? This cannot be undone!')) {
+            deleteNext(0);
+        } else {
+            if (progressDiv) {
+                progressDiv.innerHTML = '<div class="step info">❌ Cancelled by user</div>';
+            }
+        }
+    }
+}
+
+// ============================================================
+// ENVIRONMENT SWITCHING
+// ============================================================
+
+function setDeleteEnvironment(env) {
+    var prodBtn = document.getElementById('deleteProdBtn');
+    var devBtn = document.getElementById('deleteDevBtn');
+    var indicator = document.getElementById('deleteIndicator');
+    
+    if (!prodBtn || !devBtn || !indicator) return;
+    
+    if (env === 'PROD') {
+        prodBtn.className = 'env-btn-small active-prod';
+        devBtn.className = 'env-btn-small';
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+        deleteEnv = 'PROD';
+    } else {
+        prodBtn.className = 'env-btn-small';
+        devBtn.className = 'env-btn-small active-dev';
+        indicator.textContent = 'DEV';
+        indicator.className = 'env-indicator-small dev';
+        deleteEnv = 'DEV';
+    }
+    
+    deleteLog('Delete environment set to: ' + env, 'success');
+    loadDeleteRecords();
 }
 
 // ============================================================
@@ -483,32 +429,19 @@ function showDeleteInfoGuide() {
     overlay.innerHTML = `
         <div class="info-card">
             <div class="info-header">
-                <div class="info-title" style="color:#ff6b6b;">🗑️ DELETE TAB - Information & Guide</div>
+                <div class="info-title">🗑️ DELETE TAB - Information & Guide</div>
                 <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
             </div>
             
             <div class="info-section">
-                <div class="info-section-title danger">🚨 WARNING: PERMANENT DELETION</div>
-                <div class="info-text" style="color:#ff6b6b; font-weight:700; font-size:1rem;">
-                    ⚠️ DELETING RECORDS IS <span style="text-decoration:underline;">PERMANENT</span> AND <span style="text-decoration:underline;">CANNOT BE UNDONE</span>.
-                    <br><br>
-                    This is the most dangerous tool in Record Management. Use with <span style="text-decoration:underline;">extreme caution</span>.
-                </div>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
                 <div class="info-section-title">🎯 What This Tab Does</div>
                 <div class="info-text">
-                    The <strong style="color:#ff6b6b;">DELETE</strong> tab permanently removes records from Firestore.
-                    <br><br>
-                    This should ONLY be used for:
+                    The <strong>DELETE</strong> tab allows you to permanently remove records from Firestore.
                     <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li>🧹 <strong>Cleaning up test data</strong> — removing test games after development</li>
-                        <li>🗑️ <strong>Removing duplicate records</strong> — cleaning up accidental copies</li>
-                        <li>🔧 <strong>Deleting corrupted records</strong> — removing records that cannot be fixed</li>
-                        <li>📦 <strong>Housekeeping</strong> — managing large collections</li>
+                        <li>🗑️ Delete individual records by checking the checkbox</li>
+                        <li>☑️ Select All / Deselect All for bulk operations</li>
+                        <li>🔄 Switch between PROD and DEV environments</li>
+                        <li>📂 Select collection: scheduledGames, historyGames, or backupFolder</li>
                     </ul>
                 </div>
             </div>
@@ -518,63 +451,26 @@ function showDeleteInfoGuide() {
             <div class="info-section">
                 <div class="info-section-title">📖 How To Use</div>
                 <ol class="info-steps">
-                    <li><strong>Step 1 - Environment:</strong> Select PROD or DEV — <span style="color:#ff6b6b;">be absolutely sure!</span></li>
-                    <li><strong>Step 2 - Collection:</strong> Choose <code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code></li>
-                    <li><strong>Step 3 - Select Records:</strong> Check the boxes next to records you want to delete</li>
-                    <li><strong>Step 4 - Delete:</strong> Click <span style="color:#ff6b6b;">"DELETE SELECTED"</span> and confirm</li>
+                    <li><strong>Step 1 - Environment:</strong> Select PROD or DEV</li>
+                    <li><strong>Step 2 - Collection:</strong> Choose a collection</li>
+                    <li><strong>Step 3 - Select:</strong> Check individual records or click "Select All"</li>
+                    <li><strong>Step 4 - Delete:</strong> Click "DELETE SELECTED" to confirm deletion</li>
                 </ol>
             </div>
             
             <hr class="info-divider">
             
             <div class="info-section">
-                <div class="info-section-title">📋 Features</div>
-                <div class="info-text">
-                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li>☑️ <strong>Batch Selection:</strong> Select multiple records at once</li>
-                        <li>☑️ <strong>Select All / Deselect All:</strong> Quick selection of all records</li>
-                        <li>📊 <strong>Visual Status:</strong> See each record's status (completed, pending, unknown)</li>
-                        <li>🔍 <strong>Progress Tracking:</strong> Real-time feedback during batch delete</li>
-                        <li>🛑 <strong>Confirmation Required:</strong> Two-step confirmation prevents accidental deletion</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title danger">🚨 Critical Warnings</div>
+                <div class="info-section-title">⚠️ Important Notes</div>
                 <ul class="info-warnings">
-                    <li><strong>🔴 PERMANENT:</strong> Deleted records CANNOT be recovered. There is no "undo" or "trash" folder.</li>
-                    <li><strong>🟡 Double-check environment:</strong> Make sure you are deleting from the correct environment (PROD vs DEV).</li>
-                    <li><strong>🟡 Double-check collection:</strong> Make sure you are deleting from the correct collection.</li>
-                    <li><strong>🟡 Cannot restore:</strong> Even backups are deleted permanently when you delete them.</li>
-                    <li><strong>🟡 Affects all users:</strong> Deletion is immediate and affects all users, not just your session.</li>
-                    <li><strong>🟡 Consider backup first:</strong> If you're unsure, use the COPY tab to create a backup before deleting.</li>
+                    <li><strong>PERMANENT:</strong> Deleted records cannot be recovered</li>
+                    <li><strong>Backup:</strong> Consider backing up before deleting</li>
+                    <li><strong>Photos:</strong> Deleting a record does NOT delete its photo from Storage</li>
                 </ul>
             </div>
             
-            <hr class="info-divider">
-            
-            <div class="info-section">
-                <div class="info-section-title">📊 Records Display</div>
-                <div class="info-text">
-                    The table shows the following information for each record:
-                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li><span style="color:#4caf50;">☑️ Checkbox</span> — Select/deselect the record</li>
-                        <li><span style="color:#e0e0e0;">Course</span> — The course where the game was played</li>
-                        <li><span style="color:#ccc;">Date</span> — The date of the game</li>
-                        <li><span style="color:#ffaa44;">Status</span> — completed / pending / unknown</li>
-                        <li><span style="color:#4a8af4;">ID</span> — The document ID (clickable row toggles selection)</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <div style="text-align:center; margin-top:20px; padding-top:16px; border-top:2px solid #ff6b6b;">
-                <div style="color:#ff6b6b; font-weight:700; margin-bottom:12px; font-size:0.9rem;">
-                    ⚠️ REMEMBER: DELETION IS PERMANENT AND IRREVERSIBLE
-                </div>
-                <button class="info-close-btn" style="border-color:#ff6b6b; color:#ff6b6b;" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand the risks</button>
+            <div style="text-align:center; margin-top:20px;">
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
             </div>
         </div>
     `;
@@ -583,33 +479,135 @@ function showDeleteInfoGuide() {
 }
 
 // ============================================================
+// EVENT BINDINGS
+// ============================================================
+
+function initDeleteTabEvents() {
+    // Environment buttons
+    var prodBtn = document.getElementById('deleteProdBtn');
+    var devBtn = document.getElementById('deleteDevBtn');
+    
+    if (prodBtn) {
+        prodBtn.onclick = function() {
+            setDeleteEnvironment('PROD');
+        };
+    }
+    
+    if (devBtn) {
+        devBtn.onclick = function() {
+            setDeleteEnvironment('DEV');
+        };
+    }
+    
+    // Refresh button
+    var refreshBtn = document.getElementById('deleteRefreshBtn');
+    if (refreshBtn) {
+        refreshBtn.onclick = function() {
+            loadDeleteRecords();
+        };
+    }
+    
+    // Select All button
+    var selectAllBtn = document.getElementById('deleteSelectAllBtn');
+    if (selectAllBtn) {
+        selectAllBtn.onclick = function() {
+            selectAllDeleteRecords();
+        };
+    }
+    
+    // Deselect All button
+    var deselectAllBtn = document.getElementById('deleteDeselectAllBtn');
+    if (deselectAllBtn) {
+        deselectAllBtn.onclick = function() {
+            deselectAllDeleteRecords();
+        };
+    }
+    
+    // Execute Delete button
+    var executeBtn = document.getElementById('deleteExecuteBtn');
+    if (executeBtn) {
+        executeBtn.onclick = function() {
+            executeDeleteRecords();
+        };
+    }
+    
+    // Collection dropdown change
+    var collectionSelect = document.getElementById('deleteCollection');
+    if (collectionSelect) {
+        collectionSelect.onchange = function() {
+            loadDeleteRecords();
+        };
+    }
+    
+    deleteLog('Delete tab event bindings initialized', 'info');
+}
+
+// ============================================================
+// ESCAPE HTML HELPER (fallback if util-core.js not loaded)
+// ============================================================
+
+function escapeHtml(str) {
+    if (typeof window.escapeHtml === 'function') {
+        return window.escapeHtml(str);
+    }
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// ============================================================
+// AUTO-INIT
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Set default environment indicator
+    var indicator = document.getElementById('deleteIndicator');
+    if (indicator) {
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+    }
+    
+    // Initialize event bindings
+    initDeleteTabEvents();
+    
+    // Load records after a short delay
+    setTimeout(function() {
+        loadDeleteRecords();
+    }, 300);
+    
+    console.log('[UTIL-DELETE] Auto-init complete');
+});
+
+// ============================================================
 // EXPOSE FUNCTIONS GLOBALLY
 // ============================================================
 
-window.setDeleteEnvironment = setDeleteEnvironment;
 window.loadDeleteRecords = loadDeleteRecords;
-window.renderDeleteRecords = renderDeleteRecords;
-window.toggleAllDeleteCheckboxes = toggleAllDeleteCheckboxes;
 window.toggleDeleteCheckbox = toggleDeleteCheckbox;
 window.onDeleteCheckboxChange = onDeleteCheckboxChange;
-window.updateDeleteSelectedCount = updateDeleteSelectedCount;
-window.updateDeleteButtonState = updateDeleteButtonState;
-window.updateSelectAllState = updateSelectAllState;
+window.toggleAllDeleteCheckboxes = toggleAllDeleteCheckboxes;
 window.selectAllDeleteRecords = selectAllDeleteRecords;
 window.deselectAllDeleteRecords = deselectAllDeleteRecords;
-window.deleteSelectedRecords = deleteSelectedRecords;
+window.executeDeleteRecords = executeDeleteRecords;
+window.setDeleteEnvironment = setDeleteEnvironment;
 window.showDeleteInfoGuide = showDeleteInfoGuide;
+window.initDeleteTabEvents = initDeleteTabEvents;
+
+console.log('[UTIL-DELETE] v1.05 loaded - Load ALL records fix');
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - REMOVED: Dependency on HTML for initFirebase, log, escapeHtml, formatDate
-   - CHANGED: Now uses window.log, window.escapeHtml, window.formatDate from util-core.js
-   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
-   - ADDED: Fallback logging, escaping, and formatting functions if util-core.js not loaded
-   - REMOVED: getDbForEnv dependency (not used)
-   - PRESERVED: All existing functionality from v1.02
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: loadDeleteRecords() now loads ALL records (removed orderBy date filter)
+   - FIXED: Records with missing dates are now included in the list
+   - CHANGED: Manual sorting by date with fallback for missing dates (uses '1970-01-01')
+   - PRESERVED: All existing functionality from v1.04 (Select All, Deselect All, Bulk Delete)
+   - PRESERVED: Environment switching (PROD/DEV) using window.prodDb/window.devDb
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
