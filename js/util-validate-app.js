@@ -1,18 +1,19 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: loadValidateRecords() now loads ALL records (removed orderBy date filter)
-   - FIXED: Records with undefined date are now included in the dropdown
-   - CHANGED: Manual sorting by date with fallback for undefined dates
-   - PRESERVED: All existing functionality from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: applyStagedPhotoToRecord() now applies photo even if recordId doesn't match
+   - CHANGED: Removed the mismatch check that was silently skipping photo updates
+   - CHANGED: Now shows a warning but still applies the staged photo
+   - This fixes the issue where photos were not being applied after "Fix Record"
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.03";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.03");
+window.UTIL_VALIDATE_APP_VERSION = "1.04";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.04 - Fixed photo staging");
 
 // ============================================================
 // STATE VARIABLES
@@ -345,6 +346,9 @@ function validateFixRecord() {
 // ============================================================
 // VALIDATE TAB: APPLY STAGED PHOTO TO RECORD
 // ============================================================
+// v1.04: FIXED - Now applies photo even if recordId doesn't match
+// The user selected the photo intentionally, so we should apply it
+// ============================================================
 
 function applyStagedPhotoToRecord(recordId, collection, db) {
     // Check if there's a staged photo
@@ -353,13 +357,20 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
         return Promise.resolve();
     }
     
-    // Verify the staged photo is for this record
-    if (window._stagedPhoto.recordId !== recordId || window._stagedPhoto.collection !== collection) {
-        appLog('Staged photo is for a different record: ' + window._stagedPhoto.recordId + ' (expected: ' + recordId + ')', 'warning');
-        return Promise.resolve();
+    // v1.04: Removed the recordId mismatch check that was silently skipping photo updates
+    // The user selected the photo intentionally, so we should apply it regardless
+    if (window._stagedPhoto.recordId && window._stagedPhoto.recordId !== recordId) {
+        appLog('⚠️ Staged photo was selected for a different record: ' + window._stagedPhoto.recordId + ' (current: ' + recordId + ')', 'warning');
+        appLog('⚠️ Applying photo anyway (user selected it intentionally)', 'warning');
+    }
+    
+    if (window._stagedPhoto.collection && window._stagedPhoto.collection !== collection) {
+        appLog('⚠️ Staged photo was selected from a different collection: ' + window._stagedPhoto.collection + ' (current: ' + collection + ')', 'warning');
+        appLog('⚠️ Applying photo anyway (user selected it intentionally)', 'warning');
     }
     
     appLog('📸 Applying staged photo to record: ' + recordId, 'info');
+    appLog('📸 Photo: ' + window._stagedPhoto.fullPath, 'info');
     
     var photoUpdate = {
         'celebration.imageRef': window._stagedPhoto.fullPath,
@@ -682,16 +693,17 @@ window.applyStagedPhotoToRecord = applyStagedPhotoToRecord;
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.03 loaded');
+console.log('[UTIL-VALIDATE-APP] v1.04 loaded - Fixed photo staging');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: loadValidateRecords() now loads ALL records (removed orderBy date filter)
-   - FIXED: Records with undefined date are now included in the dropdown
-   - CHANGED: Manual sorting by date with fallback for undefined dates
-   - PRESERVED: All existing functionality from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: applyStagedPhotoToRecord() now applies photo even if recordId doesn't match
+   - CHANGED: Removed the mismatch check that was silently skipping photo updates
+   - CHANGED: Now shows a warning but still applies the staged photo
+   - This fixes the issue where photos were not being applied after "Fix Record"
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
