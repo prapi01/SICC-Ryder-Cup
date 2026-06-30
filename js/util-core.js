@@ -1,23 +1,17 @@
 /*
 FILE: js/util-core.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES from v1.00:
-   - NEW: Created as shared utilities file for Record Management
-   - ADDED: log() - console and UI logging with color coding
-   - ADDED: logStep() - step-based logging wrapper
-   - ADDED: escapeHtml() - HTML escaping utility
-   - ADDED: formatDate() - date formatting utility
-   - ADDED: initDateToggle() - date radio button toggle logic
-   - ADDED: initTabSwitching() - tab navigation logic
-   - ADDED: Firebase initialization with PROD/DEV apps
-   - ADDED: Version exposure via window.UTIL_CORE_VERSION
-DEPENDS ON: Firebase (firebase-app-compat, firebase-firestore-compat)
+   - FIXED: Correct storageBucket for PROD: sicc-ryder-cup.firebasestorage.app
+   - FIXED: Correct storageBucket for DEV: sicc-ryder-cup-dev.firebasestorage.app
+   - PRESERVED: All existing functionality from v1.00
+DEPENDS ON: Firebase (firebase-app-compat, firebase-firestore-compat, firebase-storage-compat)
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_CORE_VERSION = "1.00";
-console.log("[UTIL-CORE] Initializing v1.00");
+window.UTIL_CORE_VERSION = "1.01";
+console.log("[UTIL-CORE] Initializing v1.01");
 
 // ============================================================
 // FIREBASE INITIALIZATION
@@ -28,12 +22,14 @@ console.log("[UTIL-CORE] Initializing v1.00");
         var PROD_CONFIG = {
             apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
             authDomain: "sicc-ryder-cup.firebaseapp.com",
-            projectId: "sicc-ryder-cup"
+            projectId: "sicc-ryder-cup",
+            storageBucket: "sicc-ryder-cup.firebasestorage.app"
         };
         var DEV_CONFIG = {
             apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
             authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
-            projectId: "sicc-ryder-cup-dev"
+            projectId: "sicc-ryder-cup-dev",
+            storageBucket: "sicc-ryder-cup-dev.firebasestorage.app"
         };
         
         // Initialize only if not already initialized
@@ -266,21 +262,15 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[UTIL-CORE] Auto-init complete');
 });
 
-console.log('[UTIL-CORE] v1.00 loaded');
+console.log('[UTIL-CORE] v1.01 loaded');
 
 /*
 FILE: js/util-core.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES from v1.00:
-   - NEW: Created as shared utilities file for Record Management
-   - ADDED: log() - console and UI logging with color coding
-   - ADDED: logStep() - step-based logging wrapper
-   - ADDED: escapeHtml() - HTML escaping utility
-   - ADDED: formatDate() - date formatting utility
-   - ADDED: initDateToggle() - date radio button toggle logic
-   - ADDED: initTabSwitching() - tab navigation logic
-   - ADDED: Firebase initialization with PROD/DEV apps
-   - ADDED: Version exposure via window.UTIL_CORE_VERSION
-DEPENDS ON: Firebase (firebase-app-compat, firebase-firestore-compat)
+   - FIXED: Correct storageBucket for PROD: sicc-ryder-cup.firebasestorage.app
+   - FIXED: Correct storageBucket for DEV: sicc-ryder-cup-dev.firebasestorage.app
+   - PRESERVED: All existing functionality from v1.00
+DEPENDS ON: Firebase (firebase-app-compat, firebase-firestore-compat, firebase-storage-compat)
 STATUS: Ready for integration
 */
