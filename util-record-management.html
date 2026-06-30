@@ -3,12 +3,11 @@ FILE: util-record-management.html
 VERSION: 1.25
 KEY CHANGES from v1.24:
    - ADDED: "APPLY STAGED PHOTO" button in the VALIDATE tab
-   - This button allows users to apply a staged photo without needing data mismatches
-   - Works even when the record is already valid
-   - Button is styled with photo purple color (#8b5cf6)
-   - Added btn-photo-apply CSS class
+   - ADDED: btn-photo-apply CSS class for the new button
+   - ADDED: Polling logic to enable/disable the button when a photo is staged
+   - This allows users to apply a staged photo even when the record is already valid
    - PRESERVED: All existing functionality from v1.24
-DEPENDS ON: js/util-core.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-validate-app.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -17,9 +16,17 @@ STATUS: Ready for integration
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Record Management Tool v3.0</title>
+    <title>Record Management - SICC Ryder Cup</title>
     
-    <!-- Load util-core FIRST (provides Firebase init, logging, etc.) -->
+    <!-- Browser Tab Favicon -->
+    <link rel="icon" type="image/png" href="/images/ICON.png">
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    
+    <!-- Utility JS Files -->
     <script src="js/util-core.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
@@ -28,321 +35,21 @@ STATUS: Ready for integration
     <script src="js/util-compare-record.js"></script>
     <script src="js/util-delete-record.js"></script>
     <script src="js/util-photo.js"></script>
-
+    
     <style>
-        /* ============================================================
-           RESET & BASE
-           ============================================================ */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #e0e0e0;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-        }
-        .app-container {
-            max-width: 500px;
-            width: 100%;
-            padding: 16px 16px 40px;
-            margin: 0 auto;
-        }
-        .app-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #2a2a2a;
-        }
-        .app-title {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #4caf50;
-            letter-spacing: 0.5px;
-        }
-        .app-title .version {
-            font-size: 0.65rem;
-            font-weight: 400;
-            color: #4caf50;
-            opacity: 0.6;
-            margin-left: 6px;
-        }
-        .env-indicator {
-            font-size: 0.6rem;
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        .env-indicator.prod {
-            color: #4caf50;
-            background: rgba(76, 175, 80, 0.15);
-            border: 1px solid #4caf50;
-        }
-        .env-indicator.dev {
-            color: #ffaa44;
-            background: rgba(255, 170, 68, 0.15);
-            border: 1px solid #ffaa44;
-        }
+        /* ===== ALL CSS STYLES ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); min-height: 100vh; }
+        .container { max-width: 900px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        .version-tag { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); font-size: 0.65rem; color: #4caf50; background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 16px; font-family: monospace; z-index: 1000; }
+        .device-tag { position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); font-size: 0.55rem; color: #4caf50; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 12px; font-family: monospace; z-index: 1000; opacity: 0.6; }
+        h1 { font-size: 1.4rem; font-weight: 700; color: #4caf50; text-align: center; margin-bottom: 20px; }
+        .card { background: #111111; border: 1px solid #333333; border-radius: 20px; padding: 16px; margin-bottom: 16px; overflow: hidden; }
+        .card-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; margin-bottom: 12px; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .card-title.danger { border-left-color: #c0392b; color: #c0392b; }
+        .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
         
-        /* ============================================================
-           TABS
-           ============================================================ */
-        .tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 16px;
-            background: #111;
-            border-radius: 16px;
-            padding: 4px;
-            border: 1px solid #2a2a2a;
-            overflow-x: auto;
-            flex-wrap: nowrap;
-        }
-        .tab {
-            flex: 1;
-            min-width: 60px;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 12px;
-            background: transparent;
-            color: #666;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: center;
-            white-space: nowrap;
-            font-family: inherit;
-        }
-        .tab:hover {
-            color: #aaa;
-            background: rgba(255,255,255,0.05);
-        }
-        .tab.active {
-            background: #1a1a1a;
-            color: #4caf50;
-            box-shadow: 0 0 20px rgba(76, 175, 80, 0.05);
-        }
-        .tab.active-danger {
-            background: #1a1a1a;
-            color: #c0392b;
-            box-shadow: 0 0 20px rgba(192, 57, 43, 0.05);
-        }
-        .tab .badge {
-            font-size: 0.5rem;
-            opacity: 0.5;
-            margin-left: 2px;
-        }
-        
-        .tab-content {
-            display: none;
-            animation: fadeIn 0.25s ease;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* ============================================================
-           CARDS
-           ============================================================ */
-        .card {
-            background: #111;
-            border: 1px solid #2a2a2a;
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        .card-title {
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            color: #888;
-            margin-bottom: 12px;
-        }
-        .card-title.danger {
-            color: #c0392b;
-        }
-        .card-title.photo {
-            color: #8b5cf6;
-        }
-        
-        /* ============================================================
-           ENV ROW
-           ============================================================ */
-        .env-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-        .env-side-label {
-            font-size: 0.65rem;
-            font-weight: 600;
-            color: #666;
-            letter-spacing: 0.5px;
-        }
-        .env-side-label.delete {
-            color: #c0392b;
-        }
-        .env-selector {
-            display: flex;
-            gap: 4px;
-            background: #0a0a0a;
-            border-radius: 20px;
-            padding: 3px;
-            border: 1px solid #2a2a2a;
-        }
-        .env-btn-small {
-            padding: 4px 14px;
-            border: none;
-            border-radius: 16px;
-            font-size: 0.6rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            background: transparent;
-            color: #555;
-        }
-        .env-btn-small.active-prod {
-            background: rgba(76, 175, 80, 0.2);
-            color: #4caf50;
-        }
-        .env-btn-small.active-dev {
-            background: rgba(255, 170, 68, 0.2);
-            color: #ffaa44;
-        }
-        .env-btn-small:hover:not(.active-prod):not(.active-dev) {
-            color: #aaa;
-        }
-        .env-indicator-small {
-            font-size: 0.55rem;
-            font-weight: 700;
-            padding: 2px 10px;
-            border-radius: 12px;
-            letter-spacing: 0.5px;
-        }
-        .env-indicator-small.prod {
-            color: #4caf50;
-            background: rgba(76, 175, 80, 0.12);
-        }
-        .env-indicator-small.dev {
-            color: #ffaa44;
-            background: rgba(255, 170, 68, 0.12);
-        }
-        
-        /* ============================================================
-           SELECTS & BUTTONS
-           ============================================================ */
-        .select-wrapper {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .select-wrapper .collection-select {
-            flex: 2;
-        }
-        .select-wrapper .record-select {
-            flex: 3;
-        }
-        select {
-            padding: 10px 12px;
-            border-radius: 12px;
-            background: #0a0a0a;
-            border: 1px solid #2a2a2a;
-            color: #e0e0e0;
-            font-size: 0.8rem;
-            font-family: inherit;
-            cursor: pointer;
-            transition: border-color 0.2s;
-            min-width: 0;
-            width: 100%;
-        }
-        select:focus {
-            outline: none;
-            border-color: #4caf50;
-        }
-        select option {
-            background: #1a1a1a;
-            color: #e0e0e0;
-        }
-        select:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        
-        .btn {
-            padding: 10px 16px;
-            border: none;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        .btn-primary {
-            background: #4caf50;
-            color: #fff;
-        }
-        .btn-primary:hover:not(:disabled) {
-            background: #43a047;
-            transform: scale(0.98);
-        }
-        .btn-secondary {
-            background: #2a2a2a;
-            color: #aaa;
-            border: 1px solid #3a3a3a;
-        }
-        .btn-secondary:hover:not(:disabled) {
-            background: #333;
-            color: #fff;
-        }
-        .btn-success {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        .btn-success:hover:not(:disabled) {
-            background: #1a4a1a;
-        }
-        .btn-danger {
-            background: #2a0a0a;
-            color: #c0392b;
-            border: 1px solid #c0392b;
-        }
-        .btn-danger:hover:not(:disabled) {
-            background: #3a0a0a;
-        }
-        .btn-photo {
-            border-color: #8b5cf6;
-            color: #8b5cf6;
-            background: rgba(139, 92, 246, 0.1);
-        }
-        .btn-photo:hover:not(:disabled) {
-            background: rgba(139, 92, 246, 0.2);
-        }
+        /* v1.25: Apply Photo button */
         .btn-photo-apply {
             border-color: #8b5cf6;
             color: #8b5cf6;
@@ -351,691 +58,722 @@ STATUS: Ready for integration
         .btn-photo-apply:hover:not(:disabled) {
             background: rgba(139, 92, 246, 0.2);
         }
-        .btn-small {
-            padding: 6px 12px;
-            font-size: 0.6rem;
-            border-radius: 8px;
-            border: 1px solid #3a3a3a;
-            background: #1a1a1a;
-            color: #aaa;
-            cursor: pointer;
-            font-family: inherit;
-            transition: all 0.2s;
-        }
-        .btn-small:hover {
-            background: #2a2a2a;
-            color: #fff;
-        }
-        .btn-small.danger {
-            border-color: #c0392b;
-            color: #c0392b;
-        }
-        .btn-small.danger:hover {
-            background: rgba(192, 57, 43, 0.15);
-        }
         
-        .btn-info-guide {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.55rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: 1px solid #4a8af4;
-            background: rgba(74, 138, 244, 0.1);
-            color: #4a8af4;
-            font-family: inherit;
-            transition: all 0.2s;
-            flex-shrink: 0;
-        }
-        .btn-info-guide:hover {
-            background: rgba(74, 138, 244, 0.2);
-        }
+        /* Tab Navigation */
+        .tab-nav { display: flex; gap: 0; margin-bottom: 16px; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a2a; background: #0a0a0a; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .tab-nav::-webkit-scrollbar { height: 2px; }
+        .tab-nav::-webkit-scrollbar-thumb { background: #4caf50; border-radius: 2px; }
+        .tab-btn { flex: 0 0 auto; padding: 14px 16px; font-size: 0.8rem; font-weight: 700; text-align: center; cursor: pointer; border: none; background: transparent; color: #666; transition: all 0.3s ease; border-right: 1px solid #1a1a1a; white-space: nowrap; min-width: 70px; }
+        .tab-btn:last-child { border-right: none; }
+        .tab-btn:hover { color: #aaa; background: #111; }
+        .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
+        .tab-btn.active.danger-active { background: #2a1a1a; color: #c0392b; box-shadow: inset 0 -2px 0 #c0392b; }
+        .tab-btn.active.photo-active { background: #2a2a0a; color: #ffaa44; box-shadow: inset 0 -2px 0 #ffaa44; }
+        .tab-btn .tab-icon { margin-right: 6px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         
-        .tab-header-with-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-        .tab-title {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #e0e0e0;
-        }
-        .tab-title.danger {
-            color: #c0392b;
-        }
-        .version-badge {
-            font-size: 0.5rem;
-            font-weight: 400;
-            color: #4caf50;
-            opacity: 0.5;
-            margin-left: 4px;
-            font-family: monospace;
-        }
-        .version-badge.danger {
-            color: #c0392b;
-        }
-        .version-badge.photo {
+        /* Tab Header with Info Button */
+        .tab-header-with-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+        .tab-header-with-info .tab-title { font-size: 1rem; font-weight: 700; color: #4caf50; }
+        .tab-header-with-info .tab-title.danger { color: #c0392b; }
+        .tab-header-with-info .tab-title.photo { color: #ffaa44; }
+        .tab-header-with-info .version-badge { font-size: 0.55rem; font-weight: 400; color: #4caf50; background: rgba(76, 175, 80, 0.15); padding: 2px 8px; border-radius: 10px; font-family: monospace; margin-left: 6px; }
+        .tab-header-with-info .version-badge.danger { color: #c0392b; background: rgba(192, 57, 43, 0.15); }
+        .tab-header-with-info .version-badge.photo { color: #ffaa44; background: rgba(255, 170, 68, 0.15); }
+        .btn-info-guide { padding: 6px 16px; border-radius: 30px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4a8af4; background: rgba(74, 138, 244, 0.1); color: #4a8af4; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; }
+        .btn-info-guide:hover { background: rgba(74, 138, 244, 0.2); border-color: #4a8af4; }
+        .btn-info-guide:active { transform: scale(0.95); }
+        
+        /* Environment Selector */
+        .env-selector { display: flex; gap: 6px; align-items: center; }
+        .env-btn-small { padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; cursor: pointer; border: 2px solid #333; background: #1a1a1a; color: #555; transition: all 0.2s ease; }
+        .env-btn-small.active-prod { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        .env-btn-small.active-dev { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        .env-btn-small:active { transform: scale(0.95); }
+        .env-indicator-small { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.55rem; font-weight: 600; margin-left: 6px; }
+        .env-indicator-small.prod { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .env-indicator-small.dev { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .env-indicator-small.none { background: #1a1a1a; color: #555; border: 1px solid #333; }
+        .env-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; padding: 6px 10px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; }
+        .env-row .env-side-label { font-size: 0.7rem; font-weight: 600; min-width: 60px; }
+        .env-row .env-side-label.source { color: #4caf50; }
+        .env-row .env-side-label.dest { color: #ffaa44; }
+        .env-row .env-side-label.left { color: #4caf50; }
+        .env-row .env-side-label.right { color: #4a8af4; }
+        .env-row .env-side-label.delete { color: #c0392b; }
+        .env-row .env-side-label.photo { color: #ffaa44; }
+        
+        /* Form Elements */
+        .collection-select { width: 100%; background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.9rem; margin-bottom: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; }
+        .collection-select option { background: #1a1a1a; color: #fff; padding: 8px; }
+        .game-select { width: 100%; background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; word-break: break-all; }
+        .game-select option { background: #1a1a1a; color: #fff; padding: 8px; word-break: break-all; white-space: normal; }
+        .game-info { background: #0a0a0a; border-radius: 12px; padding: 12px; margin: 8px 0; font-size: 0.75rem; font-family: monospace; overflow: hidden; word-break: break-all; }
+        .game-info-row { display: flex; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 4px; padding: 2px 0; }
+        .game-info-label { color: #888; flex-shrink: 0; }
+        .game-info-value { color: #4caf50; font-weight: 600; word-break: break-all; text-align: right; flex: 1; min-width: 80px; }
+        .game-info-value.gold { color: #ffaa44; }
+        input, textarea { background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.9rem; width: 100%; margin-bottom: 8px; }
+        input:focus, textarea:focus { outline: none; border-color: #ffaa44; }
+        .input-with-datalist { position: relative; width: 100%; }
+        .input-with-datalist input { width: 100%; }
+        .input-with-datalist datalist { display: none; }
+        .select-wrapper { position: relative; width: 100%; }
+        .select-wrapper select { width: 100%; padding-right: 32px; }
+        .select-wrapper::after { content: "▼"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: #4caf50; font-size: 0.6rem; pointer-events: none; }
+        select option { white-space: normal !important; word-break: break-all !important; padding: 4px 8px !important; }
+        
+        /* Buttons */
+        .btn { padding: 14px 20px; border-radius: 40px; font-weight: 700; font-size: 1rem; text-align: center; cursor: pointer; border: none; width: 100%; margin-top: 8px; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .btn-secondary { background: #1a1a1a; border: 1px solid #333; color: #ccc; }
+        .btn-danger { background: #2a1a1a; border: 1px solid #c0392b; color: #c0392b; }
+        .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-compare { background: #1a2a3a; border: 1px solid #4a8af4; color: #4a8af4; }
+        .btn-load { background: #1a2a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .btn-photo { background: #2a2a0a; border: 1px solid #ffaa44; color: #ffaa44; }
+        .btn-photo:hover { background: #3a3a0a; }
+        /* v1.25: Apply Photo button */
+        .btn-photo-apply {
+            border-color: #8b5cf6;
             color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.08);
+        }
+        .btn-photo-apply:hover:not(:disabled) {
+            background: rgba(139, 92, 246, 0.2);
+        }
+        .button-group { display: flex; gap: 12px; margin-top: 12px; }
+        .button-group .btn { flex: 1; margin-top: 0; }
+        
+        /* Date Row */
+        .date-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .date-row .radio-group { display: flex; gap: 16px; flex-wrap: wrap; }
+        .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; color: #aaa; }
+        .radio-group label.active { color: #4caf50; }
+        .existing-hint { font-size: 0.65rem; color: #666; margin-top: -4px; margin-bottom: 8px; }
+        .existing-hint strong { color: #ffaa44; }
+        
+        /* Log */
+        .log { background: #0a0a0a; border-radius: 12px; padding: 12px; margin-top: 16px; font-size: 0.7rem; font-family: monospace; max-height: 300px; overflow-y: auto; word-break: break-all; }
+        .log-entry { padding: 4px 0; border-bottom: 1px solid #1a1a1a; }
+        .log-error { color: #c0392b; }
+        .log-success { color: #4caf50; }
+        .log-info { color: #ffaa44; }
+        .log-diff { color: #c0392b; }
+        .log-match { color: #4caf50; }
+        .log-warning { color: #ffaa44; }
+        
+        /* Compare Layout */
+        .compare-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .compare-layout { grid-template-columns: 1fr; } }
+        .compare-side { background: #0a0a0a; border-radius: 12px; padding: 12px; border: 1px solid #2a2a2a; overflow: hidden; min-width: 0; }
+        .compare-side-title { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; text-align: center; }
+        .compare-side-title.left { color: #4caf50; }
+        .compare-side-title.right { color: #4a8af4; }
+        .compare-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        .compare-actions .btn { margin-top: 0; }
+        .compare-result-box { max-height: 400px; overflow-y: auto; margin-top: 8px; overflow-x: hidden; }
+        .diff-item { padding: 6px 8px; border-radius: 6px; margin: 3px 0; font-size: 0.7rem; font-family: monospace; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; word-break: break-all; overflow: hidden; }
+        .diff-item.diff { background: #2a0a0a; border: 1px solid #5a2a2a; color: #c0392b; }
+        .diff-item.match { background: #0a1a0a; border: 1px solid #1a3a1a; color: #4caf50; }
+        .diff-item .field-name { color: #888; font-weight: 400; word-break: break-all; }
+        .diff-item .field-value-left { color: #4caf50; }
+        .diff-item .field-value-right { color: #4a8af4; }
+        .diff-item .field-value-diff { color: #c0392b; }
+        .diff-summary { display: flex; gap: 16px; justify-content: center; padding: 8px; margin: 8px 0; background: #0a0a0a; border-radius: 8px; border: 1px solid #2a2a2a; flex-wrap: wrap; }
+        .diff-summary-item { text-align: center; font-size: 0.7rem; }
+        .diff-summary-item .count { font-weight: 700; font-size: 1.2rem; display: block; }
+        .diff-summary-item .count.match { color: #4caf50; }
+        .diff-summary-item .count.diff { color: #c0392b; }
+        .diff-summary-item .count.total { color: #ffaa44; }
+        .diff-summary-item .label { color: #888; font-size: 0.6rem; }
+        
+        /* Validate Tab */
+        .validate-results { display: none; margin-top: 16px; }
+        .validate-results.active { display: block; }
+        .validate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 600px) { .validate-grid { grid-template-columns: 1fr; } }
+        .validate-section { background: #0a0a0a; border-radius: 12px; padding: 12px; border: 1px solid #2a2a2a; overflow: hidden; min-width: 0; }
+        .validate-section-title { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: #4caf50; }
+        .validate-status { padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 0.8rem; }
+        .validate-status.success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #4caf50; }
+        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #c0392b; }
+        .validate-status.info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #4a8af4; }
+        .validate-status.warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffaa44; }
+        .validate-fix-btn-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .validate-fix-btn { padding: 12px 24px; border-radius: 40px; font-weight: 700; font-size: 0.85rem; cursor: pointer; border: 2px solid; transition: all 0.2s; flex: 1; min-width: 120px; }
+        .validate-fix-btn:active { transform: scale(0.97); }
+        .validate-fix-btn-fix { background: #1a3a1a; border-color: #ffaa44; color: #ffaa44; }
+        .validate-fix-btn-fix:hover { background: #2a4a2a; }
+        .validate-fix-btn-backup { background: #1a2a3a; border-color: #4a8af4; color: #4a8af4; }
+        .validate-fix-btn-backup:hover { background: #2a3a4a; }
+        .validate-fix-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .validate-progress { margin-top: 12px; padding: 12px; border-radius: 8px; background: #0a0a0a; font-size: 0.75rem; color: #888; display: none; max-height: 300px; overflow-y: auto; }
+        .validate-progress.active { display: block; }
+        .validate-progress .step { padding: 2px 0; }
+        .validate-progress .step.done { color: #4caf50; }
+        .validate-progress .step.error { color: #c0392b; }
+        .validate-progress .step.info { color: #4a8af4; }
+        .validate-progress .step.warning { color: #ffaa44; }
+        .validate-hole-list { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 4px; }
+        .validate-hole-item { padding: 4px 6px; border-radius: 4px; text-align: center; font-size: 0.65rem; font-weight: 600; }
+        .validate-hole-item.ok { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .validate-hole-item.fix { background: #2a0a0a; color: #c0392b; border: 1px solid #5a2a2a; }
+        .validate-hole-item.unknown { background: #1a1a1a; color: #555; border: 1px solid #333; }
+        .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.8rem; }
+        .game-info-grid .label { color: #666; }
+        .game-info-grid .value { color: #e0e0e0; }
+        
+        /* Badges */
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.6rem; font-weight: 600; }
+        .badge-sched { background: #1a2a3a; color: #4a8af4; border: 1px solid #2a4a5a; }
+        .badge-history { background: #1a3a2a; color: #4caf50; border: 1px solid #2a5a3a; }
+        .badge-backup { background: #3a2a1a; color: #ffaa44; border: 1px solid #5a4a2a; }
+        
+        /* Photo Tab */
+        .photo-viewer { width: 100%; height: 300px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; overflow: hidden; position: relative; margin-bottom: 12px; }
+        .photo-viewer .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #555; font-size: 1rem; }
+        .photo-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+        .photo-controls .btn { flex: 1; min-width: 80px; margin-top: 0; }
+        .photo-status { padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 8px; background: #0a0a0a; border: 1px solid #2a2a2a; min-height: 40px; }
+        .photo-uploaded-preview { margin-top: 12px; padding: 12px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; text-align: center; }
+        .photo-uploaded-preview img { max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; border: 1px solid #4caf50; }
+        .photo-progress { display: none; margin: 8px 0; }
+        .photo-progress .progress-bar { height: 4px; background: #2a5a2a; border-radius: 2px; transition: width 0.3s; width: 0%; }
+        .photo-firestore-ref { margin-top: 12px; padding: 12px; background: #0a0a0a; border-radius: 12px; border: 1px solid #2a2a2a; display: none; }
+        .photo-firestore-ref .row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .photo-firestore-ref .row input, .photo-firestore-ref .row select { flex: 1; min-width: 100px; margin-bottom: 4px; }
+        .photo-info-panel { display: none; margin-top: 12px; }
+        
+        /* Delete Tab - Records */
+        .delete-records-container { max-height: 400px; overflow-y: auto; margin-top: 8px; border: 1px solid #2a2a2a; border-radius: 12px; background: #0a0a0a; }
+        .delete-records-container table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        .delete-records-container th { padding: 8px 6px; text-align: left; background: #0a0a0a; border-bottom: 2px solid #333; font-weight: 600; color: #888; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 10; background: #111; }
+        .delete-records-container td { padding: 6px 6px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
+        .delete-records-container tr:hover { background: #1a1a1a; cursor: pointer; }
+        .delete-records-container tr.selected { background: #1a2a1a; }
+        .delete-records-container .checkbox-col { width: 32px; text-align: center; }
+        .delete-records-container input[type="checkbox"] { width: 16px; height: 16px; accent-color: #c0392b; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #c0392b; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
+        .delete-records-container input[type="checkbox"]:checked { background: #c0392b; }
+        .delete-records-container input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 12px; font-weight: 700; }
+        .delete-records-container .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.6rem; font-weight: 600; }
+        .delete-records-container .status-badge.completed { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .delete-records-container .status-badge.pending { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
+        .delete-records-container .status-badge.unknown { background: #1a1a1a; color: #555; border: 1px solid #333; }
+        .delete-count { font-size: 0.75rem; color: #888; margin-left: 8px; }
+        .delete-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; padding: 8px 0; }
+        .delete-toolbar .btn-small { padding: 6px 16px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4caf50; background: #1a3a1a; color: #4caf50; transition: all 0.2s; }
+        .delete-toolbar .btn-small:hover { background: #2a4a2a; }
+        .delete-toolbar .btn-small:active { transform: scale(0.95); }
+        .delete-toolbar .btn-small.danger { border-color: #c0392b; color: #c0392b; background: #2a1a1a; }
+        .delete-toolbar .btn-small.danger:hover { background: #3a1a1a; }
+        .delete-toolbar .btn-small:disabled { opacity: 0.4; cursor: not-allowed; }
+        .delete-toolbar .btn-small.photo-toolbar { border-color: #ffaa44; color: #ffaa44; background: #2a2a0a; }
+        .delete-toolbar .btn-small.photo-toolbar:hover { background: #3a3a0a; }
+        .delete-progress { display: none; margin-top: 12px; padding: 12px; border-radius: 8px; background: #0a0a0a; font-size: 0.75rem; color: #888; max-height: 200px; overflow-y: auto; }
+        .delete-progress.active { display: block; }
+        .delete-progress .step { padding: 2px 0; }
+        .delete-progress .step.done { color: #4caf50; }
+        .delete-progress .step.error { color: #c0392b; }
+        .delete-progress .step.info { color: #4a8af4; }
+        .delete-progress .step.warning { color: #ffaa44; }
+        
+        /* Delete Tab - Photo List */
+        #photoListContainer table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        #photoListContainer th { padding: 8px 6px; text-align: left; background: #0a0a0a; border-bottom: 2px solid #333; font-weight: 600; color: #888; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 10; background: #111; }
+        #photoListContainer td { padding: 6px 6px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
+        #photoListContainer tr:hover { background: #1a1a1a; cursor: pointer; }
+        #photoListContainer .checkbox-col { width: 32px; text-align: center; }
+        #photoListContainer input[type="checkbox"] { width: 16px; height: 16px; accent-color: #c0392b; cursor: pointer; margin: 0; padding: 0; background: #1a1a1a; border: 2px solid #c0392b; border-radius: 4px; appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; }
+        #photoListContainer input[type="checkbox"]:checked { background: #c0392b; }
+        #photoListContainer input[type="checkbox"]:checked::after { content: "✓"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 12px; font-weight: 700; }
+        
+        /* Info Overlay */
+        .info-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 50000; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); animation: infoFadeIn 0.3s ease-out; }
+        .info-card { background: #1a1a1a; border-radius: 28px; padding: 32px; max-width: 750px; width: 95%; max-height: 90vh; overflow-y: auto; border: 2px solid #4caf50; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9); animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .info-card::-webkit-scrollbar { width: 4px; }
+        .info-card::-webkit-scrollbar-track { background: #0a0a0a; }
+        .info-card::-webkit-scrollbar-thumb { background: #2a5a2a; border-radius: 4px; }
+        .info-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px; }
+        .info-title { font-size: 1.2rem; font-weight: 700; color: #4caf50; }
+        .info-close-btn { padding: 8px 28px; border-radius: 30px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: 1px solid #4caf50; background: rgba(76, 175, 80, 0.1); color: #4caf50; transition: all 0.2s ease; font-family: inherit; }
+        .info-close-btn:hover { background: rgba(76, 175, 80, 0.2); }
+        .info-section { margin-bottom: 16px; }
+        .info-section-title { font-size: 0.85rem; font-weight: 700; color: #4caf50; margin-bottom: 4px; }
+        .info-section-title.danger { color: #c0392b; }
+        .info-text { font-size: 0.85rem; color: #ccc; line-height: 1.6; }
+        .info-text strong { color: #4caf50; }
+        .info-text .highlight { color: #ffaa44; }
+        .info-text .danger-text { color: #c0392b; }
+        .info-steps { padding-left: 20px; margin: 4px 0 8px 0; }
+        .info-steps li { font-size: 0.85rem; color: #ccc; line-height: 1.6; margin-bottom: 2px; }
+        .info-steps li code { background: #0a0a0a; padding: 1px 8px; border-radius: 4px; font-size: 0.75rem; color: #4caf50; font-family: monospace; }
+        .info-warnings { padding-left: 20px; margin: 4px 0 8px 0; }
+        .info-warnings li { font-size: 0.85rem; color: #c0392b; line-height: 1.6; margin-bottom: 2px; }
+        .info-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
+        .info-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 8px 0; }
+        .info-table th { text-align: left; color: #4caf50; padding: 6px 8px; border-bottom: 1px solid #2a2a2a; font-weight: 600; }
+        .info-table td { color: #ccc; padding: 6px 8px; border-bottom: 1px solid #1a1a1a; }
+        .info-table .field-name { color: #ffaa44; font-family: monospace; }
+        .info-table .field-desc { color: #aaa; }
+        .info-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.65rem; font-weight: 600; }
+        .info-badge.green { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .info-badge.red { background: #2a0a0a; color: #c0392b; border: 1px solid #5a2a2a; }
+        .info-badge.blue { background: #0a1a2a; color: #4a8af4; border: 1px solid #2a4a6a; }
+        .info-badge.gold { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
+        @keyframes infoFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes infoSlideUp { from { opacity: 0; transform: translateY(20px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        
+        .empty-state { text-align: center; padding: 20px; color: #666; }
+        
+        /* Mobile fixes */
+        @media (max-width: 500px) {
+            .tab-btn { padding: 10px 12px; font-size: 0.7rem; min-width: 55px; }
+            .tab-btn .tab-icon { margin-right: 4px; }
+        }
+        @media (max-width: 380px) {
+            .tab-btn { padding: 8px 8px; font-size: 0.6rem; min-width: 45px; }
         }
         
-        /* ============================================================
-           RESULTS PANEL
-           ============================================================ */
-        .results-panel {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-        .results-panel.active {
-            display: block;
-        }
-        
-        .game-info-grid {
-            font-size: 0.8rem;
-            line-height: 1.6;
-        }
-        
-        .status-badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 0.6rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        .status-badge.completed {
-            background: rgba(76, 175, 80, 0.2);
-            color: #4caf50;
-        }
-        .status-badge.in-progress {
-            background: rgba(255, 170, 68, 0.2);
-            color: #ffaa44;
-        }
-        .status-badge.scheduled {
-            background: rgba(74, 138, 244, 0.2);
-            color: #4a8af4;
-        }
-        .status-badge.unknown {
-            background: rgba(136, 136, 136, 0.2);
-            color: #888;
-        }
-        
-        .validate-status {
-            padding: 10px 14px;
-            border-radius: 10px;
-            font-size: 0.75rem;
-            margin-bottom: 8px;
-        }
-        .validate-status.success {
-            background: rgba(76, 175, 80, 0.12);
-            border: 1px solid #4caf50;
-            color: #4caf50;
-        }
-        .validate-status.error {
-            background: rgba(192, 57, 43, 0.12);
-            border: 1px solid #c0392b;
-            color: #c0392b;
-        }
-        .validate-status.info {
-            background: rgba(74, 138, 244, 0.12);
-            border: 1px solid #4a8af4;
-            color: #4a8af4;
-        }
-        
-        .validate-progress {
-            display: none;
-            padding: 8px 0;
-        }
-        .validate-progress.active {
-            display: block;
-        }
-        .validate-progress .step {
-            font-size: 0.7rem;
-            padding: 4px 0;
-            border-bottom: 1px solid #1a1a1a;
-            color: #888;
-        }
-        .validate-progress .step.done {
-            color: #4caf50;
-        }
-        .validate-progress .step.error {
-            color: #c0392b;
-        }
-        .validate-progress .step.warning {
-            color: #ffaa44;
-        }
-        .validate-progress .step.info {
-            color: #4a8af4;
-        }
-        
-        .delete-progress {
-            display: none;
-            padding: 8px 0;
-        }
-        .delete-progress.active {
-            display: block;
-        }
-        .delete-progress .step {
-            font-size: 0.7rem;
-            padding: 4px 0;
-            border-bottom: 1px solid #1a1a1a;
-            color: #888;
-        }
-        .delete-progress .step.done {
-            color: #4caf50;
-        }
-        .delete-progress .step.error {
-            color: #c0392b;
-        }
-        .delete-progress .step.info {
-            color: #4a8af4;
-        }
-        
-        .delete-count {
-            font-size: 0.65rem;
-            font-weight: 400;
-            color: #888;
-            margin-left: 8px;
-        }
-        .delete-toolbar {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 8px;
-        }
-        .delete-records-container {
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid #2a2a2a;
-            border-radius: 10px;
-            background: #0a0a0a;
-        }
-        .delete-records-container table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.7rem;
-        }
-        .delete-records-container th {
-            background: #0a0a0a;
-            color: #888;
-            font-weight: 600;
-            padding: 8px 10px;
-            text-align: left;
-            border-bottom: 2px solid #2a2a2a;
-            position: sticky;
-            top: 0;
-            z-index: 2;
-        }
-        .delete-records-container td {
-            padding: 6px 10px;
-            border-bottom: 1px solid #1a1a1a;
-            vertical-align: middle;
-        }
-        .delete-records-container tr:hover {
-            background: rgba(255,255,255,0.03);
-        }
-        .delete-records-container input[type="checkbox"] {
-            accent-color: #4caf50;
-            cursor: pointer;
-        }
-        
-        .photo-item-inline {
-            transition: all 0.2s;
-        }
-        .photo-item-inline:hover {
-            border-color: #4caf50 !important;
-            background: #1a1a1a !important;
-        }
-        .photo-item-inline.selected {
-            border-color: #4caf50 !important;
-            background: #1a2a1a !important;
-        }
-        .photo-thumb-inline {
-            background: #0a0a0a;
-            border-radius: 4px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 80px;
-        }
-        .photo-thumb-inline img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .photo-toolbar {
-            background: #1a1a1a;
-            color: #aaa;
-        }
-        .photo-toolbar:hover {
-            background: #2a2a2a;
-            color: #fff;
-        }
-        
-        /* ============================================================
-           OVERLAY / MODAL
-           ============================================================ */
-        .info-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.92);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 20000;
-            padding: 20px;
-            backdrop-filter: blur(4px);
-            animation: overlayFadeIn 0.25s ease-out;
-        }
-        @keyframes overlayFadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .info-card {
-            background: #1a1a1a;
-            border-radius: 28px;
-            padding: 32px;
-            max-width: 600px;
-            width: 100%;
-            max-height: 90vh;
-            overflow-y: auto;
-            border: 2px solid #4a8af4;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.9);
-            animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        @keyframes infoSlideUp {
-            from { opacity: 0; transform: translateY(30px) scale(0.96); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .info-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #2a2a2a;
-            padding-bottom: 12px;
-        }
-        .info-title {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #4a8af4;
-        }
-        .info-close-btn {
-            padding: 8px 24px;
-            border-radius: 30px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: 1px solid #4a8af4;
-            background: rgba(74, 138, 244, 0.1);
-            color: #4a8af4;
-            transition: all 0.2s;
-            font-family: inherit;
-        }
-        .info-close-btn:hover {
-            background: rgba(74, 138, 244, 0.2);
-        }
-        .info-section {
-            margin-bottom: 16px;
-        }
-        .info-section-title {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #e0e0e0;
-            margin-bottom: 8px;
-        }
-        .info-text {
-            font-size: 0.85rem;
-            color: #ccc;
-            line-height: 1.6;
-        }
-        .info-text code {
-            background: #0a0a0a;
-            padding: 2px 8px;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            color: #4a8af4;
-            font-family: monospace;
-        }
-        .info-text .highlight {
-            color: #4caf50;
-            font-weight: 600;
-        }
-        .info-steps {
-            padding-left: 20px;
-            margin: 6px 0;
-            color: #ccc;
-            font-size: 0.85rem;
-            line-height: 1.8;
-        }
-        .info-steps strong {
-            color: #e0e0e0;
-        }
-        .info-divider {
-            border: none;
-            border-top: 1px solid #2a2a2a;
-            margin: 16px 0;
-        }
-        .info-warnings {
-            padding-left: 20px;
-            margin: 6px 0;
-            color: #ffaa44;
-            font-size: 0.8rem;
-            line-height: 1.8;
-        }
-        .info-warnings strong {
-            color: #fff;
-        }
-        
-        /* ============================================================
-           RESPONSIVE
-           ============================================================ */
-        @media (max-width: 420px) {
-            .app-container { padding: 12px 10px 30px; }
-            .tab { font-size: 0.6rem; padding: 6px 8px; min-width: 50px; }
-            .card { padding: 12px; }
-            .btn { font-size: 0.6rem; padding: 8px 12px; }
-            .env-btn-small { font-size: 0.5rem; padding: 3px 10px; }
-            select { font-size: 0.7rem; padding: 8px 10px; }
-            .info-card { padding: 20px; }
-        }
-        
-        /* ============================================================
-           MISC HELPERS
-           ============================================================ */
-        .text-muted { color: #666; }
-        .text-center { text-align: center; }
-        .mt-8 { margin-top: 8px; }
-        .mb-8 { margin-bottom: 8px; }
-        .flex { display: flex; }
-        .flex-wrap { flex-wrap: wrap; }
-        .gap-8 { gap: 8px; }
-        .gap-12 { gap: 12px; }
-        .items-center { align-items: center; }
+        /* Photo Selector Modal Styles */
+        #photoSelectorList .photo-item { background: #111; border-radius: 8px; padding: 8px; border: 1px solid #2a2a2a; cursor: pointer; transition: all 0.2s; }
+        #photoSelectorList .photo-item:hover { border-color: #4caf50; }
+        #photoSelectorList .photo-thumb { width: 100%; height: 100px; background: #0a0a0a; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #555; }
+        #photoSelectorList .photo-name { font-size: 0.65rem; color: #e0e0e0; margin-top: 4px; text-align: center; word-break: break-all; }
+        #photoSelectorList .photo-size { font-size: 0.5rem; color: #666; text-align: center; }
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
     </style>
 </head>
 <body>
-<div class="app-container" id="app">
+
+<div class="container">
+    <h1>📋 RECORD MANAGEMENT</h1>
     
-    <!-- HEADER -->
-    <div class="app-header">
-        <div class="app-title">
-            🛠️ Record Management
-            <span class="version">v3.0</span>
-        </div>
-        <div id="globalEnvIndicator" class="env-indicator prod">PROD</div>
+    <!-- Tabs -->
+    <div class="tab-nav" id="tabNav">
+        <button class="tab-btn active" data-tab="tabCopy">
+            <span class="tab-icon">📝</span> COPY
+        </button>
+        <button class="tab-btn" data-tab="tabCompare">
+            <span class="tab-icon">🔍</span> COMPARE
+        </button>
+        <button class="tab-btn" data-tab="tabValidate">
+            <span class="tab-icon">🔬</span> VALIDATE
+        </button>
+        <button class="tab-btn" data-tab="tabPhoto">
+            <span class="tab-icon">🖼️</span> PHOTO
+        </button>
+        <button class="tab-btn" data-tab="tabDelete">
+            <span class="tab-icon">🗑️</span> DELETE
+        </button>
     </div>
     
-    <!-- TABS -->
-    <div class="tabs" id="tabContainer">
-        <button class="tab active" data-tab="validate">🔬 VALIDATE <span class="badge">v1.03</span></button>
-        <button class="tab" data-tab="copy">📋 COPY <span class="badge">v1.04</span></button>
-        <button class="tab" data-tab="compare">📊 COMPARE <span class="badge">v1.04</span></button>
-        <button class="tab" data-tab="photo">📸 PHOTO <span class="badge">v1.12</span></button>
-        <button class="tab tab-danger" data-tab="delete">🗑️ DELETE <span class="badge">v1.04</span></button>
-    </div>
-    
-    <!-- ============================================================
-    TAB: VALIDATE
-    ============================================================ -->
-    <div id="validateTab" class="tab-content active">
+    <!-- ============================================================ -->
+    <!-- TAB: COPY -->
+    <!-- ============================================================ -->
+    <div class="tab-content active" id="tabCopy">
         <div class="tab-header-with-info">
-            <span class="tab-title">🔬 VALIDATE <span class="version-badge" id="validateVersionBadge">r1.09 u1.05 a1.05</span></span>
+            <span class="tab-title">📝 COPY <span class="version-badge" id="copyVersionBadge">v?</span></span>
+            <button class="btn-info-guide" onclick="showCopyInfoGuide()">ℹ️ Information</button>
+        </div>
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label source">📤 SOURCE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="copySourceProdBtn">PROD</button>
+                    <button class="env-btn-small" id="copySourceDevBtn">DEV</button>
+                </div>
+                <span id="copySourceIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            <div class="env-row">
+                <span class="env-side-label dest">📥 DEST</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="copyDestProdBtn">PROD</button>
+                    <button class="env-btn-small" id="copyDestDevBtn">DEV</button>
+                </div>
+                <span id="copyDestIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">📂 STEP 1: COLLECTIONS</div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">📤 SOURCE</label>
+                    <div class="select-wrapper">
+                        <select id="sourceCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">📥 DESTINATION</label>
+                    <div class="select-wrapper">
+                        <select id="destCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <button id="loadSourceBtn" class="btn btn-secondary" style="margin-top:8px;">🔄 Load Source Records</button>
+            <button id="loadDestBtn" class="btn btn-secondary" style="margin-top:8px;">📥 Load Destination Records</button>
+        </div>
+        <div class="card">
+            <div class="card-title">📄 STEP 2: SOURCE RECORD</div>
+            <div class="select-wrapper">
+                <select id="gameSelect" class="game-select">
+                    <option value="">-- Select a record --</option>
+                </select>
+            </div>
+            <div id="gameInfo" style="display:none;"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">📅 STEP 3: DATE SETTING</div>
+            <div class="date-row">
+                <div class="radio-group">
+                    <label class="active"><input type="radio" name="dateOption" value="keep" checked> Keep original</label>
+                    <label><input type="radio" name="dateOption" value="today"> Set to today</label>
+                    <label><input type="radio" name="dateOption" value="custom"> Custom</label>
+                </div>
+            </div>
+            <input type="date" id="customDate" style="display:none; margin-top:8px;">
+        </div>
+        <div class="card">
+            <div class="card-title">📝 STEP 4: DESTINATION DOCUMENT NAME</div>
+            <div class="input-with-datalist">
+                <input type="text" id="destDocId" placeholder="Enter or select destination document ID" list="destRecordsList" autocomplete="off">
+                <datalist id="destRecordsList"></datalist>
+            </div>
+            <div class="existing-hint">
+                💡 Start typing or select from existing records below. <strong>Selecting an existing record will REPLACE it</strong> (with confirmation).
+            </div>
+            <div style="margin-top:8px;">
+                <label style="font-size:0.65rem; color:#888; display:block; margin-bottom:4px;">📋 Existing records in destination:</label>
+                <select id="destExistingSelect" class="game-select" style="font-size:0.75rem; padding:8px 14px;" onchange="onDestExistingSelect()">
+                    <option value="">-- Select existing to REPLACE --</option>
+                </select>
+            </div>
+            <div style="font-size:0.65rem; color:#666; margin-top:4px;">
+                ⚠️ If document exists, you will be prompted to confirm replacement.
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">🚀 STEP 5: EXECUTE</div>
+            <div class="button-group">
+                <button id="copyBtn" class="btn btn-primary">📝 COPY RECORD</button>
+                <button id="checkBtn" class="btn btn-secondary">🔍 CHECK DESTINATION</button>
+            </div>
+            <button id="deleteCopyDestBtn" class="btn btn-danger" style="margin-top:12px;">🗑️ DELETE DESTINATION RECORD</button>
+        </div>
+    </div>
+    
+    <!-- ============================================================ -->
+    <!-- TAB: COMPARE -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabCompare">
+        <div class="tab-header-with-info">
+            <span class="tab-title">🔍 COMPARE <span class="version-badge" id="compareVersionBadge">v?</span></span>
+            <button class="btn-info-guide" onclick="showCompareInfoGuide()">ℹ️ Information</button>
+        </div>
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label left">📤 LEFT</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="compareLeftProdBtn">PROD</button>
+                    <button class="env-btn-small" id="compareLeftDevBtn">DEV</button>
+                </div>
+                <span id="compareLeftIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            <div class="env-row">
+                <span class="env-side-label right">📥 RIGHT</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="compareRightProdBtn">PROD</button>
+                    <button class="env-btn-small" id="compareRightDevBtn">DEV</button>
+                </div>
+                <span id="compareRightIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">🔍 COMPARE TWO RECORDS</div>
+            <div style="font-size:0.7rem; color:#888; margin-bottom:12px;">
+                Select two records from any collections. The tool will perform a field-by-field comparison.
+            </div>
+            <div class="compare-layout">
+                <div class="compare-side">
+                    <div class="compare-side-title left">📤 LEFT RECORD</div>
+                    <div class="select-wrapper">
+                        <select id="compareLeftCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                    <div class="select-wrapper">
+                        <select id="compareLeftRecord" class="game-select">
+                            <option value="">-- Select left record --</option>
+                        </select>
+                    </div>
+                    <div id="compareLeftInfo" style="display:none; margin-top:8px;"></div>
+                </div>
+                <div class="compare-side">
+                    <div class="compare-side-title right">📥 RIGHT RECORD</div>
+                    <div class="select-wrapper">
+                        <select id="compareRightCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                    <div class="select-wrapper">
+                        <select id="compareRightRecord" class="game-select">
+                            <option value="">-- Select right record --</option>
+                        </select>
+                    </div>
+                    <div id="compareRightInfo" style="display:none; margin-top:8px;"></div>
+                </div>
+            </div>
+            <div class="compare-actions">
+                <button id="compareLoadBtn" class="btn btn-load">🔄 Load Records</button>
+                <button id="compareBtn" class="btn btn-compare">🔍 COMPARE</button>
+            </div>
+        </div>
+        <div id="compareResults" style="display:none;">
+            <div class="card">
+                <div class="card-title">📊 COMPARISON SUMMARY</div>
+                <div id="compareSummary"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔍 FIELD BY FIELD</div>
+                <div id="compareDetail" class="compare-result-box"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ============================================================ -->
+    <!-- TAB: VALIDATE -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabValidate">
+        <div class="tab-header-with-info">
+            <span class="tab-title">🔬 VALIDATE <span class="version-badge" id="validateVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showValidateInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
-                <span class="env-side-label">🔬 VALIDATE</span>
+                <span class="env-side-label left">📤 ENVIRONMENT</span>
                 <div class="env-selector">
-                    <button class="env-btn-small active-prod" id="validateProdBtn">PROD</button>
+                    <button class="env-btn-small" id="validateProdBtn">PROD</button>
                     <button class="env-btn-small" id="validateDevBtn">DEV</button>
                 </div>
-                <span id="validateIndicator" class="env-indicator-small prod">PROD</span>
+                <span id="validateIndicator" class="env-indicator-small none">Not connected</span>
             </div>
         </div>
         <div class="card">
-            <div class="card-title">📂 SELECT RECORD</div>
-            <div class="select-wrapper">
-                <select id="validateCollection" class="collection-select">
-                    <option value="scheduledGames">scheduledGames</option>
-                    <option value="historyGames" selected>historyGames</option>
-                    <option value="backupFolder">backupFolder</option>
-                </select>
-                <button id="validateRefreshBtn" class="btn btn-secondary" title="Refresh records">↻</button>
+            <div class="card-title">📥 SELECT RECORD</div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">Collection</label>
+                    <div class="select-wrapper">
+                        <select id="validateCollection" class="collection-select">
+                            <option value="historyGames">historyGames</option>
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">Record</label>
+                    <div class="select-wrapper">
+                        <select id="validateRecordSelect" class="game-select">
+                            <option value="">-- Select a record --</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            <div class="select-wrapper" style="margin-top:8px;">
-                <select id="validateRecordSelect" class="record-select">
-                    <option value="">-- Select a record --</option>
-                </select>
-                <button id="validateLoadBtn" class="btn btn-primary">▶ LOAD &amp; VALIDATE</button>
+            <div class="button-group">
+                <button id="validateLoadBtn" class="btn btn-load">🔄 Load & Validate</button>
+                <button id="validateRefreshBtn" class="btn btn-secondary">↻ Refresh</button>
             </div>
+            <div id="validateStatus" class="validate-status" style="display:none;"></div>
         </div>
         
-        <!-- RESULTS -->
-        <div id="validateResults" class="results-panel">
+        <!-- VALIDATE RESULTS -->
+        <div id="validateResults" class="validate-results">
             <div class="card">
-                <div class="card-title">📋 GAME INFO</div>
+                <div class="card-title">📋 Game Info</div>
                 <div id="validateGameInfo"></div>
             </div>
+            
+            <div class="validate-grid">
+                <div class="validate-section">
+                    <div class="validate-section-title">✈️ Flight 1</div>
+                    <div id="validateFlight1"></div>
+                </div>
+                <div class="validate-section">
+                    <div class="validate-section-title">✈️ Flight 2</div>
+                    <div id="validateFlight2"></div>
+                </div>
+            </div>
+            
+            <div class="validate-grid">
+                <div class="validate-section">
+                    <div class="validate-section-title">📊 T-1</div>
+                    <div id="validateT1"></div>
+                </div>
+                <div class="validate-section">
+                    <div class="validate-section-title">📊 T-2</div>
+                    <div id="validateT2"></div>
+                </div>
+                <div class="validate-section">
+                    <div class="validate-section-title">📊 Strk</div>
+                    <div id="validateStrk"></div>
+                </div>
+            </div>
+            
             <div class="card">
-                <div class="card-title">📸 CELEBRATION PHOTO</div>
+                <div class="card-title">🏅 Match Game</div>
+                <div id="validateMatch"></div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">🏆 TR — Per Hole</div>
+                <div id="validateTR"></div>
+            </div>
+            
+            <!-- Photo Status Section -->
+            <div class="card" style="border-color: #ffaa44;">
+                <div class="card-title photo">📸 CELEBRATION PHOTO</div>
                 <div id="validatePhotoStatus"></div>
+                <!-- v1.25: Apply Staged Photo button -->
                 <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
                     <button id="validateApplyPhotoBtn" class="btn btn-photo-apply" disabled style="opacity:0.5;">
                         📸 APPLY STAGED PHOTO
                     </button>
                 </div>
             </div>
-            <div class="card">
-                <div class="card-title">✈️ FLIGHT 1</div>
-                <div id="validateFlight1"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">✈️ FLIGHT 2</div>
-                <div id="validateFlight2"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">📊 T-1</div>
-                <div id="validateT1"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">📊 T-2</div>
-                <div id="validateT2"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">⛳ STROKE</div>
-                <div id="validateStrk"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">🏅 MATCH</div>
-                <div id="validateMatch"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">🏆 TR</div>
-                <div id="validateTR"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">📊 SUMMARY</div>
+            
+            <!-- Validation Summary Section -->
+            <div class="card" style="border-color: #4caf50;">
+                <div class="card-title">✅ VALIDATION SUMMARY</div>
                 <div id="validateSummary"></div>
             </div>
-            <div id="validateDetailsCard" class="card" style="display:none;">
-                <div class="card-title">🔍 DETAILED MISMATCHES</div>
-                <div id="validateDetails"></div>
+            
+            <!-- Validation Details Section -->
+            <div class="card" style="border-color: #4a8af4; display:none;" id="validateDetailsCard">
+                <div class="card-title" style="color:#4a8af4;">📊 DETAILED VALIDATION</div>
+                <div id="validateDetails" style="font-size:0.8rem; max-height:300px; overflow-y:auto;"></div>
             </div>
-            <div id="validateFixCard" class="card" style="display:none; border-color:#4caf50;">
-                <div class="card-title">🔧 FIX RECORD</div>
-                <div id="validateStatus" class="validate-status" style="display:none;"></div>
+            
+            <div class="card" style="border-color: #ffaa44; display:none;" id="validateFixCard">
+                <div class="card-title">🔧 Fix Record</div>
+                <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
+                    This will recalculate all derived data from raw data and update the Firestore record.
+                    <br><strong style="color:#4caf50;">Preserves: raw scores, players, course, gameInfo</strong>
+                    <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults, adjustedHandicaps</strong>
+                    <br><strong style="color:#ffaa44;">A backup will be created before updating.</strong>
+                </div>
                 <div id="validateProgress" class="validate-progress"></div>
-                <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
-                    <button id="validateBackupBtn" class="btn btn-secondary">💾 Backup Only</button>
-                    <button id="validateFixBtn" class="btn btn-success">✅ Fix Record</button>
+                <div class="validate-fix-btn-container">
+                    <button class="validate-fix-btn validate-fix-btn-backup" id="validateBackupBtn">💾 Backup Only</button>
+                    <button class="validate-fix-btn validate-fix-btn-fix" id="validateFixBtn">🔧 Fix Record</button>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- ============================================================
-    TAB: COPY
-    ============================================================ -->
-    <div id="copyTab" class="tab-content">
+    <!-- ============================================================ -->
+    <!-- TAB: PHOTO -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabPhoto">
         <div class="tab-header-with-info">
-            <span class="tab-title">📋 COPY <span class="version-badge" id="copyVersionBadge">v1.04</span></span>
-            <button class="btn-info-guide" onclick="showCopyInfoGuide()">ℹ️ Information</button>
-        </div>
-        <div class="card">
-            <div class="card-title">🌍 ENVIRONMENT</div>
-            <div class="env-row">
-                <span class="env-side-label">📋 COPY</span>
-                <div class="env-selector">
-                    <button class="env-btn-small active-prod" id="copyProdBtn">PROD</button>
-                    <button class="env-btn-small" id="copyDevBtn">DEV</button>
-                </div>
-                <span id="copyIndicator" class="env-indicator-small prod">PROD</span>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-title">📂 SOURCE RECORD</div>
-            <div class="select-wrapper">
-                <select id="copyCollection" class="collection-select">
-                    <option value="scheduledGames">scheduledGames</option>
-                    <option value="historyGames" selected>historyGames</option>
-                    <option value="backupFolder">backupFolder</option>
-                </select>
-                <button id="copyRefreshBtn" class="btn btn-secondary" title="Refresh records">↻</button>
-            </div>
-            <div class="select-wrapper" style="margin-top:8px;">
-                <select id="copyRecordSelect" class="record-select">
-                    <option value="">-- Select a record --</option>
-                </select>
-                <button id="copyLoadBtn" class="btn btn-primary">▶ LOAD</button>
-            </div>
-        </div>
-        <div id="copyDetails" class="results-panel">
-            <div class="card">
-                <div class="card-title">📋 RECORD DETAILS</div>
-                <div id="copyRecordInfo"></div>
-            </div>
-            <div class="card" style="border-color:#4caf50;">
-                <div class="card-title">📋 COPY TO</div>
-                <div class="select-wrapper" style="margin-bottom:8px;">
-                    <select id="copyTargetCollection" class="collection-select">
-                        <option value="scheduledGames">scheduledGames</option>
-                        <option value="historyGames" selected>historyGames</option>
-                        <option value="backupFolder">backupFolder</option>
-                    </select>
-                </div>
-                <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                    <button id="copyExecuteBtn" class="btn btn-success" disabled>📋 COPY RECORD</button>
-                </div>
-                <div id="copyProgress" class="validate-progress"></div>
-                <div id="copyStatus" class="validate-status" style="display:none;"></div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- ============================================================
-    TAB: COMPARE
-    ============================================================ -->
-    <div id="compareTab" class="tab-content">
-        <div class="tab-header-with-info">
-            <span class="tab-title">📊 COMPARE <span class="version-badge" id="compareVersionBadge">v1.04</span></span>
-            <button class="btn-info-guide" onclick="showCompareInfoGuide()">ℹ️ Information</button>
-        </div>
-        <div class="card">
-            <div class="card-title">🌍 ENVIRONMENT</div>
-            <div class="env-row">
-                <span class="env-side-label">📊 COMPARE</span>
-                <div class="env-selector">
-                    <button class="env-btn-small active-prod" id="compareProdBtn">PROD</button>
-                    <button class="env-btn-small" id="compareDevBtn">DEV</button>
-                </div>
-                <span id="compareIndicator" class="env-indicator-small prod">PROD</span>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-title">📂 COLLECTION</div>
-            <div class="select-wrapper">
-                <select id="compareCollection" class="collection-select">
-                    <option value="scheduledGames">scheduledGames</option>
-                    <option value="historyGames" selected>historyGames</option>
-                    <option value="backupFolder">backupFolder</option>
-                </select>
-                <button id="compareRefreshBtn" class="btn btn-secondary" title="Refresh records">↻</button>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-title">📋 LEFT RECORD</div>
-            <div class="select-wrapper">
-                <select id="compareLeftSelect" class="record-select">
-                    <option value="">-- Select left record --</option>
-                </select>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-title">📋 RIGHT RECORD</div>
-            <div class="select-wrapper">
-                <select id="compareRightSelect" class="record-select">
-                    <option value="">-- Select right record --</option>
-                </select>
-            </div>
-        </div>
-        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
-            <button id="compareBtn" class="btn btn-primary">📊 COMPARE</button>
-            <button id="compareClearBtn" class="btn btn-secondary">✖ Clear</button>
-        </div>
-        <div id="compareResults" class="results-panel">
-            <div class="card">
-                <div class="card-title">📋 COMPARISON SUMMARY</div>
-                <div id="compareSummary"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">🔍 DIFFERENCES</div>
-                <div id="compareDiff"></div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- ============================================================
-    TAB: PHOTO
-    ============================================================ -->
-    <div id="photoTab" class="tab-content">
-        <div class="tab-header-with-info">
-            <span class="tab-title">📸 PHOTO <span class="version-badge photo" id="photoVersionBadge">v1.12</span></span>
+            <span class="tab-title photo">🖼️ PHOTO <span class="version-badge photo" id="photoVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showPhotoInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
-            <div class="card-title">📸 CELEBRATION PHOTO</div>
-            <div id="photoStatusContainer"></div>
+            <div class="card-title photo">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label photo">🖼️ STORAGE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="photoProdBtn">PROD</button>
+                    <button class="env-btn-small" id="photoDevBtn">DEV</button>
+                </div>
+                <span id="photoIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            <div style="font-size:0.7rem; color:#888; margin-top:4px;">
+                📸 Source image: <a href="https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg" target="_blank" style="color:#ffaa44;">C.jpg</a> (Cloudflare Pages)
+            </div>
         </div>
         <div class="card">
-            <div class="card-title">📂 PHOTO BROWSER</div>
+            <div class="card-title photo">📥 STEP 1: LOAD IMAGE</div>
+            <div class="photo-controls">
+                <input type="text" id="photoUrlInput" placeholder="Enter image URL" value="https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg">
+                <button id="photoLoadBtn" class="btn btn-photo">📥 Load Image</button>
+                <button id="photoResetBtn" class="btn btn-secondary">↻ Reset</button>
+            </div>
+            <div class="photo-viewer" id="photoViewer">
+                <div class="placeholder">🖼️ Load an image to preview</div>
+            </div>
+            <div class="photo-status" id="photoStatus">
+                <span class="log-info">Ready. Select PROD/DEV and load an image.</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title photo">📤 STEP 2: UPLOAD TO STORAGE</div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-                <input type="text" id="photoFolder" value="celebration/" style="flex:2; min-width:150px; padding:8px 12px; border-radius:12px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff; font-size:0.8rem; font-family:inherit;">
-                <button id="photoLoadBtn" class="btn btn-primary">🔄 Load Photos</button>
+                <div style="flex:2; min-width:150px;">
+                    <input type="text" id="photoFilename" placeholder="Filename (e.g., C_2026-06-29.jpg)">
+                </div>
+                <div style="flex:1; min-width:120px;">
+                    <input type="text" id="photoStorageFolder" placeholder="Folder (e.g., celebrations/)" value="celebrations/">
+                </div>
             </div>
-            <div id="photoListContainer" style="max-height:400px; overflow-y:auto; border:1px solid #2a2a2a; border-radius:10px; background:#0a0a0a; padding:8px;">
-                <div style="text-align:center; padding:20px; color:#555;">Click "Load Photos" to browse</div>
+            <div class="photo-progress" id="photoProgress">
+                <div class="progress-bar" style="width:0%;"></div>
             </div>
-            <div id="photoStatus" style="font-size:0.7rem; color:#888; padding:8px 0;">Ready</div>
+            <button id="photoUploadBtn" class="btn btn-photo" style="display:none;">📤 Upload to Firebase Storage</button>
+            <div class="photo-status" id="photoUploadStatus" style="margin-top:8px;"></div>
+        </div>
+        <div class="card" id="uploadedPhotoCard" style="display:none;">
+            <div class="card-title photo">✅ UPLOADED</div>
+            <div class="photo-uploaded-preview" id="uploadedPhotoViewer"></div>
+            <div class="button-group" style="margin-top:8px;">
+                <button id="showPhotoInfoBtn" class="btn btn-photo" style="display:none;">📋 Show Info</button>
+                <button id="copyUrlBtn" class="btn btn-secondary" style="display:none;">📋 Copy URL</button>
+            </div>
+        </div>
+        <div id="photoInfoPanel" class="photo-info-panel"></div>
+        <div class="card photo-firestore-ref" id="firestoreRefSection" style="display:none;">
+            <div class="card-title photo">💾 SAVE TO FIRESTORE</div>
+            <div style="font-size:0.7rem; color:#888; margin-bottom:8px;">
+                Save the uploaded photo URL to a Firestore document field.
+            </div>
+            <div class="row">
+                <select id="photoFirestoreCollection" class="collection-select" style="flex:1; min-width:100px;">
+                    <option value="scheduledGames">scheduledGames</option>
+                    <option value="historyGames">historyGames</option>
+                    <option value="backupFolder">backupFolder</option>
+                </select>
+                <input type="text" id="photoFirestoreDocId" placeholder="Document ID" style="flex:2; min-width:150px;">
+                <input type="text" id="photoFirestoreField" placeholder="Field name" value="celebration" style="flex:1; min-width:100px;">
+            </div>
+            <button id="saveFirestoreRefBtn" class="btn btn-photo">💾 Save Reference</button>
+            <div id="firestoreStatus" class="photo-status" style="margin-top:8px;"></div>
         </div>
     </div>
     
-    <!-- ============================================================
-    TAB: DELETE
-    ============================================================ -->
-    <div id="deleteTab" class="tab-content">
+    <!-- ============================================================ -->
+    <!-- TAB: DELETE -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabDelete">
         <div class="tab-header-with-info">
-            <span class="tab-title danger">🗑️ DELETE <span class="version-badge danger" id="deleteVersionBadge">v1.07</span></span>
+            <span class="tab-title danger">🗑️ DELETE <span class="version-badge danger" id="deleteVersionBadge">v?</span></span>
             <button class="btn-info-guide" onclick="showDeleteInfoGuide()">ℹ️ Information</button>
         </div>
         <div class="card">
@@ -1043,10 +781,10 @@ STATUS: Ready for integration
             <div class="env-row">
                 <span class="env-side-label delete">🗑️ DELETE</span>
                 <div class="env-selector">
-                    <button class="env-btn-small active-prod" id="deleteProdBtn">PROD</button>
+                    <button class="env-btn-small" id="deleteProdBtn">PROD</button>
                     <button class="env-btn-small" id="deleteDevBtn">DEV</button>
                 </div>
-                <span id="deleteIndicator" class="env-indicator-small prod">PROD</span>
+                <span id="deleteIndicator" class="env-indicator-small none">Not connected</span>
             </div>
             <div style="font-size:0.7rem; color:#c0392b; margin-top:4px;">
                 ⚠️ Deleting records is permanent and cannot be undone.
@@ -1055,9 +793,9 @@ STATUS: Ready for integration
         <div class="card">
             <div class="card-title danger">📂 SELECT COLLECTION</div>
             <div class="select-wrapper">
-                <select id="deleteCollection" class="collection-select" style="border-color:#c0392b;">
+                <select id="deleteCollection" class="collection-select" style="border-color:#c0392b;" onchange="loadDeleteRecords()">
                     <option value="scheduledGames">scheduledGames</option>
-                    <option value="historyGames" selected>historyGames</option>
+                    <option value="historyGames">historyGames</option>
                     <option value="backupFolder">backupFolder</option>
                 </select>
             </div>
@@ -1082,7 +820,9 @@ STATUS: Ready for integration
                 <br>Selected records will be removed from the database.
             </div>
             <div id="deleteProgress" class="delete-progress"></div>
-            <button id="deleteExecuteBtn" class="btn btn-danger" disabled style="opacity:0.5;">🗑️ DELETE SELECTED (0 records)</button>
+            <button id="deleteExecuteBtn" class="btn btn-danger" disabled>
+                🗑️ DELETE SELECTED (0 records)
+            </button>
         </div>
         
         <!-- DELETE TAB: PHOTOS SECTION -->
@@ -1093,7 +833,7 @@ STATUS: Ready for integration
                 <br><strong style="color:#ffaa44;">Note:</strong> This deletes the photo file. To also remove Firestore references, use the PHOTO tab's "Show Info" to see where the photo is referenced.
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-                <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebrations/)" value="celebration/" style="flex:2; min-width:150px; padding:8px 12px; border-radius:12px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff; font-size:0.8rem; font-family:inherit;">
+                <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebrations/)" value="celebrations/" style="flex:2; min-width:150px;">
                 <button id="photoListRefreshBtn" class="btn btn-secondary" style="flex:0 0 auto; width:auto; padding:12px 24px;">🔄 List Photos</button>
             </div>
             <div class="delete-toolbar">
@@ -1112,135 +852,191 @@ STATUS: Ready for integration
         </div>
     </div>
     
-</div><!-- end app-container -->
+    <!-- Log -->
+    <div class="card">
+        <div class="card-title">📜 LOG</div>
+        <div id="log" class="log">Ready. Select environments for each tab.</div>
+    </div>
+</div>
+
+<div class="device-tag" id="deviceTag">REC MGMT</div>
+<div class="version-tag">v1.25</div>
 
 <script>
 // ============================================================
-// TAB SWITCHING
+// FILE: util-record-management.html
+// VERSION: 1.25
 // ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    var tabs = document.querySelectorAll('.tab');
-    var contents = {
-        validate: document.getElementById('validateTab'),
-        copy: document.getElementById('copyTab'),
-        compare: document.getElementById('compareTab'),
-        photo: document.getElementById('photoTab'),
-        delete: document.getElementById('deleteTab')
-    };
-    
-    tabs.forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            var target = this.dataset.tab;
-            // Update tab buttons
-            tabs.forEach(function(t) { t.classList.remove('active', 'active-danger'); });
-            this.classList.add('active');
-            if (target === 'delete') {
-                this.classList.add('active-danger');
-            }
-            // Update content
-            Object.keys(contents).forEach(function(key) {
-                contents[key].classList.toggle('active', key === target);
-            });
-            // Trigger load for the tab if needed
-            if (target === 'copy' && typeof loadCopyRecords === 'function') {
-                setTimeout(loadCopyRecords, 100);
-            }
-            if (target === 'compare' && typeof loadCompareRecords === 'function') {
-                setTimeout(loadCompareRecords, 100);
-            }
-            if (target === 'delete' && typeof loadDeleteRecords === 'function') {
-                setTimeout(loadDeleteRecords, 100);
-            }
-            if (target === 'photo' && typeof loadPhotos === 'function') {
-                setTimeout(loadPhotos, 100);
-            }
-            if (target === 'validate' && typeof loadValidateRecords === 'function') {
-                setTimeout(loadValidateRecords, 100);
-            }
-        });
-    });
-    
-    // Enable the Apply Photo button when a photo is staged
-    // This is a simple polling check - the button will be enabled/disabled by the validation logic
-    setInterval(function() {
-        var applyBtn = document.getElementById('validateApplyPhotoBtn');
-        if (!applyBtn) return;
-        if (window._stagedPhoto && window._stagedPhoto.fullPath && window._stagedPhoto.downloadUrl) {
-            applyBtn.disabled = false;
-            applyBtn.style.opacity = '1';
-        } else {
-            applyBtn.disabled = true;
-            applyBtn.style.opacity = '0.5';
-        }
-    }, 500);
-    
-    console.log('[RMT] Tab switching initialized');
-});
+
+var APP_VERSION = "1.25";
 
 // ============================================================
-// EXPOSE GLOBALLY FOR ONCLICK BINDINGS
+// VERSION BADGE RENDERER
 // ============================================================
-// These functions are defined in the respective util-*.js files
-// They are exposed globally there.
 
-// ============================================================
-// VERSION BADGE UPDATE - Auto-update from loaded modules
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    // Validate version badge
+function renderVersionBadges() {
+    // Validate tab - shows record.js, ui.js, and app.js versions
     var validateBadge = document.getElementById('validateVersionBadge');
     if (validateBadge) {
-        var rVer = window.UTIL_VALIDATE_VERSION || '1.09';
-        var uiVer = window.UTIL_VALIDATE_UI_VERSION || '1.05';
-        var appVer = window.UTIL_VALIDATE_APP_VERSION || '1.05';
-        validateBadge.textContent = 'r' + rVer + ' u' + uiVer + ' a' + appVer;
+        var rv = window.UTIL_VALIDATE_VERSION || '?';
+        var uv = window.UTIL_VALIDATE_UI_VERSION || '?';
+        var av = window.UTIL_VALIDATE_APP_VERSION || '?';
+        validateBadge.textContent = 'r' + rv + ' u' + uv + ' a' + av;
     }
     
-    // Copy version badge
+    // Copy tab
     var copyBadge = document.getElementById('copyVersionBadge');
     if (copyBadge) {
-        var cVer = window.UTIL_COPY_VERSION || '1.04';
-        copyBadge.textContent = 'v' + cVer;
+        var v = window.UTIL_COPY_VERSION || '?';
+        copyBadge.textContent = 'v' + v;
     }
     
-    // Compare version badge
+    // Compare tab
     var compareBadge = document.getElementById('compareVersionBadge');
     if (compareBadge) {
-        var cmpVer = window.UTIL_COMPARE_VERSION || '1.04';
-        compareBadge.textContent = 'v' + cmpVer;
+        var v = window.UTIL_COMPARE_VERSION || '?';
+        compareBadge.textContent = 'v' + v;
     }
     
-    // Photo version badge
+    // Photo tab
     var photoBadge = document.getElementById('photoVersionBadge');
     if (photoBadge) {
-        var pVer = window.UTIL_PHOTO_VERSION || '1.12';
-        photoBadge.textContent = 'v' + pVer;
+        var v = window.PHOTO_UTIL_VERSION || '?';
+        photoBadge.textContent = 'v' + v;
     }
     
-    // Delete version badge
+    // Delete tab
     var deleteBadge = document.getElementById('deleteVersionBadge');
     if (deleteBadge) {
-        var dVer = window.UTIL_DELETE_VERSION || '1.07';
-        deleteBadge.textContent = 'v' + dVer;
+        var v = window.UTIL_DELETE_VERSION || '?';
+        deleteBadge.textContent = 'v' + v;
     }
-});
+    
+    console.log('[REC-MGMT] Version badges rendered');
+    console.log('  Core: ' + (window.UTIL_CORE_VERSION || '?'));
+    console.log('  Validate: r' + (window.UTIL_VALIDATE_VERSION || '?') + ' u' + (window.UTIL_VALIDATE_UI_VERSION || '?') + ' a' + (window.UTIL_VALIDATE_APP_VERSION || '?'));
+    console.log('  Copy: v' + (window.UTIL_COPY_VERSION || '?'));
+    console.log('  Compare: v' + (window.UTIL_COMPARE_VERSION || '?'));
+    console.log('  Photo: v' + (window.PHOTO_UTIL_VERSION || '?'));
+    console.log('  Delete: v' + (window.UTIL_DELETE_VERSION || '?'));
+}
 
-console.log('[RMT] Record Management Tool v1.25 loaded');
+// ============================================================
+// INIT
+// ============================================================
 
-/*
+console.log('[REC-MGMT] Initializing v1.25...');
+
+// Set default environments
+document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('copyDestProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('photoProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('deleteProdBtn').className = 'env-btn-small active-prod';
+
+document.getElementById('copySourceIndicator').textContent = 'PROD';
+document.getElementById('copySourceIndicator').className = 'env-indicator-small prod';
+document.getElementById('copyDestIndicator').textContent = 'PROD';
+document.getElementById('copyDestIndicator').className = 'env-indicator-small prod';
+document.getElementById('compareLeftIndicator').textContent = 'PROD';
+document.getElementById('compareLeftIndicator').className = 'env-indicator-small prod';
+document.getElementById('compareRightIndicator').textContent = 'PROD';
+document.getElementById('compareRightIndicator').className = 'env-indicator-small prod';
+document.getElementById('validateIndicator').textContent = 'PROD';
+document.getElementById('validateIndicator').className = 'env-indicator-small prod';
+document.getElementById('photoIndicator').textContent = 'PROD';
+document.getElementById('photoIndicator').className = 'env-indicator-small prod';
+document.getElementById('deleteIndicator').textContent = 'PROD';
+document.getElementById('deleteIndicator').className = 'env-indicator-small prod';
+
+// Set up COPY tab environment
+if (typeof setCopySourceEnvironment === 'function') {
+    setCopySourceEnvironment('PROD');
+}
+if (typeof setCopyDestEnvironment === 'function') {
+    setCopyDestEnvironment('PROD');
+}
+
+// Set up COMPARE tab environment
+if (typeof setCompareLeftEnvironment === 'function') {
+    setCompareLeftEnvironment('PROD');
+}
+if (typeof setCompareRightEnvironment === 'function') {
+    setCompareRightEnvironment('PROD');
+}
+
+// Set up DELETE tab environment
+if (typeof setDeleteEnvironment === 'function') {
+    setDeleteEnvironment('PROD');
+}
+
+// Set up PHOTO tab environment
+if (typeof setPhotoEnvironment === 'function') {
+    setPhotoEnvironment('PROD');
+}
+
+// Initialize Photo tab (from util-photo.js)
+if (typeof initPhotoTab === 'function') {
+    initPhotoTab();
+}
+
+// v1.25: Enable the Apply Photo button when a photo is staged
+setInterval(function() {
+    var applyBtn = document.getElementById('validateApplyPhotoBtn');
+    if (!applyBtn) return;
+    if (window._stagedPhoto && window._stagedPhoto.fullPath && window._stagedPhoto.downloadUrl) {
+        applyBtn.disabled = false;
+        applyBtn.style.opacity = '1';
+    } else {
+        applyBtn.disabled = true;
+        applyBtn.style.opacity = '0.5';
+    }
+}, 500);
+
+// Render version badges after all .js files have loaded
+setTimeout(function() {
+    renderVersionBadges();
+}, 300);
+
+// Pre-load records using functions from .js files
+setTimeout(function() {
+    if (typeof loadSourceRecords === 'function') loadSourceRecords();
+    if (typeof loadDestinationRecords === 'function') loadDestinationRecords();
+    if (typeof loadCompareRecords === 'function') loadCompareRecords();
+    if (typeof loadValidateRecords === 'function') loadValidateRecords();
+    if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
+}, 500);
+
+// Log using the core logger
+if (typeof log === 'function') {
+    log('Record Management v1.25 ready', 'success');
+    log('=== TABS ===', 'info');
+    log('📝 COPY    - Copy records between collections/environments', 'info');
+    log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
+    log('🔬 VALIDATE - Load, validate, and fix corrupted records', 'info');
+    log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
+    log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
+    log('=====================================', 'info');
+} else {
+    console.log('[REC-MGMT] Record Management v1.25 ready');
+}
+
+console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
+</script>
+</body>
+</html>
+
+<!--
 FILE: util-record-management.html
 VERSION: 1.25
 KEY CHANGES from v1.24:
    - ADDED: "APPLY STAGED PHOTO" button in the VALIDATE tab
-   - This button allows users to apply a staged photo without needing data mismatches
-   - Works even when the record is already valid
-   - Button is styled with photo purple color (#8b5cf6)
-   - Added btn-photo-apply CSS class
-   - Auto-enables the button when a photo is staged (polling check)
+   - ADDED: btn-photo-apply CSS class for the new button
+   - ADDED: Polling logic to enable/disable the button when a photo is staged
+   - This allows users to apply a staged photo even when the record is already valid
    - PRESERVED: All existing functionality from v1.24
-DEPENDS ON: js/util-core.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-validate-app.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
-*/
-</script>
-</body>
-</html>
+-->
