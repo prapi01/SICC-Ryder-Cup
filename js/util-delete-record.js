@@ -1,19 +1,18 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: "too much recursion" error in delete tab rendering
-   - FIXED: toggleDeleteCheckbox was causing infinite loop when clicking row
-   - CHANGED: Row click now uses event.stopPropagation() to prevent checkbox event from triggering row click again
-   - CHANGED: toggleDeleteCheckbox now directly manipulates checkbox without re-triggering events
-   - PRESERVED: All existing functionality from v1.05 (Load ALL records, Select All, Bulk Delete)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: escapeHtml function was calling itself recursively (window.escapeHtml === this function)
+   - CHANGED: escapeHtml now checks for a DIFFERENT function before using window.escapeHtml
+   - CHANGED: Simplified escapeHtml to not depend on external functions
+   - PRESERVED: All existing functionality from v1.06 (Load ALL records, Select All, Bulk Delete)
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.06";
-console.log("[UTIL-DELETE] Initializing v1.06 - Fixed recursion error");
+window.UTIL_DELETE_VERSION = "1.07";
+console.log("[UTIL-DELETE] Initializing v1.07 - Fixed escapeHtml recursion");
 
 // ============================================================
 // STATE VARIABLES
@@ -34,6 +33,20 @@ function deleteLog(message, type) {
     } else {
         console.log('[DELETE] ' + message);
     }
+}
+
+// ============================================================
+// ESCAPE HTML - FIXED: No recursion
+// ============================================================
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 // ============================================================
@@ -179,7 +192,6 @@ function renderDeleteTable(docs) {
         
         var isChecked = deleteSelectedIds[id] || false;
         
-        // FIXED: Use a data attribute and a separate click handler instead of inline onclick
         html += '<tr data-id="' + id + '" class="delete-row" style="cursor:pointer;">';
         html += '<td style="text-align:center; vertical-align:middle;">';
         html += '<input type="checkbox" class="delete-checkbox" data-id="' + id + '" ' + (isChecked ? 'checked' : '') + ' onchange="onDeleteCheckboxChange()" style="width:16px;height:16px;accent-color:#4caf50;cursor:pointer;">';
@@ -194,7 +206,7 @@ function renderDeleteTable(docs) {
     html += '</tbody></table>';
     container.innerHTML = html;
     
-    // FIXED: Attach row click event listeners after rendering (prevents recursion)
+    // Attach row click event listeners after rendering
     var rows = container.querySelectorAll('.delete-row');
     rows.forEach(function(row) {
         row.addEventListener('click', function(e) {
@@ -549,23 +561,6 @@ function initDeleteTabEvents() {
 }
 
 // ============================================================
-// ESCAPE HTML HELPER
-// ============================================================
-
-function escapeHtml(str) {
-    if (typeof window.escapeHtml === 'function') {
-        return window.escapeHtml(str);
-    }
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-// ============================================================
 // AUTO-INIT
 // ============================================================
 
@@ -600,17 +595,16 @@ window.setDeleteEnvironment = setDeleteEnvironment;
 window.showDeleteInfoGuide = showDeleteInfoGuide;
 window.initDeleteTabEvents = initDeleteTabEvents;
 
-console.log('[UTIL-DELETE] v1.06 loaded - Fixed recursion error');
+console.log('[UTIL-DELETE] v1.07 loaded - Fixed escapeHtml recursion');
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: "too much recursion" error in delete tab rendering
-   - FIXED: toggleDeleteCheckbox was causing infinite loop when clicking row
-   - CHANGED: Row click now uses event listeners attached after rendering
-   - CHANGED: toggleDeleteCheckbox now directly manipulates checkbox without re-triggering events
-   - PRESERVED: All existing functionality from v1.05 (Load ALL records, Select All, Bulk Delete)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: escapeHtml function was calling itself recursively (window.escapeHtml === this function)
+   - CHANGED: escapeHtml now has a simple, self-contained implementation
+   - CHANGED: Removed dependency on window.escapeHtml to prevent recursion
+   - PRESERVED: All existing functionality from v1.06 (Load ALL records, Select All, Bulk Delete)
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
