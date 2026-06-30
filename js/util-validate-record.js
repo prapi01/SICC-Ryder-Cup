@@ -1,48 +1,143 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REMOVED: Fallback logic to matchPlay/teamGame/strokeGame (not used in codebase)
-   - CHANGED: validateAllFields() now reads directly from game1/game2/game3 only
-   - CHANGED: buildFixPayload() now reads from game1/game2/game3 only
-   - CLEAN: Removed unnecessary fallback conditions that were causing confusion
-   - PRESERVED: All calculation logic unchanged (AS = 0.5, etc.)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: parseDataString() now handles partial data strings (< 162 chars)
+   - FIXED: Records with incomplete flight data (partial saves) no longer fail validation
+   - FIXED: parseHoleData() handles partial data gracefully
+   - CHANGED: Missing holes are treated as "not saved" (saved = false)
+   - ADDED: Score validation to ensure parsed values are valid numbers
+   - PRESERVED: All calculation logic unchanged (AS = 0.5, game1/game2/game3 field names)
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.07";
+window.UTIL_VALIDATE_VERSION = "1.08";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.07");
+    console.log("[UTIL-VALIDATE] Initializing v1.08");
     
     // ============================================================
-    // PARSING FUNCTIONS
+    // PARSING FUNCTIONS - FIXED to handle partial data
     // ============================================================
     
     function parseDataString(dataStr) {
-        if (!dataStr || dataStr.length !== 162) return null;
+        if (!dataStr || dataStr.length === 0) return null;
+        
+        var charsPerHole = 9;
+        var totalHoles = 18;
+        var expectedLength = totalHoles * charsPerHole; // 162
+        
+        // If string is too short to contain even 1 complete hole, return null
+        if (dataStr.length < charsPerHole) return null;
+        
         var scores = [];
-        for (var i = 0; i < 18; i++) {
-            var block = dataStr.substr(i * 9, 9);
-            scores.push({
-                saved: block[0] === 'T',
-                a1: parseInt(block.substr(1, 2), 10),
-                a2: parseInt(block.substr(3, 2), 10),
-                b1: parseInt(block.substr(5, 2), 10),
-                b2: parseInt(block.substr(7, 2), 10)
-            });
+        // Calculate how many complete holes we have
+        var holesToParse = Math.floor(dataStr.length / charsPerHole);
+        if (holesToParse > totalHoles) holesToParse = totalHoles;
+        
+        for (var i = 0; i < totalHoles; i++) {
+            if (i < holesToParse) {
+                // We have data for this hole - parse it
+                var startIndex = i * charsPerHole;
+                var block = dataStr.substr(startIndex, charsPerHole);
+                
+                // Verify block is complete
+                if (block.length === charsPerHole) {
+                    var saved = block[0] === 'T';
+                    var a1 = parseInt(block.substr(1, 2), 10);
+                    var a2 = parseInt(block.substr(3, 2), 10);
+                    var b1 = parseInt(block.substr(5, 2), 10);
+                    var b2 = parseInt(block.substr(7, 2), 10);
+                    
+                    // Validate scores are valid numbers (1-99 range)
+                    if (!isNaN(a1) && !isNaN(a2) && !isNaN(b1) && !isNaN(b2) &&
+                        a1 >= 0 && a2 >= 0 && b1 >= 0 && b2 >= 0) {
+                        scores.push({
+                            saved: saved,
+                            a1: a1,
+                            a2: a2,
+                            b1: b1,
+                            b2: b2
+                        });
+                    } else {
+                        // Invalid scores - treat as not saved
+                        scores.push({
+                            saved: false,
+                            a1: 0,
+                            a2: 0,
+                            b1: 0,
+                            b2: 0
+                        });
+                    }
+                } else {
+                    // Incomplete block - treat as not saved
+                    scores.push({
+                        saved: false,
+                        a1: 0,
+                        a2: 0,
+                        b1: 0,
+                        b2: 0
+                    });
+                }
+            } else {
+                // No data for this hole - treat as not saved
+                scores.push({
+                    saved: false,
+                    a1: 0,
+                    a2: 0,
+                    b1: 0,
+                    b2: 0
+                });
+            }
         }
+        
+        // If all holes are not saved, return null (no data)
+        var anySaved = false;
+        for (var i = 0; i < scores.length; i++) {
+            if (scores[i].saved) { anySaved = true; break; }
+        }
+        if (!anySaved) return null;
+        
         return scores;
     }
     
     function parseHoleData(dataStr, holeNumber) {
-        if (!dataStr || dataStr.length !== 162) return null;
-        var startIndex = (holeNumber - 1) * 9;
-        var segment = dataStr.substr(startIndex, 9);
-        return { saved: segment[0] === 'T', scores: { a1: parseInt(segment.substr(1,2),10), a2: parseInt(segment.substr(3,2),10), b1: parseInt(segment.substr(5,2),10), b2: parseInt(segment.substr(7,2),10) } };
+        if (!dataStr || dataStr.length === 0) return null;
+        if (holeNumber < 1 || holeNumber > 18) return null;
+        
+        var charsPerHole = 9;
+        var startIndex = (holeNumber - 1) * charsPerHole;
+        
+        // Check if we have enough data for this hole
+        if (startIndex + charsPerHole > dataStr.length) {
+            // Not enough data - hole not saved
+            return { saved: false, scores: { a1: 0, a2: 0, b1: 0, b2: 0 } };
+        }
+        
+        var segment = dataStr.substr(startIndex, charsPerHole);
+        if (segment.length !== charsPerHole) {
+            return { saved: false, scores: { a1: 0, a2: 0, b1: 0, b2: 0 } };
+        }
+        
+        var saved = segment[0] === 'T';
+        var a1 = parseInt(segment.substr(1, 2), 10);
+        var a2 = parseInt(segment.substr(3, 2), 10);
+        var b1 = parseInt(segment.substr(5, 2), 10);
+        var b2 = parseInt(segment.substr(7, 2), 10);
+        
+        // Validate scores
+        if (isNaN(a1) || isNaN(a2) || isNaN(b1) || isNaN(b2) ||
+            a1 < 0 || a2 < 0 || b1 < 0 || b2 < 0) {
+            return { saved: false, scores: { a1: 0, a2: 0, b1: 0, b2: 0 } };
+        }
+        
+        return { 
+            saved: saved, 
+            scores: { a1: a1, a2: a2, b1: b1, b2: b2 } 
+        };
     }
     
     // ============================================================
@@ -1013,11 +1108,28 @@ var UtilValidate = (function() {
         var courseSi = (recordData.gameInfo?.course?.si) || (recordData.course?.si) || [];
         var coursePar = (recordData.gameInfo?.course?.par) || (recordData.course?.par) || [];
         
-        if (!f1Scores || !f2Scores) {
-            return { valid: false, error: 'Invalid data strings' };
+        // Check if we have valid data for at least one flight
+        if (!f1Scores && !f2Scores) {
+            return { valid: false, error: 'No valid flight data found' };
         }
         if (players.length === 0) {
             return { valid: false, error: 'No players found' };
+        }
+        
+        // If one flight is missing data, use empty array for that flight
+        if (!f1Scores) {
+            // Create empty scores array for Flight 1 (all holes not saved)
+            f1Scores = [];
+            for (var i = 0; i < 18; i++) {
+                f1Scores.push({ saved: false, a1: 0, a2: 0, b1: 0, b2: 0 });
+            }
+        }
+        if (!f2Scores) {
+            // Create empty scores array for Flight 2 (all holes not saved)
+            f2Scores = [];
+            for (var i = 0; i < 18; i++) {
+                f2Scores.push({ saved: false, a1: 0, a2: 0, b1: 0, b2: 0 });
+            }
         }
         
         if (courseSi.length === 0) {
@@ -1404,13 +1516,14 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REMOVED: Fallback logic to matchPlay/teamGame/strokeGame (not used in codebase)
-   - CHANGED: validateAllFields() now reads directly from game1/game2/game3 only
-   - CHANGED: buildFixPayload() now reads from game1/game2/game3 only
-   - CLEAN: Removed unnecessary fallback conditions that were causing confusion
-   - PRESERVED: All calculation logic unchanged (AS = 0.5, etc.)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: parseDataString() now handles partial data strings (< 162 chars)
+   - FIXED: Records with incomplete flight data (partial saves) no longer fail validation
+   - FIXED: parseHoleData() handles partial data gracefully
+   - CHANGED: Missing holes are treated as "not saved" (saved = false)
+   - ADDED: Score validation to ensure parsed values are valid numbers
+   - PRESERVED: All calculation logic unchanged (AS = 0.5, game1/game2/game3 field names)
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
