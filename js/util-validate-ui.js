@@ -1,27 +1,41 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: renderPhotoStatus() - Render celebration photo status with thumbnail or "missing" indicator
-   - ADDED: renderValidationSummary() - Render comprehensive summary with field counts
-   - CHANGED: renderSummary() now shows photo status and comprehensive validation results
-   - CHANGED: showFixPreview() now displays photo status in the preview
-   - PRESERVED: All existing rendering functions from v1.01
-DEPENDS ON: UtilValidate
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: renderValidateResults() - Moved from HTML (main validation results renderer)
+   - ADDED: renderPhotoStatusInline() - Inline photo status renderer (no modal)
+   - ADDED: toggleInlinePhotoSelector() - Toggle inline photo selector
+   - ADDED: loadInlinePhotos() - Load photos for inline selector
+   - ADDED: applyInlinePhoto() - Apply selected photo inline
+   - ADDED: applyPhotoToRecordInline() - Save photo to Firestore (inline version)
+   - ADDED: clearPhotoFromRecord() - Remove photo from record
+   - ADDED: openPhotoSelector() - Open modal photo selector (legacy, kept for compatibility)
+   - ADDED: closePhotoSelector() - Close modal photo selector
+   - ADDED: loadPhotoSelector() - Load photos for modal selector
+   - ADDED: selectPhotoFromList() - Select photo from modal list
+   - ADDED: applyPhotoToRecord() - Apply photo to record (modal version)
+   - CHANGED: escapeHtml() now uses window.escapeHtml from util-core.js (with fallback)
+   - CHANGED: formatDate() now uses window.formatDate from util-core.js (with fallback)
+   - PRESERVED: All existing rendering functions from v1.02
+DEPENDS ON: UtilValidate, util-core.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.02";
+window.UTIL_VALIDATE_UI_VERSION = "1.03";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.02");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.03");
     
     // ============================================================
-    // HELPERS
+    // HELPERS (with fallback to util-core.js)
     // ============================================================
     
     function escapeHtml(str) {
+        if (typeof window.escapeHtml === 'function') {
+            return window.escapeHtml(str);
+        }
+        // Fallback
         if (str === null || str === undefined) return '';
         return String(str).replace(/[&<>]/g, function(m) {
             if (m === '&') return '&amp;';
@@ -32,6 +46,10 @@ var UtilValidateUI = (function() {
     }
     
     function formatDate(dateStr) {
+        if (typeof window.formatDate === 'function') {
+            return window.formatDate(dateStr);
+        }
+        // Fallback
         if (!dateStr) return 'Unknown';
         var parts = dateStr.split('-');
         if (parts.length === 3) {
@@ -349,7 +367,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.02: RENDER: Photo Status
+    // RENDER: Photo Status (v1.02 - kept for compatibility)
     // ============================================================
     
     function renderPhotoStatus(photoStatus, containerId, onSelectPhoto) {
@@ -406,7 +424,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.02: RENDER: Validation Summary
+    // v1.03: RENDER: Validation Summary
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -484,7 +502,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Summary (v1.02: uses new comprehensive render)
+    // RENDER: Summary
     // ============================================================
     
     function renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, gameData, containerId) {
@@ -565,7 +583,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Fix Preview Modal (v1.02: shows comprehensive diff)
+    // RENDER: Fix Preview Modal
     // ============================================================
     
     function showFixPreview(record, recalculated, previewData, backupId, onConfirm) {
@@ -705,6 +723,596 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
+    // v1.03: RENDER VALIDATE RESULTS (moved from HTML)
+    // ============================================================
+    
+    function renderValidateResults(recordData, validation, validateGameData, validateCurrentValidation) {
+        var resultsDiv = document.getElementById('validateResults');
+        if (!resultsDiv) return;
+        resultsDiv.classList.add('active');
+        
+        var statusDiv = document.getElementById('validateStatus');
+        if (statusDiv) statusDiv.style.display = 'none';
+        
+        var fixCard = document.getElementById('validateFixCard');
+        if (fixCard) fixCard.style.display = 'none';
+        
+        var detailsCard = document.getElementById('validateDetailsCard');
+        if (detailsCard) detailsCard.style.display = 'none';
+        
+        var progressDiv = document.getElementById('validateProgress');
+        if (progressDiv) {
+            progressDiv.className = 'validate-progress';
+            progressDiv.innerHTML = '';
+        }
+        
+        // Render game info
+        renderGameInfo(recordData, 'validateGameInfo');
+        
+        var photoStatus = validation.photoStatus || { hasPhoto: false, path: null, url: null };
+        var isCompleted = validation.isCompletedGame || false;
+        var recordId = recordData.id || '';
+        var collection = document.getElementById('validateCollection') ? document.getElementById('validateCollection').value : '';
+        
+        // Store for inline photo functions
+        window._validatePhotoStatus = photoStatus;
+        window._validateRecordId = recordId;
+        window._validateCollection = collection;
+        
+        // Render photo status inline
+        renderPhotoStatusInline(photoStatus, recordId, collection, isCompleted);
+        
+        var f1Scores = validation.f1Scores || [];
+        var f2Scores = validation.f2Scores || [];
+        var players = validation.players || [];
+        
+        renderFlightTable(f1Scores, players, 1, 'validateFlight1');
+        renderFlightTable(f2Scores, players, 2, 'validateFlight2');
+        
+        var recalculated = validation.recalculated || {};
+        
+        if (typeof UtilValidate === 'undefined') {
+            console.error('[UTIL-VALIDATE-UI] UtilValidate not available');
+            return;
+        }
+        
+        var t1Calc = UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
+        var t2Calc = UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || []);
+        var strkCalc = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
+        
+        renderTeamGameTable(t1Calc, 'validateT1', 'T-1');
+        renderTeamGameTable(t2Calc, 'validateT2', 'T-2');
+        renderStrkTable(strkCalc, 'validateStrk');
+        
+        var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || []);
+        var orderedPlayers = matchData.orderedPlayers || [];
+        var matchResults = matchData.results || [];
+        renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
+        
+        var matchPointsPerHole = matchData.matchPointsPerHole || [];
+        renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
+        
+        // Render validation summary
+        renderValidationSummary(validation, 'validateSummary');
+        
+        // Show/hide fix card
+        if (fixCard) {
+            if (!validation.valid) {
+                fixCard.style.display = 'block';
+                var backupBtn = document.getElementById('validateBackupBtn');
+                var fixBtn = document.getElementById('validateFixBtn');
+                if (backupBtn) backupBtn.disabled = false;
+                if (fixBtn) fixBtn.disabled = false;
+            } else {
+                fixCard.style.display = 'none';
+            }
+        }
+        
+        // Show details card if there are mismatches
+        if (detailsCard && validation.mismatches && validation.mismatches.length > 0) {
+            detailsCard.style.display = 'block';
+            var detailsDiv = document.getElementById('validateDetails');
+            if (detailsDiv) {
+                var detailsHtml = '<div style="font-size:0.7rem; font-family:monospace;">';
+                for (var i = 0; i < validation.mismatches.length; i++) {
+                    var m = validation.mismatches[i];
+                    detailsHtml += '<div style="padding:2px 0; border-bottom:1px solid #1a1a1a;">';
+                    detailsHtml += '<span style="color:#888;">' + escapeHtml(m.field) + '</span>: ';
+                    detailsHtml += '<span style="color:#ff6b6b;">' + escapeHtml(String(m.current)) + '</span>';
+                    detailsHtml += ' <span style="color:#666;">→</span> ';
+                    detailsHtml += '<span style="color:#4caf50;">' + escapeHtml(String(m.expected)) + '</span>';
+                    detailsHtml += '</div>';
+                }
+                detailsHtml += '</div>';
+                detailsDiv.innerHTML = detailsHtml;
+            }
+        }
+    }
+    
+    // ============================================================
+    // v1.03: RENDER PHOTO STATUS INLINE (no modal)
+    // ============================================================
+    
+    function renderPhotoStatusInline(photoStatus, recordId, collection, isCompleted) {
+        var container = document.getElementById('validatePhotoStatus');
+        if (!container) return;
+        
+        var hasPhoto = photoStatus && photoStatus.hasPhoto;
+        var url = photoStatus ? photoStatus.url : null;
+        var path = photoStatus ? photoStatus.path : null;
+        var expectedPath = photoStatus ? photoStatus.expectedPath : null;
+        
+        var html = '<div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">';
+        html += '<div style="font-size:0.75rem; font-weight:600; color:#ffaa44; margin-bottom:8px;">📸 CELEBRATION PHOTO</div>';
+        
+        if (hasPhoto && url) {
+            html += '<div class="photo-inline-status" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+            html += '<div style="width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid #4caf50; flex-shrink:0; background:#0a0a0a; display:flex; align-items:center; justify-content:center;">';
+            html += '<img src="' + escapeHtml(url) + '" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display=\'none\'; this.parentNode.innerHTML=\'<span style=\'font-size:2rem;\'>📸</span>\';">';
+            html += '</div>';
+            html += '<div style="flex:1; min-width:120px;">';
+            html += '<div style="font-size:0.7rem; color:#4caf50;">✅ Photo present</div>';
+            html += '<div style="font-size:0.6rem; color:#888; word-break:break-all; margin-top:2px;">' + escapeHtml(path || '') + '</div>';
+            html += '<div style="margin-top:4px;">';
+            html += '<button onclick="toggleInlinePhotoSelector(\'' + escapeHtml(recordId) + '\', \'' + escapeHtml(collection) + '\')" style="padding:4px 12px; font-size:0.65rem; border-radius:20px; border:1px solid #ffaa44; background:#2a2a0a; color:#ffaa44; cursor:pointer; margin-right:4px;">🔄 Change Photo</button>';
+            html += '<button onclick="clearPhotoFromRecord(\'' + escapeHtml(recordId) + '\', \'' + escapeHtml(collection) + '\')" style="padding:4px 12px; font-size:0.65rem; border-radius:20px; border:1px solid #333; background:#1a1a1a; color:#888; cursor:pointer;">✖ Remove</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div id="inlinePhotoSelectorContainer" style="display:none; margin-top:12px;"></div>';
+        } else {
+            html += '<div class="photo-inline-status" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+            html += '<div style="width:80px; height:80px; border-radius:8px; border:1px solid #ff6b6b; flex-shrink:0; background:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:2rem; color:#555;">❌</div>';
+            html += '<div style="flex:1; min-width:120px;">';
+            html += '<div style="font-size:0.7rem; color:#ff6b6b;">❌ Photo MISSING</div>';
+            if (isCompleted) {
+                html += '<div style="font-size:0.65rem; color:#ffaa44;">⚠️ Required for completed games</div>';
+            }
+            if (expectedPath) {
+                html += '<div style="font-size:0.6rem; color:#888; word-break:break-all; margin-top:2px;">Expected: ' + escapeHtml(expectedPath) + '</div>';
+            }
+            html += '<div style="margin-top:4px;">';
+            html += '<button onclick="toggleInlinePhotoSelector(\'' + escapeHtml(recordId) + '\', \'' + escapeHtml(collection) + '\')" style="padding:4px 12px; font-size:0.65rem; border-radius:20px; border:1px solid #ffaa44; background:#2a2a0a; color:#ffaa44; cursor:pointer;">📂 Select Photo</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div id="inlinePhotoSelectorContainer" style="display:none; margin-top:12px;"></div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // v1.03: INLINE PHOTO SELECTOR FUNCTIONS
+    // ============================================================
+    
+    var inlinePhotoSelectorActive = false;
+    
+    function toggleInlinePhotoSelector(recordId, collection) {
+        var container = document.getElementById('inlinePhotoSelectorContainer');
+        if (!container) return;
+        
+        if (container.style.display === 'block') {
+            container.style.display = 'none';
+            inlinePhotoSelectorActive = false;
+            return;
+        }
+        
+        container.style.display = 'block';
+        inlinePhotoSelectorActive = true;
+        
+        // Store record info for the selector
+        window._inlineSelectorRecordId = recordId;
+        window._inlineSelectorCollection = collection;
+        
+        // Build the inline selector
+        var html = '<div style="background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:12px; margin-top:8px; max-height:300px; overflow-y:auto;">';
+        html += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">';
+        html += '<input type="text" id="inlinePhotoFolder" value="celebration/" placeholder="Folder path" style="flex:2; min-width:120px; padding:6px 12px; font-size:0.7rem; border-radius:20px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff;">';
+        html += '<button onclick="loadInlinePhotos()" style="flex:0 0 auto; padding:6px 16px; font-size:0.65rem; border-radius:20px; border:1px solid #ffaa44; background:#2a2a0a; color:#ffaa44; cursor:pointer;">🔄 Load Photos</button>';
+        html += '<button onclick="closeInlinePhotoSelector()" style="flex:0 0 auto; padding:6px 16px; font-size:0.65rem; border-radius:20px; border:1px solid #333; background:#1a1a1a; color:#888; cursor:pointer;">✕ Close</button>';
+        html += '</div>';
+        html += '<div id="inlinePhotoList" style="max-height:250px; overflow-y:auto;">';
+        html += '<div style="text-align:center; padding:20px; color:#555;">Click "Load Photos" to browse</div>';
+        html += '</div>';
+        html += '<div id="inlinePhotoStatus" style="font-size:0.7rem; color:#888; padding:4px 0;">Ready</div>';
+        html += '</div>';
+        
+        container.innerHTML = html;
+    }
+    
+    function closeInlinePhotoSelector() {
+        var container = document.getElementById('inlinePhotoSelectorContainer');
+        if (container) {
+            container.style.display = 'none';
+            container.innerHTML = '';
+        }
+        inlinePhotoSelectorActive = false;
+    }
+    
+    function loadInlinePhotos() {
+        var folderInput = document.getElementById('inlinePhotoFolder');
+        var folder = folderInput ? folderInput.value.trim() : 'celebration/';
+        var listContainer = document.getElementById('inlinePhotoList');
+        var statusDiv = document.getElementById('inlinePhotoStatus');
+        
+        if (!listContainer) return;
+        
+        if (typeof listPhotosInStorage !== 'function') {
+            listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">❌ Photo listing not available</div>';
+            return;
+        }
+        
+        listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">⏳ Loading photos...</div>';
+        if (statusDiv) statusDiv.textContent = '⏳ Loading from: ' + folder;
+        
+        listPhotosInStorage(folder, function(err, photos) {
+            if (err) {
+                listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#ff6b6b;">❌ Error: ' + err.message + '</div>';
+                if (statusDiv) statusDiv.textContent = '❌ Error loading photos';
+                return;
+            }
+            
+            if (!photos || photos.length === 0) {
+                listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#555;">📭 No photos found in ' + folder + '</div>';
+                if (statusDiv) statusDiv.textContent = '📭 No photos found';
+                return;
+            }
+            
+            var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:8px;">';
+            
+            photos.forEach(function(photo) {
+                var displayName = photo.name.length > 25 ? photo.name.substring(0, 22) + '...' : photo.name;
+                var size = photo.size > 1024 * 1024 ? (photo.size / (1024 * 1024)).toFixed(1) + ' MB' : 
+                           photo.size > 1024 ? (photo.size / 1024).toFixed(0) + ' KB' : 
+                           photo.size + ' B';
+                
+                html += '<div onclick="applyInlinePhoto(\'' + escapeHtml(photo.fullPath) + '\', \'' + escapeHtml(photo.name) + '\')" style="background:#111; border-radius:8px; padding:8px; border:1px solid #2a2a2a; cursor:pointer; transition:all 0.2s; text-align:center;">';
+                html += '<div style="width:100%; height:80px; background:#0a0a0a; border-radius:4px; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:#555;">📸</div>';
+                html += '<div style="font-size:0.6rem; color:#e0e0e0; margin-top:4px; word-break:break-all;">' + escapeHtml(displayName) + '</div>';
+                html += '<div style="font-size:0.5rem; color:#666;">' + size + '</div>';
+                html += '</div>';
+            });
+            
+            html += '</div>';
+            listContainer.innerHTML = html;
+            if (statusDiv) statusDiv.textContent = '📸 ' + photos.length + ' photos found. Click a photo to apply.';
+        });
+    }
+    
+    function applyInlinePhoto(fullPath, fileName) {
+        var recordId = window._inlineSelectorRecordId;
+        var collection = window._inlineSelectorCollection;
+        
+        if (!recordId || !collection) {
+            if (typeof window.log === 'function') {
+                window.log('Missing record info for photo selection', 'error');
+            }
+            return;
+        }
+        
+        if (!confirm('Link this photo to record ' + recordId + '?\n\n' + fullPath + '\n\nThis will update the celebration field.')) {
+            return;
+        }
+        
+        if (typeof window.log === 'function') {
+            window.log('📸 Selected photo: ' + fullPath + ' for record: ' + recordId, 'info');
+        }
+        
+        if (typeof getPhotoDownloadUrl !== 'function') {
+            if (typeof window.log === 'function') {
+                window.log('getPhotoDownloadUrl not available', 'error');
+            }
+            return;
+        }
+        
+        getPhotoDownloadUrl(fullPath, function(err, url) {
+            if (err) {
+                if (typeof window.log === 'function') {
+                    window.log('❌ Failed to get download URL: ' + err.message, 'error');
+                }
+                return;
+            }
+            applyPhotoToRecordInline(recordId, collection, fullPath, url);
+        });
+    }
+    
+    function applyPhotoToRecordInline(recordId, collection, fullPath, url) {
+        if (!recordId || !collection || !fullPath || !url) {
+            if (typeof window.log === 'function') {
+                window.log('Missing required data for photo update', 'error');
+            }
+            return;
+        }
+        
+        var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
+        if (!db) {
+            if (typeof window.log === 'function') {
+                window.log('Database not available', 'error');
+            }
+            return;
+        }
+        
+        if (typeof window.log === 'function') {
+            window.log('💾 Applying photo to record: ' + collection + '/' + recordId, 'info');
+        }
+        
+        var updateData = {
+            'celebration.imageRef': fullPath,
+            'celebration.imageUrl': url,
+            'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        db.collection(collection).doc(recordId).update(updateData)
+            .then(function() {
+                if (typeof window.log === 'function') {
+                    window.log('✅ Photo applied to record: ' + recordId, 'success');
+                }
+                closeInlinePhotoSelector();
+                // Reload validation - call the validate app function if available
+                if (typeof window.loadAndValidate === 'function') {
+                    window.loadAndValidate();
+                } else {
+                    // Fallback: refresh the page
+                    if (typeof window.location !== 'undefined') {
+                        window.location.reload();
+                    }
+                }
+            })
+            .catch(function(err) {
+                if (typeof window.log === 'function') {
+                    window.log('❌ Failed to apply photo: ' + err.message, 'error');
+                }
+            });
+    }
+    
+    function clearPhotoFromRecord(recordId, collection) {
+        if (!recordId || !collection) {
+            if (typeof window.log === 'function') {
+                window.log('Missing record info', 'error');
+            }
+            return;
+        }
+        
+        if (!confirm('Remove the celebration photo from record ' + recordId + '?')) {
+            return;
+        }
+        
+        var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
+        if (!db) {
+            if (typeof window.log === 'function') {
+                window.log('Database not available', 'error');
+            }
+            return;
+        }
+        
+        if (typeof window.log === 'function') {
+            window.log('🗑️ Removing photo from record: ' + collection + '/' + recordId, 'info');
+        }
+        
+        var updateData = {
+            'celebration.imageRef': firebase.firestore.FieldValue.delete(),
+            'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
+            'celebration.copiedAt': firebase.firestore.FieldValue.delete()
+        };
+        
+        db.collection(collection).doc(recordId).update(updateData)
+            .then(function() {
+                if (typeof window.log === 'function') {
+                    window.log('✅ Photo removed from record: ' + recordId, 'success');
+                }
+                if (typeof window.loadAndValidate === 'function') {
+                    window.loadAndValidate();
+                } else {
+                    if (typeof window.location !== 'undefined') {
+                        window.location.reload();
+                    }
+                }
+            })
+            .catch(function(err) {
+                if (typeof window.log === 'function') {
+                    window.log('❌ Failed to remove photo: ' + err.message, 'error');
+                }
+            });
+    }
+    
+    // ============================================================
+    // v1.03: MODAL PHOTO SELECTOR FUNCTIONS (legacy, kept for compatibility)
+    // ============================================================
+    
+    function openPhotoSelector(recordId, collection) {
+        if (!recordId || !collection) {
+            if (typeof window.log === 'function') {
+                window.log('Record ID and collection required', 'error');
+            }
+            return;
+        }
+        
+        if (typeof listPhotosInStorage !== 'function') {
+            if (typeof window.log === 'function') {
+                window.log('Photo listing not available. Make sure util-photo.js is loaded.', 'error');
+            }
+            return;
+        }
+        
+        if (typeof window.log === 'function') {
+            window.log('📂 Opening photo selector for record: ' + recordId, 'info');
+        }
+        
+        var modalHtml = `
+            <div id="photoSelectorModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;z-index:20000;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);animation:infoFadeIn 0.3s ease-out;">
+                <div style="background:#1a1a1a;border-radius:28px;padding:32px;max-width:600px;width:95%;max-height:90vh;overflow-y:auto;border:2px solid #ffaa44;box-shadow:0 20px 60px rgba(0,0,0,0.9);animation:infoSlideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;border-bottom:1px solid #2a2a2a;padding-bottom:12px;">
+                        <div style="font-size:1.2rem;font-weight:700;color:#ffaa44;">📸 Select Celebration Photo</div>
+                        <button onclick="closePhotoSelector()" style="padding:8px 28px;border-radius:30px;font-size:0.85rem;font-weight:600;cursor:pointer;border:1px solid #ffaa44;background:rgba(255,170,68,0.1);color:#ffaa44;transition:all 0.2s ease;font-family:inherit;">✕ CLOSE</button>
+                    </div>
+                    <div style="font-size:0.8rem;color:#ccc;margin-bottom:12px;">
+                        Select a photo from Firebase Storage to link to this record.
+                        <br><strong style="color:#ffaa44;">Expected path:</strong> celebration/${recordId}.jpg
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                        <input type="text" id="photoSelectorFolder" placeholder="Folder" value="celebration/" style="flex:2;min-width:150px;padding:10px 14px;border-radius:20px;background:#0a0a0a;border:1px solid #2a2a2a;color:#fff;font-size:0.85rem;">
+                        <button onclick="loadPhotoSelector()" style="flex:0 0 auto;padding:10px 24px;border-radius:20px;font-weight:600;font-size:0.85rem;cursor:pointer;border:1px solid #ffaa44;background:#2a2a0a;color:#ffaa44;">🔄 Load Photos</button>
+                    </div>
+                    <div id="photoSelectorList" style="max-height:300px;overflow-y:auto;background:#0a0a0a;border-radius:8px;border:1px solid #2a2a2a;padding:8px;">
+                        <div style="text-align:center;padding:20px;color:#555;">Click "Load Photos" to browse</div>
+                    </div>
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #2a2a2a;">
+                        <div style="font-size:0.7rem;color:#888;" id="photoSelectorStatus">Ready</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        window._photoSelectorRecordId = recordId;
+        window._photoSelectorCollection = collection;
+    }
+    
+    function closePhotoSelector() {
+        var modal = document.getElementById('photoSelectorModal');
+        if (modal) modal.remove();
+        window._photoSelectorRecordId = null;
+        window._photoSelectorCollection = null;
+    }
+    
+    function loadPhotoSelector() {
+        var folderInput = document.getElementById('photoSelectorFolder');
+        var folder = folderInput ? folderInput.value.trim() : 'celebration/';
+        var listContainer = document.getElementById('photoSelectorList');
+        var statusDiv = document.getElementById('photoSelectorStatus');
+        
+        if (!listContainer) return;
+        
+        if (typeof listPhotosInStorage !== 'function') {
+            listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#ff6b6b;">❌ Photo listing not available</div>';
+            return;
+        }
+        
+        listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#555;">⏳ Loading photos...</div>';
+        if (statusDiv) statusDiv.textContent = '⏳ Loading from: ' + folder;
+        
+        listPhotosInStorage(folder, function(err, photos) {
+            if (err) {
+                listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#ff6b6b;">❌ Error: ' + err.message + '</div>';
+                if (statusDiv) statusDiv.textContent = '❌ Error loading photos';
+                return;
+            }
+            
+            if (!photos || photos.length === 0) {
+                listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#555;">📭 No photos found in ' + folder + '</div>';
+                if (statusDiv) statusDiv.textContent = '📭 No photos found';
+                return;
+            }
+            
+            var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">';
+            
+            photos.forEach(function(photo) {
+                var displayName = photo.name.length > 25 ? photo.name.substring(0, 22) + '...' : photo.name;
+                var size = photo.size > 1024 * 1024 ? (photo.size / (1024 * 1024)).toFixed(1) + ' MB' : 
+                           photo.size > 1024 ? (photo.size / 1024).toFixed(0) + ' KB' : 
+                           photo.size + ' B';
+                
+                html += '<div onclick="selectPhotoFromList(\'' + escapeHtml(photo.fullPath) + '\', \'' + escapeHtml(photo.name) + '\')" style="background:#111;border-radius:8px;padding:8px;border:1px solid #2a2a2a;cursor:pointer;transition:all 0.2s;">';
+                html += '<div style="width:100%;height:100px;background:#0a0a0a;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#555;">📸</div>';
+                html += '<div style="font-size:0.65rem;color:#e0e0e0;margin-top:4px;text-align:center;word-break:break-all;">' + escapeHtml(displayName) + '</div>';
+                html += '<div style="font-size:0.5rem;color:#666;text-align:center;">' + size + '</div>';
+                html += '</div>';
+            });
+            
+            html += '</div>';
+            listContainer.innerHTML = html;
+            if (statusDiv) statusDiv.textContent = '📸 ' + photos.length + ' photos found';
+        });
+    }
+    
+    function selectPhotoFromList(fullPath, fileName) {
+        if (!window._photoSelectorRecordId || !window._photoSelectorCollection) {
+            if (typeof window.log === 'function') {
+                window.log('Missing record info for photo selection', 'error');
+            }
+            return;
+        }
+        
+        var recordId = window._photoSelectorRecordId;
+        var collection = window._photoSelectorCollection;
+        
+        if (!confirm('Link this photo to record ' + recordId + '?\n\n' + fullPath + '\n\nThis will update the celebration field.')) {
+            return;
+        }
+        
+        if (typeof window.log === 'function') {
+            window.log('📸 Selected photo: ' + fullPath + ' for record: ' + recordId, 'info');
+        }
+        
+        if (typeof getPhotoDownloadUrl !== 'function') {
+            if (typeof window.log === 'function') {
+                window.log('getPhotoDownloadUrl not available', 'error');
+            }
+            return;
+        }
+        
+        getPhotoDownloadUrl(fullPath, function(err, url) {
+            if (err) {
+                if (typeof window.log === 'function') {
+                    window.log('❌ Failed to get download URL: ' + err.message, 'error');
+                }
+                return;
+            }
+            applyPhotoToRecord(recordId, collection, fullPath, url);
+        });
+    }
+    
+    function applyPhotoToRecord(recordId, collection, fullPath, url) {
+        if (!recordId || !collection || !fullPath || !url) {
+            if (typeof window.log === 'function') {
+                window.log('Missing required data for photo update', 'error');
+            }
+            return;
+        }
+        
+        var db = window.photoStorageEnv === 'PROD' ? window.prodDb : window.devDb;
+        if (!db) {
+            if (typeof window.log === 'function') {
+                window.log('Database not available', 'error');
+            }
+            return;
+        }
+        
+        if (typeof window.log === 'function') {
+            window.log('💾 Applying photo to record: ' + collection + '/' + recordId, 'info');
+        }
+        
+        var updateData = {
+            'celebration.imageRef': fullPath,
+            'celebration.imageUrl': url,
+            'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        db.collection(collection).doc(recordId).update(updateData)
+            .then(function() {
+                if (typeof window.log === 'function') {
+                    window.log('✅ Photo applied to record: ' + recordId, 'success');
+                }
+                closePhotoSelector();
+                if (typeof window.loadAndValidate === 'function') {
+                    window.loadAndValidate();
+                } else {
+                    if (typeof window.location !== 'undefined') {
+                        window.location.reload();
+                    }
+                }
+            })
+            .catch(function(err) {
+                if (typeof window.log === 'function') {
+                    window.log('❌ Failed to apply photo: ' + err.message, 'error');
+                }
+            });
+    }
+    
+    // ============================================================
     // PUBLIC API
     // ============================================================
     
@@ -719,9 +1327,22 @@ var UtilValidateUI = (function() {
         renderTRTable: renderTRTable,
         renderSummary: renderSummary,
         showFixPreview: showFixPreview,
-        // v1.02: New
         renderPhotoStatus: renderPhotoStatus,
-        renderValidationSummary: renderValidationSummary
+        renderValidationSummary: renderValidationSummary,
+        // v1.03: New functions moved from HTML
+        renderValidateResults: renderValidateResults,
+        renderPhotoStatusInline: renderPhotoStatusInline,
+        toggleInlinePhotoSelector: toggleInlinePhotoSelector,
+        closeInlinePhotoSelector: closeInlinePhotoSelector,
+        loadInlinePhotos: loadInlinePhotos,
+        applyInlinePhoto: applyInlinePhoto,
+        applyPhotoToRecordInline: applyPhotoToRecordInline,
+        clearPhotoFromRecord: clearPhotoFromRecord,
+        openPhotoSelector: openPhotoSelector,
+        closePhotoSelector: closePhotoSelector,
+        loadPhotoSelector: loadPhotoSelector,
+        selectPhotoFromList: selectPhotoFromList,
+        applyPhotoToRecord: applyPhotoToRecord
     };
     
 })();
@@ -730,13 +1351,23 @@ window.UtilValidateUI = UtilValidateUI;
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: renderPhotoStatus() - Render celebration photo status with thumbnail or "missing" indicator
-   - ADDED: renderValidationSummary() - Render comprehensive summary with field counts
-   - CHANGED: renderSummary() now shows photo status and comprehensive validation results
-   - CHANGED: showFixPreview() now displays photo status in the preview
-   - PRESERVED: All existing rendering functions from v1.01
-DEPENDS ON: UtilValidate
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: renderValidateResults() - Moved from HTML (main validation results renderer)
+   - ADDED: renderPhotoStatusInline() - Inline photo status renderer (no modal)
+   - ADDED: toggleInlinePhotoSelector() - Toggle inline photo selector
+   - ADDED: loadInlinePhotos() - Load photos for inline selector
+   - ADDED: applyInlinePhoto() - Apply selected photo inline
+   - ADDED: applyPhotoToRecordInline() - Save photo to Firestore (inline version)
+   - ADDED: clearPhotoFromRecord() - Remove photo from record
+   - ADDED: openPhotoSelector() - Open modal photo selector (legacy, kept for compatibility)
+   - ADDED: closePhotoSelector() - Close modal photo selector
+   - ADDED: loadPhotoSelector() - Load photos for modal selector
+   - ADDED: selectPhotoFromList() - Select photo from modal list
+   - ADDED: applyPhotoToRecord() - Apply photo to record (modal version)
+   - CHANGED: escapeHtml() now uses window.escapeHtml from util-core.js (with fallback)
+   - CHANGED: formatDate() now uses window.formatDate from util-core.js (with fallback)
+   - PRESERVED: All existing rendering functions from v1.02
+DEPENDS ON: UtilValidate, util-core.js
 STATUS: Ready for integration
 */
