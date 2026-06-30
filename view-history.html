@@ -1,12 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.38
-KEY CHANGES from v8.37:
-   - FIXED: getAllOpponents() was incorrectly adding ALL players from the other flight
-   - Now only adds opponents from the OPPOSITE TEAM in the other flight
-   - This fixes the issue where 6 match bubbles were showing instead of 4
-   - Correct opponent count per player is now 4 (2 intra-flight + 2 cross-flight)
-   - PRESERVED: All existing functionality from v8.37
+VERSION: 8.39
+KEY CHANGES from v8.38:
+   - FIXED: getMatchValueFromStoredResults() was using wrong index for Team B players
+   - Now uses teamAPlayers and teamBPlayers directly for index lookup
+   - This fixes Team B match bubbles showing empty values
+   - PRESERVED: All existing functionality from v8.38
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -387,7 +386,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.38</div>
+<div class="version-tag">v8.39</div>
 
 <script>
 // ============================================================
@@ -400,10 +399,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.38: Fixed opponent generation
+// VERSION CACHE-BUSTING - v8.39: Fixed match value index lookup for Team B
 // ============================================================
-var APP_VERSION = "8.38";
-var CACHE_KEY = "view_history_version_v838";
+var APP_VERSION = "8.39";
+var CACHE_KEY = "view_history_version_v839";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -421,8 +420,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.38";
-console.log("[VIEW-HISTORY] Initializing v8.38 - Fixed opponent generation");
+window.VIEW_HISTORY_VERSION = "8.39";
+console.log("[VIEW-HISTORY] Initializing v8.39 - Fixed match value index lookup");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -800,6 +799,7 @@ function renderScorecardView(game) {
         return opponents;
     }
     
+    // v8.39: FIXED - getMatchValueFromStoredResults now uses team-specific arrays for index lookup
     function getMatchValueFromStoredResults(player, opponent, holeNumber) {
         // Read from stored matchResults only - no calculation
         if (!resultsCache || !resultsCache.matchResults) return 0;
@@ -808,32 +808,39 @@ function renderScorecardView(game) {
         var matchResultsArray = resultsCache.matchResults[position];
         if (!matchResultsArray) return 0;
         
-        // Determine player index based on team/flight order
-        var allPlayersOrdered = [];
+        // Team A players ordered by flight then handicap
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { 
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
         });
+        
+        // Team B players ordered by flight then handicap
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { 
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
         });
-        for (var i = 0; i < teamAPlayers.length; i++) allPlayersOrdered.push(teamAPlayers[i]);
-        for (var i = 0; i < teamBPlayers.length; i++) allPlayersOrdered.push(teamBPlayers[i]);
         
+        // Find player index in Team A array
         var aIndex = -1;
+        for (var i = 0; i < teamAPlayers.length; i++) {
+            if (teamAPlayers[i].name === player.name) aIndex = i;
+            if (teamAPlayers[i].name === opponent.name) aIndex = i;
+        }
+        
+        // Find player index in Team B array
         var bIndex = -1;
-        for (var i = 0; i < allPlayersOrdered.length; i++) {
-            if (allPlayersOrdered[i].name === player.name) aIndex = i;
-            if (allPlayersOrdered[i].name === opponent.name) bIndex = i;
+        for (var i = 0; i < teamBPlayers.length; i++) {
+            if (teamBPlayers[i].name === player.name) bIndex = i;
+            if (teamBPlayers[i].name === opponent.name) bIndex = i;
         }
         
         if (aIndex === -1 || bIndex === -1) return 0;
         
+        // Match index = (Team A index * number of Team B players) + Team B index
         var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
         var value = matchResultsArray[matchIndex] || 0;
         
-        // If player is Team B, invert the value
+        // If player is Team B, invert the value (because matchResults stores from Team A perspective)
         if (player.team === 'B') {
             return -value;
         }
@@ -1386,13 +1393,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.38
-KEY CHANGES from v8.37:
-   - FIXED: getAllOpponents() was incorrectly adding ALL players from the other flight
-   - Now only adds opponents from the OPPOSITE TEAM in the other flight
-   - This fixes the issue where 6 match bubbles were showing instead of 4
-   - Correct opponent count per player is now 4 (2 intra-flight + 2 cross-flight)
-   - PRESERVED: All existing functionality from v8.37
+VERSION: 8.39
+KEY CHANGES from v8.38:
+   - FIXED: getMatchValueFromStoredResults() was using wrong index for Team B players
+   - Now uses teamAPlayers and teamBPlayers directly for index lookup
+   - This fixes Team B match bubbles showing empty values
+   - PRESERVED: All existing functionality from v8.38
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
