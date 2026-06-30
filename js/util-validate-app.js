@@ -1,18 +1,18 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: applyStagedPhotoToRecord() - Writes staged photo to Firestore
-   - CHANGED: applyFixToRecord() now also writes staged photo after fix
-   - CHANGED: Clears staged photo after successful write
-   - PRESERVED: All existing functionality from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: loadValidateRecords() now loads ALL records (removed orderBy date filter)
+   - FIXED: Records with undefined date are now included in the dropdown
+   - CHANGED: Manual sorting by date with fallback for undefined dates
+   - PRESERVED: All existing functionality from v1.02
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.02";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.02");
+window.UTIL_VALIDATE_APP_VERSION = "1.03";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.03");
 
 // ============================================================
 // STATE VARIABLES
@@ -36,7 +36,7 @@ function appLog(message, type) {
 }
 
 // ============================================================
-// VALIDATE TAB: LOAD RECORDS
+// VALIDATE TAB: LOAD RECORDS (FIXED - loads ALL records)
 // ============================================================
 
 function loadValidateRecords() {
@@ -58,7 +58,8 @@ function loadValidateRecords() {
     
     appLog('Loading records from: ' + collection + ' (' + envText + ')', 'info');
     
-    db.collection(collection).orderBy('date', 'desc').limit(100).get()
+    // FIXED: Remove orderBy('date') - it was excluding records with undefined date
+    db.collection(collection).get()
         .then(function(snapshot) {
             select.innerHTML = '<option value="">-- Select a record --</option>';
             select.disabled = false;
@@ -70,7 +71,20 @@ function loadValidateRecords() {
                 return;
             }
             
+            // Collect all records
+            var docs = [];
             snapshot.forEach(function(doc) {
+                docs.push(doc);
+            });
+            
+            // Sort manually by date (with fallback for undefined)
+            docs.sort(function(a, b) {
+                var dateA = a.data().date || '1970-01-01';
+                var dateB = b.data().date || '1970-01-01';
+                return dateB.localeCompare(dateA);
+            });
+            
+            docs.forEach(function(doc) {
                 var data = doc.data();
                 var displayDate = data.date || 'No date';
                 var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
@@ -93,7 +107,7 @@ function loadValidateRecords() {
                 });
             });
             
-            appLog('Loaded ' + snapshot.size + ' records from ' + collection, 'success');
+            appLog('Loaded ' + docs.length + ' records from ' + collection, 'success');
         })
         .catch(function(err) {
             appLog('Error loading records: ' + err.message, 'error');
@@ -668,16 +682,16 @@ window.applyStagedPhotoToRecord = applyStagedPhotoToRecord;
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.02 loaded');
+console.log('[UTIL-VALIDATE-APP] v1.03 loaded');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: applyStagedPhotoToRecord() - Writes staged photo to Firestore
-   - CHANGED: applyFixToRecord() now also writes staged photo after fix
-   - CHANGED: Clears staged photo after successful write
-   - PRESERVED: All existing functionality from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: loadValidateRecords() now loads ALL records (removed orderBy date filter)
+   - FIXED: Records with undefined date are now included in the dropdown
+   - CHANGED: Manual sorting by date with fallback for undefined dates
+   - PRESERVED: All existing functionality from v1.02
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
