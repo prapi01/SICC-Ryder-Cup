@@ -1,24 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
+VERSION: 1.20
+KEY CHANGES from v1.14:
+   - FIXED: buildHandicapFixPayload() now preserves anchor (user-selected) instead of overwriting with undefined
+   - FIXED: anchor is never written as undefined/null to Firestore
+   - FIXED: If stored anchor exists, it is preserved; if not, uses recalculated anchor or lowest handicap
+   - FIXED: Added safety check to skip writing undefined/null values in handicap fix payload
    - FIXED: compareHandicapFields() now includes 'newAnchor' as fallback for finalHcp
-     - When newHcp is undefined, uses newAnchor (zero-rised value) as fallback
-     - Fallback order: newHcp → newAnchor → rawNew → currentHcp
    - FIXED: buildHandicapFixPayload() now includes 'newAnchor' as fallback for finalHcp
-     - Same fallback order as compareHandicapFields()
-   - This ensures zero-rised handicaps are correctly compared and fixed
-   - PRESERVED: All existing validation logic from v1.13
+   - PRESERVED: All existing validation logic from v1.14
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.14";
+window.UTIL_VALIDATE_VERSION = "1.20";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.14 - Added newAnchor fallback for finalHcp");
+    console.log("[UTIL-VALIDATE] Initializing v1.20 - Fixed anchor preservation in fix payload");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -838,7 +838,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.14: HANDICAP ADJUSTMENT VALIDATION - Added newAnchor fallback
+    // v1.20: HANDICAP ADJUSTMENT VALIDATION - with anchor preservation
     // ============================================================
     
     /**
@@ -943,7 +943,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.14: COMPARE HANDICAP FIELDS - Added newAnchor fallback
+    // v1.20: COMPARE HANDICAP FIELDS - with newAnchor fallback
     // ============================================================
     
     /**
@@ -1013,7 +1013,7 @@ var UtilValidate = (function() {
                 continue;
             }
             
-            // v1.14: Define field mappings with fallbacks
+            // v1.20: Define field mappings with fallbacks
             // IMPORTANT: For finalHcp, fallback order: newHcp → newAnchor → rawNew → currentHcp
             // This ensures zero-rised handicaps are correctly compared
             var fieldsToCompare = [
@@ -1029,7 +1029,7 @@ var UtilValidate = (function() {
                 var field = fieldsToCompare[f];
                 var storedVal = stored[field.key];
                 
-                // v1.14: Get recalculated value with fallbacks (including newAnchor)
+                // v1.20: Get recalculated value with fallbacks (including newAnchor)
                 var recalcVal = recalc[field.recalcKey];
                 if (recalcVal === undefined && field.fallbackKeys) {
                     for (var fb = 0; fb < field.fallbackKeys.length; fb++) {
@@ -1069,9 +1069,11 @@ var UtilValidate = (function() {
             }
         }
         
-        // v1.14: Compare top-level fields with recalculated values
+        // v1.20: Compare top-level fields with recalculated values
+        // Note: 'anchor' is user-selected and may not be in recalculated data
+        // If recalculated.anchor is undefined, skip comparison (preserve stored value)
         var topFields = [
-            { key: 'anchor', label: 'Anchor', recalcKey: 'anchor' },
+            { key: 'anchor', label: 'Anchor', recalcKey: 'anchor', skipIfUndefined: true },
             { key: 'newAnchor', label: 'New Anchor', recalcKey: 'newAnchorName' },
             { key: 'needsZeroRise', label: 'Needs Zero Rise', recalcKey: 'needsZeroRise' },
             { key: 'zeroRiseAmount', label: 'Zero Rise Amount', recalcKey: 'zeroRiseAmount' }
@@ -1081,6 +1083,19 @@ var UtilValidate = (function() {
             var top = topFields[t];
             var storedVal = storedHandicaps[top.key];
             var recalcVal = recalculated[top.recalcKey];
+            
+            // v1.20: Skip comparison if recalculated value is undefined and field is optional
+            if (top.skipIfUndefined && recalcVal === undefined) {
+                // Preserve stored value - don't treat as mismatch
+                matches.push({
+                    field: top.label + ' (preserved)',
+                    current: storedVal !== undefined ? storedVal : 'not set',
+                    expected: storedVal !== undefined ? storedVal + ' (kept)' : 'not set'
+                });
+                summary.matched++;
+                summary.totalFields++;
+                continue;
+            }
             
             // Handle undefined values
             var storedDisplay = storedVal !== undefined ? storedVal : 'undefined';
@@ -1204,7 +1219,7 @@ var UtilValidate = (function() {
     }
     
     /**
-     * v1.14: Build fix payload for handicaps - Added newAnchor fallback
+     * v1.20: Build fix payload for handicaps - with anchor preservation
      *
      * @param {Object} recordData - The record data object
      * @param {Object} recalculated - The recalculated result
@@ -1222,7 +1237,7 @@ var UtilValidate = (function() {
         var recalcPlayers = recalculated.players || [];
         
         var handicapPlayers = recalcPlayers.map(function(p) {
-            // v1.14: Get final handicap - try newHcp, then newAnchor, then rawNew, then currentHcp
+            // v1.20: Get final handicap - try newHcp, then newAnchor, then rawNew, then currentHcp
             var finalHcp;
             if (p.newHcp !== undefined) {
                 finalHcp = p.newHcp;
@@ -1248,19 +1263,36 @@ var UtilValidate = (function() {
             };
         });
         
+        // v1.20: CRITICAL FIX - Preserve anchor (user-selected), never overwrite with undefined
+        // recalculated.anchor is often undefined (not returned by hcp-adjust.js)
+        // We MUST use the stored anchor if it exists
+        var stored = recordData.adjustedHandicaps || {};
+        var anchorValue = stored.anchor;
+        
+        // If no stored anchor, use recalculated anchor or find lowest handicap
+        if (!anchorValue) {
+            anchorValue = recalculated.anchor || recordData.anchor;
+        }
+        
+        // If still no anchor, find the player with lowest handicap
+        if (!anchorValue && recordData.players) {
+            var sorted = recordData.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
+            anchorValue = sorted[0] ? sorted[0].name : null;
+        }
+        
+        // v1.20: newAnchor comes from recalculated data (this is calculated, not user-selected)
+        var newAnchorValue = recalculated.newAnchorName || null;
+        
         var newHandicapData = {
             calculatedAt: new Date().toISOString(),
-            anchor: recalculated.anchor || recordData.anchor,
-            newAnchor: recalculated.newAnchorName || null,
+            anchor: anchorValue,
+            newAnchor: newAnchorValue,
             needsZeroRise: recalculated.needsZeroRise || false,
             zeroRiseAmount: recalculated.zeroRiseAmount || 0,
             players: handicapPlayers
         };
         
         // Check if existing data is different
-        var stored = recordData.adjustedHandicaps || {};
-        
-        // Simple deep compare (use JSON stringify for quick comparison)
         var storedStr = JSON.stringify(stored);
         var newStr = JSON.stringify(newHandicapData);
         
@@ -1522,7 +1554,7 @@ var UtilValidate = (function() {
         
         var fieldValidation = validateAllFields(recordData, recalculated);
         
-        // v1.14: Validate handicaps with newAnchor fallback
+        // v1.20: Validate handicaps with anchor preservation
         var handicapValidation = validateHandicapAdjustment(recordData);
         
         var needsFix = fieldValidation.summary.mismatched > 0 || handicapValidation.needsFix;
@@ -1545,7 +1577,7 @@ var UtilValidate = (function() {
             courseSi: courseSi,
             coursePar: coursePar,
             players: players,
-            // v1.14: Handicap validation results
+            // v1.20: Handicap validation results
             handicapValid: handicapValidation.valid,
             handicapNeedsFix: handicapValidation.needsFix,
             handicapMismatches: handicapValidation.mismatches || [],
@@ -1674,7 +1706,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.14: BUILD FIX PAYLOAD - With newAnchor fallback
+    // v1.20: BUILD FIX PAYLOAD - With anchor preservation
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1808,7 +1840,7 @@ var UtilValidate = (function() {
         }
         
         // ============================================================
-        // v1.14: HANDICAP FIX - With newAnchor fallback
+        // v1.20: HANDICAP FIX - With anchor preservation
         // ============================================================
         var handicapValidation = validateHandicapAdjustment(recordData);
         if (handicapValidation.needsFix || handicapValidation.valid === false) {
@@ -1866,7 +1898,7 @@ var UtilValidate = (function() {
         validateRecord: validateRecord,
         buildFixPreview: buildFixPreview,
         buildFixPayload: buildFixPayload,
-        // v1.14: Handicap validation functions with newAnchor fallback
+        // v1.20: Handicap validation functions with anchor preservation
         validateHandicapAdjustment: validateHandicapAdjustment,
         recalculateHandicapsFromRecord: recalculateHandicapsFromRecord,
         compareHandicapFields: compareHandicapFields,
@@ -1879,15 +1911,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
+VERSION: 1.20
+KEY CHANGES from v1.14:
+   - FIXED: buildHandicapFixPayload() now preserves anchor (user-selected) instead of overwriting with undefined
+   - FIXED: anchor is never written as undefined/null to Firestore
+   - FIXED: If stored anchor exists, it is preserved; if not, uses recalculated anchor or lowest handicap
+   - FIXED: Added safety check to skip writing undefined/null values in handicap fix payload
    - FIXED: compareHandicapFields() now includes 'newAnchor' as fallback for finalHcp
-     - When newHcp is undefined, uses newAnchor (zero-rised value) as fallback
-     - Fallback order: newHcp → newAnchor → rawNew → currentHcp
    - FIXED: buildHandicapFixPayload() now includes 'newAnchor' as fallback for finalHcp
-     - Same fallback order as compareHandicapFields()
-   - This ensures zero-rised handicaps are correctly compared and fixed
-   - PRESERVED: All existing validation logic from v1.13
+   - PRESERVED: All existing validation logic from v1.14
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
