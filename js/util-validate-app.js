@@ -1,18 +1,20 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: validateApplyPhotoOnly() function to apply staged photo without requiring data fix
-   - This allows users to apply a staged photo even when the record is already valid
-   - ADDED: Exposed validateApplyPhotoOnly globally for the new button
-   - PRESERVED: All existing functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: Handicap mismatches now included in validation results
+   - CHANGED: validateFixRecord() now checks for handicap mismatches
+   - CHANGED: applyFixToRecord() now properly handles handicap fix payload
+   - CHANGED: loadAndValidate() now passes handicap validation to UI
+   - PRESERVED: All existing functionality from v1.05
+   - PRESERVED: Photo staging and application logic unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.05";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.05 - Added Apply Photo Only");
+window.UTIL_VALIDATE_APP_VERSION = "1.06";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.06 - Handicap fix support");
 
 // ============================================================
 // STATE VARIABLES
@@ -162,11 +164,24 @@ function loadAndValidate() {
         finalResults: data.finalResults || {},
         gameId: data.gameId || record.id,
         date: data.date || 'Unknown',
-        createdAt: data.createdAt || null
+        createdAt: data.createdAt || null,
+        // v1.06: Include adjustedHandicaps for validation
+        adjustedHandicaps: data.adjustedHandicaps || null,
+        anchor: data.anchor || null
     };
     
     var validation = UtilValidate.validateRecord(cleanRecord);
     validateCurrentValidation = validation;
+    
+    // v1.06: Log handicap validation status
+    if (validation.handicapValid !== undefined) {
+        if (validation.handicapValid) {
+            appLog('✅ Handicap data is valid', 'success');
+        } else {
+            var hcpMismatchCount = validation.handicapMismatches ? validation.handicapMismatches.length : 0;
+            appLog('❌ Handicap data needs fix: ' + hcpMismatchCount + ' mismatches', 'error');
+        }
+    }
     
     // Use the UI renderer
     if (typeof UtilValidateUI !== 'undefined' && typeof UtilValidateUI.renderValidateResults === 'function') {
@@ -178,7 +193,9 @@ function loadAndValidate() {
     if (validation.valid) {
         appLog('✅ Record is valid!', 'success');
     } else {
-        appLog('❌ Record needs fix: ' + validation.summary.mismatched + ' mismatches found', 'error');
+        var totalMismatches = validation.summary ? validation.summary.mismatched : 0;
+        var hcpMismatches = validation.handicapMismatches ? validation.handicapMismatches.length : 0;
+        appLog('❌ Record needs fix: ' + totalMismatches + ' field mismatches, ' + hcpMismatches + ' handicap mismatches', 'error');
     }
 }
 
@@ -301,6 +318,7 @@ function validateFixRecord() {
         return;
     }
     
+    // v1.06: Check if record is valid (including handicaps)
     if (validateCurrentValidation.valid) {
         appLog('Record is already valid. No fix needed.', 'info');
         return;
@@ -322,8 +340,30 @@ function validateFixRecord() {
         return;
     }
     
+    // v1.06: Build complete fix payload including handicaps
     var recalculated = validateCurrentValidation.recalculated;
+    
+    // Get the full validation result with handicaps
+    var fullValidation = validateCurrentValidation;
+    
+    // Build preview with all changes including handicaps
     var previewData = UtilValidate.buildFixPreview(validateGameData, recalculated);
+    
+    // v1.06: Add handicap mismatch info to preview
+    if (fullValidation.handicapMismatches && fullValidation.handicapMismatches.length > 0) {
+        // Add handicap mismatches to the preview changes
+        for (var i = 0; i < fullValidation.handicapMismatches.length; i++) {
+            var hcpMismatch = fullValidation.handicapMismatches[i];
+            previewData.changes.push({
+                field: 'HCP: ' + hcpMismatch.field,
+                current: hcpMismatch.current,
+                new: hcpMismatch.expected,
+                type: 'HCP'
+            });
+        }
+        previewData.hasChanges = true;
+        previewData.changeCount = previewData.changes.length;
+    }
     
     if (!previewData.hasChanges) {
         appLog('No changes needed', 'info');
@@ -430,6 +470,7 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
                 throw new Error('UtilValidate not available');
             }
             
+            // v1.06: buildFixPayload now includes handicap fixes
             var fixResult = UtilValidate.buildFixPayload(validateGameData, recalculated);
             
             if (!fixResult.hasChanges) {
@@ -686,6 +727,7 @@ function showValidateInfoGuide() {
                         <li>📊 Comparing recalculated values against stored values</li>
                         <li>✅ Identifying mismatches that need fixing</li>
                         <li>🔧 Fixing corrupted records with one click</li>
+                        <li>🏌️ Validating handicap adjustment data</li>
                     </ul>
                 </div>
             </div>
@@ -731,6 +773,7 @@ function showValidateInfoGuide() {
                         <li>⛳ <strong>Stroke Game:</strong> Cumulative nett scores</li>
                         <li>📋 <strong>Player Totals:</strong> Gross scores and relative to par</li>
                         <li>🏆 <strong>Clinched At:</strong> Match clinch detection</li>
+                        <li>🏌️ <strong>Handicap Adjustment:</strong> Starting Hcp, Anchor Adj, Perf Adj, Final Hcp</li>
                     </ul>
                 </div>
             </div>
@@ -745,6 +788,7 @@ function showValidateInfoGuide() {
                     <li><strong>Preserved:</strong> Raw scores, players, and course data are never modified</li>
                     <li><strong>AS = 0.5:</strong> All "All Square" results correctly give 0.5 TR points each</li>
                     <li><strong>Field Names:</strong> Uses documented schema (game1, game2, game3) with fallbacks</li>
+                    <li><strong>Handicaps:</strong> Recalculated using hcp-adjust.js engine - no duplicate logic</li>
                 </ul>
             </div>
             
@@ -795,16 +839,18 @@ window.validateApplyPhotoOnly = validateApplyPhotoOnly;  // v1.05: New function
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.05 loaded - Added Apply Photo Only');
+console.log('[UTIL-VALIDATE-APP] v1.06 loaded - Handicap fix support');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: validateApplyPhotoOnly() function to apply staged photo without requiring data fix
-   - This allows users to apply a staged photo even when the record is already valid
-   - ADDED: Exposed validateApplyPhotoOnly globally for the new button
-   - PRESERVED: All existing functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: Handicap mismatches now included in validation results
+   - CHANGED: validateFixRecord() now checks for handicap mismatches
+   - CHANGED: applyFixToRecord() now properly handles handicap fix payload
+   - CHANGED: loadAndValidate() now passes handicap validation to UI
+   - PRESERVED: All existing functionality from v1.05
+   - PRESERVED: Photo staging and application logic unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
