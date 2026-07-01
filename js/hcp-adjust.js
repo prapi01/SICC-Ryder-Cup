@@ -1,10 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.52
-KEY CHANGES from v2.51:
-   - EXPOSED: calculateAllAdjustments() in public API
-   - This allows VALIDATE tab to recalculate handicaps from raw data
-   - PRESERVED: ALL v2.51 functions and API unchanged
+VERSION: 2.53
+KEY CHANGES from v2.52:
+   - ADDED: calculateAllAdjustmentsFromRaw() function for VALIDATE tab
+   - This function sets internal state (allPlayers, flight1Data, flight2Data, courseSi, coursePar)
+   - Then calls calculateAllAdjustments() to get the result
+   - EXPOSED: calculateAllAdjustmentsFromRaw in public API
+   - PRESERVED: ALL v2.52 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
@@ -314,6 +316,32 @@ var HandicapAdjustment = (function() {
             zeroRiseAmount: zeroRiseAmount,
             newAnchorName: newAnchorName
         };
+    }
+    
+    // ============================================================
+    // v2.53: calculateAllAdjustmentsFromRaw - For VALIDATE tab
+    // Sets internal state from parameters, then calls calculateAllAdjustments
+    // ============================================================
+    
+    function calculateAllAdjustmentsFromRaw(anchor, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam) {
+        console.log('[HCP-ADJUST] calculateAllAdjustmentsFromRaw called');
+        console.log('[HCP-ADJUST]   anchor:', anchor ? anchor.name : 'null');
+        console.log('[HCP-ADJUST]   players:', players ? players.length : 0);
+        console.log('[HCP-ADJUST]   flight1DataStr length:', flight1DataStr ? flight1DataStr.length : 0);
+        console.log('[HCP-ADJUST]   flight2DataStr length:', flight2DataStr ? flight2DataStr.length : 0);
+        
+        // Set internal state
+        allPlayers = players || [];
+        flight1Data = flight1DataStr || "";
+        flight2Data = flight2DataStr || "";
+        courseSi = courseSiParam || [];
+        coursePar = courseParParam || [];
+        
+        // Call existing calculation
+        var result = calculateAllAdjustments(anchor);
+        
+        console.log('[HCP-ADJUST] calculateAllAdjustmentsFromRaw complete, players:', result.players ? result.players.length : 0);
+        return result;
     }
     
     // ============================================================
@@ -1310,14 +1338,14 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.52";
+    window.HANDICAP_ADJUST_VERSION = "2.53";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
     // ============================================================
-    // v2.52: EXPOSE calculateAllAdjustments for VALIDATE tab
+    // v2.53: EXPOSE calculateAllAdjustmentsFromRaw for VALIDATE tab
     // ============================================================
     return {
         init: init,
@@ -1326,7 +1354,8 @@ var HandicapAdjustment = (function() {
         initReadOnly: initReadOnly,
         checkUrlAndInit: checkUrlAndInit,
         displayStoredAdjustment: displayStoredAdjustment,
-        calculateAllAdjustments: calculateAllAdjustments  // v2.52: Exposed for VALIDATE
+        calculateAllAdjustments: calculateAllAdjustments,
+        calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw  // v2.53: New for VALIDATE
     };
     
 })();
@@ -1336,11 +1365,13 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.52
-KEY CHANGES from v2.51:
-   - EXPOSED: calculateAllAdjustments() in public API
-   - This allows VALIDATE tab to recalculate handicaps from raw data
-   - PRESERVED: ALL v2.51 functions and API unchanged
+VERSION: 2.53
+KEY CHANGES from v2.52:
+   - ADDED: calculateAllAdjustmentsFromRaw() function for VALIDATE tab
+   - This function sets internal state (allPlayers, flight1Data, flight2Data, courseSi, coursePar)
+   - Then calls calculateAllAdjustments() to get the result
+   - EXPOSED: calculateAllAdjustmentsFromRaw in public API
+   - PRESERVED: ALL v2.52 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
