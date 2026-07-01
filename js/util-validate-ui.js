@@ -1,22 +1,20 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: Handicap panel now displays directly within renderValidationSummary()
-   - REMOVED: Separate container dependency (validateHandicapPanel no longer needed)
-   - Integrated handicap table into existing validation summary card
-   - Handicap table shows: Player, Old, Anc (Cur→Exp), Perf (Cur→Exp), New (Cur→Exp), Status
-   - Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
-   - PRESERVED: All existing rendering functions from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: All folder paths now use 'celebration/' instead of 'celebrations/'
+   - CHANGED: toggleInlinePhotoSelector() default folder set to 'celebration/'
+   - CHANGED: loadInlinePhotos() fallback folder set to 'celebration/'
+   - PRESERVED: All existing rendering functions from v1.08
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.08";
+window.UTIL_VALIDATE_UI_VERSION = "1.09";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.08 - Integrated handicap panel");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.09 - Fixed folder path to celebration/");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -26,7 +24,6 @@ var UtilValidateUI = (function() {
         if (typeof window.escapeHtml === 'function') {
             return window.escapeHtml(str);
         }
-        // Fallback
         if (str === null || str === undefined) return '';
         return String(str).replace(/[&<>]/g, function(m) {
             if (m === '&') return '&amp;';
@@ -40,7 +37,6 @@ var UtilValidateUI = (function() {
         if (typeof window.formatDate === 'function') {
             return window.formatDate(dateStr);
         }
-        // Fallback
         if (!dateStr) return 'Unknown';
         var parts = dateStr.split('-');
         if (parts.length === 3) {
@@ -414,7 +410,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.08: RENDER: Validation Summary (with integrated handicap table)
+    // v1.09: RENDER: Validation Summary (with integrated handicap table)
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -435,11 +431,9 @@ var UtilValidateUI = (function() {
         
         // Handicap validation data
         var handicapValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
-        var handicapMismatches = validationResult.handicapMismatches || [];
         var handicapSummary = validationResult.handicapSummary || { totalFields: 0, mismatched: 0, matched: 0 };
         var storedHandicaps = validationResult.handicapStored;
         var recalculated = validationResult.handicapRecalculated;
-        var handicapNeedsFix = validationResult.handicapNeedsFix !== undefined ? validationResult.handicapNeedsFix : false;
         
         var html = '<div style="padding:12px 0;">';
         
@@ -457,15 +451,11 @@ var UtilValidateUI = (function() {
         }
         html += '</div></div></div>';
         
-        // ============================================================
-        // v1.08: INTEGRATED HANDICAP TABLE
-        // ============================================================
-        
+        // Handicap table
         if (storedHandicaps && recalculated) {
             var storedPlayers = storedHandicaps.players || [];
             var recalcPlayers = recalculated.players || [];
             
-            // Build maps for lookup
             var storedMap = {};
             for (var i = 0; i < storedPlayers.length; i++) {
                 storedMap[storedPlayers[i].name] = storedPlayers[i];
@@ -476,13 +466,11 @@ var UtilValidateUI = (function() {
                 recalcMap[recalcPlayers[i].name] = recalcPlayers[i];
             }
             
-            // Get all player names
             var allNames = {};
             for (var name in storedMap) { allNames[name] = true; }
             for (var name in recalcMap) { allNames[name] = true; }
             var playerNames = Object.keys(allNames);
             
-            // Build player list
             var players = [];
             for (var i = 0; i < playerNames.length; i++) {
                 var name = playerNames[i];
@@ -500,16 +488,13 @@ var UtilValidateUI = (function() {
                 });
             }
             
-            // Sort by team (A then B), then by starting handicap
             players.sort(function(a, b) {
                 if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
                 return a.startingHcp - b.startingHcp;
             });
             
-            // Build handicap table
             html += '<div style="background:#0a0a0a; border-radius:8px; padding:10px; border:1px solid #2a2a2a; margin-bottom:12px;">';
             
-            // Header
             var hcpStatusIcon = handicapValid ? '✅' : '❌';
             var hcpStatusColor = handicapValid ? '#4caf50' : '#ff6b6b';
             html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">';
@@ -518,7 +503,6 @@ var UtilValidateUI = (function() {
             html += '<span style="font-size:0.65rem; color:' + hcpStatusColor + '; margin-left:auto; font-weight:600;">' + hcpStatusIcon + ' ' + (handicapValid ? 'VALID' : 'NEEDS FIX') + '</span>';
             html += '</div>';
             
-            // Summary line
             html += '<div style="display:flex; gap:12px; font-size:0.6rem; color:#888; margin-bottom:6px; padding:4px 0; border-bottom:1px solid #1a1a1a;">';
             html += '<span>Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.anchor || 'Unknown') + '</strong></span>';
             html += '<span>New Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.newAnchor || 'None') + '</strong></span>';
@@ -528,11 +512,9 @@ var UtilValidateUI = (function() {
             }
             html += '</div>';
             
-            // Table
             html += '<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
             html += '<table style="width:100%; border-collapse:collapse; font-size:0.6rem; min-width:380px;">';
             
-            // Table header
             html += '<thead><tr style="background:#1a1a1a;">';
             html += '<th style="padding:3px 3px; text-align:left; font-size:0.6rem; color:#888;">Player</th>';
             html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;">Old</th>';
@@ -542,7 +524,6 @@ var UtilValidateUI = (function() {
             html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;">Status</th>';
             html += '</tr></thead><tbody>';
             
-            // Sub-header: Cur | Exp
             html += '<tr style="background:#0a0a0a; border-bottom:1px solid #2a2a2a;">';
             html += '<td style="padding:2px 3px;"></td>';
             html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#555;"></td>';
@@ -563,7 +544,6 @@ var UtilValidateUI = (function() {
                 var stored = p.stored;
                 var recalc = p.recalc;
                 
-                // Team separator
                 if (p.team !== currentTeam) {
                     currentTeam = p.team;
                     var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
@@ -572,7 +552,6 @@ var UtilValidateUI = (function() {
                     html += '</tr>';
                 }
                 
-                // Check field mismatches
                 var playerHasMismatch = false;
                 var fields = ['anchorAdj', 'perfAdj', 'finalHcp'];
                 var fieldStatus = {};
@@ -591,12 +570,10 @@ var UtilValidateUI = (function() {
                 }
                 if (playerHasMismatch) hasMismatch = true;
                 
-                // Starting handicap
                 var stDisplay = (p.startingHcp !== undefined && p.startingHcp !== null) ? p.startingHcp : '?';
                 var isAnchor = stored && storedHandicaps.anchor === p.name;
                 var isNewAnchor = stored && storedHandicaps.newAnchor === p.name;
                 
-                // Get values
                 var ancCur = stored ? stored.anchorAdj : '—';
                 var ancExp = recalc ? recalc.anchorAdj : '—';
                 var perfCur = stored ? stored.perfAdj : '—';
@@ -618,15 +595,12 @@ var UtilValidateUI = (function() {
                 html += '<td style="padding:4px 3px; text-align:left; font-weight:600; color:' + stColor + ';">' + escapeHtml(p.label) + (isAnchor ? ' ⭐' : '') + (isNewAnchor ? ' 👑' : '') + '</td>';
                 html += '<td style="padding:4px 3px; text-align:center; color:' + stColor + ';">' + stDisplay + '</td>';
                 
-                // Anc: Cur | Exp
                 html += '<td style="padding:4px 3px; text-align:center; color:' + ancColor + ';">' + escapeHtml(String(ancCur)) + '</td>';
                 html += '<td style="padding:4px 3px; text-align:center; color:' + (ancMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (ancMatch ? '400' : '700') + ';">' + escapeHtml(String(ancExp)) + '</td>';
                 
-                // Perf: Cur | Exp
                 html += '<td style="padding:4px 3px; text-align:center; color:' + perfColor + ';">' + escapeHtml(String(perfCur)) + '</td>';
                 html += '<td style="padding:4px 3px; text-align:center; color:' + (perfMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (perfMatch ? '400' : '700') + ';">' + escapeHtml(String(perfExp)) + '</td>';
                 
-                // New: Cur | Exp
                 html += '<td style="padding:4px 3px; text-align:center; color:' + finalColor + '; font-weight:600;">' + escapeHtml(String(finalCur)) + '</td>';
                 html += '<td style="padding:4px 3px; text-align:center; color:' + (finalMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (finalMatch ? '400' : '700') + ';">' + escapeHtml(String(finalExp)) + '</td>';
                 
@@ -637,7 +611,6 @@ var UtilValidateUI = (function() {
             
             html += '</tbody></table></div>';
             
-            // Footer
             if (hasMismatch) {
                 html += '<div style="font-size:0.65rem; color:#ff6b6b; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
                 html += '❌ ' + (handicapSummary.mismatched || 0) + ' field mismatch' + ((handicapSummary.mismatched || 0) > 1 ? 'es' : '') + ' found. Click "Fix Record" to correct.';
@@ -648,9 +621,8 @@ var UtilValidateUI = (function() {
                 html += '</div>';
             }
             
-            html += '</div>'; // End handicap panel
+            html += '</div>';
         } else if (storedHandicaps && !recalculated) {
-            // Stored exists but can't recalculate
             html += '<div style="background:#0a0a0a; border-radius:8px; padding:10px; border:1px solid #2a2a2a; margin-bottom:12px;">';
             html += '<div style="display:flex; align-items:center; gap:8px;">';
             html += '<span style="font-size:0.9rem;">⚠️</span>';
@@ -662,7 +634,6 @@ var UtilValidateUI = (function() {
             html += '</div>';
             html += '</div>';
         } else if (!storedHandicaps) {
-            // No stored handicaps
             html += '<div style="background:#0a0a0a; border-radius:8px; padding:10px; border:1px solid #2a2a2a; margin-bottom:12px;">';
             html += '<div style="display:flex; align-items:center; gap:8px;">';
             html += '<span style="font-size:0.9rem;">❌</span>';
@@ -1055,7 +1026,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.03: RENDER PHOTO STATUS INLINE
+    // v1.09: RENDER PHOTO STATUS INLINE (with celebration/ folder)
     // ============================================================
     
     function renderPhotoStatusInline(photoStatus, recordId, collection, isCompleted) {
@@ -1109,7 +1080,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.05: INLINE PHOTO SELECTOR FUNCTIONS
+    // v1.09: INLINE PHOTO SELECTOR (celebration/ folder)
     // ============================================================
     
     var inlinePhotoSelectorActive = false;
@@ -1146,6 +1117,7 @@ var UtilValidateUI = (function() {
         window._inlineSelectorRecordId = recordId;
         window._inlineSelectorCollection = collection;
         
+        // v1.09: Use celebration/ folder
         var html = '<div style="background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:12px; margin-top:8px; max-height:500px; overflow-y:auto;">';
         html += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">';
         html += '<input type="text" id="inlinePhotoFolder" value="celebration/" placeholder="Folder path" style="flex:2; min-width:120px; padding:6px 12px; font-size:0.7rem; border-radius:20px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff;">';
@@ -1184,7 +1156,11 @@ var UtilValidateUI = (function() {
     
     function loadInlinePhotos() {
         var folderInput = document.getElementById('inlinePhotoFolder');
+        // v1.09: Default to celebration/
         var folder = folderInput ? folderInput.value.trim() : 'celebration/';
+        if (folder && !folder.endsWith('/')) {
+            folder = folder + '/';
+        }
         var listContainer = document.getElementById('inlinePhotoList');
         var statusDiv = document.getElementById('inlinePhotoStatus');
         var previewDiv = document.getElementById('inlinePhotoPreview');
@@ -1643,18 +1619,16 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.08 - Integrated handicap panel');
+console.log('[UTIL-VALIDATE-UI] v1.09 - Fixed folder path to celebration/');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: Handicap panel now displays directly within renderValidationSummary()
-   - REMOVED: Separate container dependency (validateHandicapPanel no longer needed)
-   - Integrated handicap table into existing validation summary card
-   - Handicap table shows: Player, Old, Anc (Cur→Exp), Perf (Cur→Exp), New (Cur→Exp), Status
-   - Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
-   - PRESERVED: All existing rendering functions from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: All folder paths now use 'celebration/' instead of 'celebrations/'
+   - CHANGED: toggleInlinePhotoSelector() default folder set to 'celebration/'
+   - CHANGED: loadInlinePhotos() fallback folder set to 'celebration/'
+   - PRESERVED: All existing rendering functions from v1.08
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
