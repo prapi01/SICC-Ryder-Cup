@@ -6,6 +6,7 @@ KEY CHANGES from v1.05:
    - CHANGED: validateFixRecord() now checks for handicap mismatches
    - CHANGED: applyFixToRecord() now properly handles handicap fix payload
    - CHANGED: loadAndValidate() now passes handicap validation to UI
+   - CHANGED: showValidateInfoGuide() updated to include handicap adjustment check
    - PRESERVED: All existing functionality from v1.05
    - PRESERVED: Photo staging and application logic unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
@@ -701,7 +702,7 @@ function initValidateTabEvents() {
 }
 
 // ============================================================
-// VALIDATE TAB: INFORMATION GUIDE
+// v1.06: VALIDATE TAB: INFORMATION GUIDE (updated with handicap)
 // ============================================================
 
 function showValidateInfoGuide() {
@@ -726,8 +727,8 @@ function showValidateInfoGuide() {
                         <li>🔬 Recalculating all derived data from raw scores</li>
                         <li>📊 Comparing recalculated values against stored values</li>
                         <li>✅ Identifying mismatches that need fixing</li>
-                        <li>🔧 Fixing corrupted records with one click</li>
                         <li>🏌️ Validating handicap adjustment data</li>
+                        <li>🔧 Fixing corrupted records with one click</li>
                     </ul>
                 </div>
             </div>
@@ -773,8 +774,28 @@ function showValidateInfoGuide() {
                         <li>⛳ <strong>Stroke Game:</strong> Cumulative nett scores</li>
                         <li>📋 <strong>Player Totals:</strong> Gross scores and relative to par</li>
                         <li>🏆 <strong>Clinched At:</strong> Match clinch detection</li>
-                        <li>🏌️ <strong>Handicap Adjustment:</strong> Starting Hcp, Anchor Adj, Perf Adj, Final Hcp</li>
+                        <li>🏌️ <strong>Handicap Adjustment:</strong> Starting Hcp, Anchor Adj, Perf Adj, Final Hcp, Anchor Raw, Perf Raw</li>
+                        <li>📎 <strong>Celebration Photo:</strong> Presence and pointer validation</li>
                     </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">🏌️ Handicap Adjustment Validation</div>
+                <div class="info-text">
+                    The VALIDATE tab checks the following handicap fields:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li><strong>Exists:</strong> The <code>adjustedHandicaps</code> field must exist in completed games</li>
+                        <li><strong>Complete:</strong> All players must have handicap adjustment data</li>
+                        <li><strong>Correct:</strong> Each player's <code>startingHcp</code>, <code>anchorAdj</code>, <code>perfAdj</code>, <code>finalHcp</code>, <code>anchorRaw</code>, and <code>perfRaw</code> must match recalculated values</li>
+                        <li><strong>Anchor:</strong> The <code>anchor</code> and <code>newAnchor</code> fields must be correct</li>
+                        <li><strong>Zero Rise:</strong> <code>needsZeroRise</code> and <code>zeroRiseAmount</code> must match recalculated values</li>
+                    </ul>
+                    <div style="margin-top:8px; font-size:0.75rem; color:#888;">
+                        <strong>Note:</strong> Handicap recalculation uses the same <code>hcp-adjust.js</code> engine that runs at the end of each game.
+                    </div>
                 </div>
             </div>
             
@@ -789,6 +810,7 @@ function showValidateInfoGuide() {
                     <li><strong>AS = 0.5:</strong> All "All Square" results correctly give 0.5 TR points each</li>
                     <li><strong>Field Names:</strong> Uses documented schema (game1, game2, game3) with fallbacks</li>
                     <li><strong>Handicaps:</strong> Recalculated using hcp-adjust.js engine - no duplicate logic</li>
+                    <li><strong>18 Holes Required:</strong> Handicap adjustment requires all 18 holes to be complete</li>
                 </ul>
             </div>
             
@@ -849,6 +871,7 @@ KEY CHANGES from v1.05:
    - CHANGED: validateFixRecord() now checks for handicap mismatches
    - CHANGED: applyFixToRecord() now properly handles handicap fix payload
    - CHANGED: loadAndValidate() now passes handicap validation to UI
+   - CHANGED: showValidateInfoGuide() updated to include handicap adjustment check
    - PRESERVED: All existing functionality from v1.05
    - PRESERVED: Photo staging and application logic unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
