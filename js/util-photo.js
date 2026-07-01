@@ -1,19 +1,20 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: Automatic cache-busting to image URLs
-   - CHANGED: loadPhotoFromUrl() now appends timestamp to URL to bypass browser cache
-   - This ensures the latest image is loaded from GitHub/Cloudflare Pages
-   - PRESERVED: All existing functionality from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - CHANGED: JPEG quality from 1.0 to 0.85 for better file size
+   - Keeps original resolution (no resizing)
+   - Reduces file size while maintaining good visual quality
+   - PRESERVED: Cache-busting from v1.15
+   - PRESERVED: All existing functionality from v1.15
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.15";
+window.PHOTO_UTIL_VERSION = "1.16";
 
-console.log('[PHOTO] Loading util-photo.js v1.15 - Cache busting added');
+console.log('[PHOTO] Loading util-photo.js v1.16 - JPEG quality 0.85');
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -64,8 +65,6 @@ function photoLog(message, type) {
 
 function addCacheBuster(url) {
     if (!url) return url;
-    // If URL already has a query parameter, append &t=timestamp
-    // Otherwise, append ?t=timestamp
     var separator = url.indexOf('?') !== -1 ? '&' : '?';
     return url + separator + 't=' + Date.now();
 }
@@ -209,7 +208,6 @@ function loadPhotoFromUrl() {
         return;
     }
     
-    // v1.15: Add cache-busting timestamp to force fresh load
     var cacheBustedUrl = addCacheBuster(url);
     console.log('[PHOTO] Original URL:', url);
     console.log('[PHOTO] Cache-busted URL:', cacheBustedUrl);
@@ -266,7 +264,7 @@ function loadPhotoFromUrl() {
 }
 
 // ============================================================
-// v1.14: UPLOAD TO STORAGE - NO RESIZING, FULL QUALITY
+// v1.16: UPLOAD TO STORAGE - No resizing, Quality 0.85
 // ============================================================
 
 function uploadPhotoToStorage() {
@@ -290,14 +288,12 @@ function uploadPhotoToStorage() {
         return;
     }
     
-    // Use the folder as-is, default to 'celebration/'
     var folderInput = document.getElementById('photoStorageFolder');
     var folder = folderInput ? folderInput.value.trim() : 'celebration/';
     if (folder && !folder.endsWith('/')) {
         folder = folder + '/';
     }
     
-    // Use filename as-is, no prefix added
     var fullPath = folder + filename;
     currentFullPath = fullPath;
     
@@ -319,7 +315,7 @@ function uploadPhotoToStorage() {
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     
-    // Use the original image dimensions - NO RESIZING
+    // v1.16: Use original dimensions - NO RESIZING
     var width = currentPhotoData.width;
     var height = currentPhotoData.height;
     
@@ -327,7 +323,7 @@ function uploadPhotoToStorage() {
     canvas.height = height;
     ctx.drawImage(currentPhotoData, 0, 0, width, height);
     
-    // v1.14: Use FULL quality (1.0) - NO COMPRESSION
+    // v1.16: Use JPEG quality 0.85 - good balance of quality and file size
     canvas.toBlob(function(blob) {
         if (!blob) {
             photoLog('❌ Failed to convert image', 'error');
@@ -395,7 +391,7 @@ function uploadPhotoToStorage() {
                 });
             }
         );
-    }, 'image/jpeg', 1.0);  // v1.14: FULL QUALITY (no compression)
+    }, 'image/jpeg', 0.85);  // v1.16: Quality 0.85
 }
 
 // ============================================================
@@ -920,7 +916,6 @@ function renderPhotoList(photos) {
     html += '</tbody></table>';
     container.innerHTML = html;
     
-    // Re-bind Select All after render
     var selectAll = document.getElementById('photoSelectAll');
     if (selectAll) {
         selectAll.onchange = function() {
@@ -1080,7 +1075,6 @@ function deleteSelectedPhotos() {
             deleteBtn.disabled = false;
         }
         
-        // Refresh the list
         refreshPhotoList();
     });
 }
@@ -1157,8 +1151,8 @@ function showPhotoInfoGuide() {
                 <div class="info-section-title">⚠️ Important Notes</div>
                 <ul class="info-warnings">
                     <li><strong>CORS:</strong> The image URL must allow cross-origin access</li>
-                    <li><strong>Original Quality:</strong> Images are uploaded at full quality, no resizing or compression</li>
-                    <li><strong>File Format:</strong> Images are uploaded as JPEG</li>
+                    <li><strong>Original Resolution:</strong> Images are uploaded at original resolution, not resized</li>
+                    <li><strong>JPEG Quality:</strong> 0.85 - good balance of quality and file size</li>
                     <li><strong>Environment:</strong> PROD and DEV have separate Storage buckets</li>
                     <li><strong>Cache Busting:</strong> A timestamp is automatically added to URLs to bypass browser cache</li>
                 </ul>
@@ -1241,7 +1235,6 @@ function attachPhotoHandlers() {
         console.log('[PHOTO] ✅ URL input keydown attached');
     }
     
-    // DELETE tab photo list refresh button
     if (listRefreshBtn) {
         listRefreshBtn.onclick = function() {
             console.log('[PHOTO] 🔄 List Photos button clicked');
@@ -1250,7 +1243,6 @@ function attachPhotoHandlers() {
         console.log('[PHOTO] ✅ List Photos button attached');
     }
     
-    // DELETE tab photo delete button
     if (photoDeleteBtn) {
         photoDeleteBtn.onclick = function() {
             console.log('[PHOTO] 🗑️ Delete Photos button clicked');
@@ -1275,7 +1267,6 @@ function initPhotoTab() {
         console.log('[PHOTO] ✅ Default URL set');
     }
     
-    // v1.13: Default folder is 'celebration/'
     var folderInput = document.getElementById('photoStorageFolder');
     if (folderInput && !folderInput.value) {
         folderInput.value = 'celebration/';
@@ -1288,7 +1279,6 @@ function initPhotoTab() {
         console.log('[PHOTO] ✅ Default field set');
     }
     
-    // v1.13: Photo list folder default is 'celebration/'
     var listFolderInput = document.getElementById('photoListFolder');
     if (listFolderInput && !listFolderInput.value) {
         listFolderInput.value = 'celebration/';
@@ -1322,7 +1312,6 @@ window.findPhotoReferences = findPhotoReferences;
 window.showPhotoInfoGuide = showPhotoInfoGuide;
 window.getPhotoDownloadUrl = getPhotoDownloadUrl;
 
-// DELETE tab photo list functions
 window.refreshPhotoList = refreshPhotoList;
 window.renderPhotoList = renderPhotoList;
 window.toggleAllPhotoCheckboxes = toggleAllPhotoCheckboxes;
@@ -1355,16 +1344,17 @@ function autoInit() {
 
 autoInit();
 
-console.log('[PHOTO-UTIL] v1.15 loaded (cache busting added)');
+console.log('[PHOTO-UTIL] v1.16 loaded (JPEG quality 0.85)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: Automatic cache-busting to image URLs
-   - CHANGED: loadPhotoFromUrl() now appends timestamp to URL to bypass browser cache
-   - This ensures the latest image is loaded from GitHub/Cloudflare Pages
-   - PRESERVED: All existing functionality from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - CHANGED: JPEG quality from 1.0 to 0.85 for better file size
+   - Keeps original resolution (no resizing)
+   - Reduces file size while maintaining good visual quality
+   - PRESERVED: Cache-busting from v1.15
+   - PRESERVED: All existing functionality from v1.15
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
