@@ -1,10 +1,10 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - REMOVED: js/util-validate.js script include (file does not exist, was causing 404)
-   - PRESERVED: All existing functionality from v1.29
-DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: js/util-validate.js script include (now that the file exists)
+   - PRESERVED: All existing functionality from v1.30
+DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -31,6 +31,7 @@ STATUS: Ready for integration
     
     <!-- Utility JS Files -->
     <script src="js/util-core.js"></script>
+    <script src="js/util-validate.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
     <script src="js/util-validate-app.js"></script>
@@ -865,15 +866,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.30</div>
+<div class="version-tag">v1.31</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.30
+// VERSION: 1.31
 // ============================================================
 
-var APP_VERSION = "1.30";
+var APP_VERSION = "1.31";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -930,7 +931,7 @@ function renderVersionBadges() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.30...');
+console.log('[REC-MGMT] Initializing v1.31...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1016,7 +1017,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.30 ready', 'success');
+    log('Record Management v1.31 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1026,7 +1027,7 @@ if (typeof log === 'function') {
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.30 ready');
+    console.log('[REC-MGMT] Record Management v1.31 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1036,10 +1037,10 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - REMOVED: js/util-validate.js script include (file does not exist, was causing 404)
-   - PRESERVED: All existing functionality from v1.29
-DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: js/util-validate.js script include (now that the file exists)
+   - PRESERVED: All existing functionality from v1.30
+DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
