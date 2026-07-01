@@ -1,25 +1,22 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: Thumbnail display for photos in inline selector (actual images, not just filenames)
-   - ADDED: Photo preview on click (shows full image in preview area before attaching)
-   - ADDED: "Attach Photo" button to stage selected photo (does NOT write to Firestore)
-   - ADDED: window._stagedPhoto state for tracking staged photo
-   - REMOVED: Auto-apply on photo click (no more confirm popup)
-   - CHANGED: Photo click now selects/previews, does NOT update record
-   - CHANGED: loadInlinePhotos() now generates thumbnails using getPhotoDownloadUrl()
-   - PRESERVED: All existing rendering functions from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: Handicap mismatch section to renderValidationSummary()
+   - ADDED: renderHandicapMismatches() function for dedicated handicap display
+   - CHANGED: renderValidationSummary() now shows handicap status and mismatches
+   - CHANGED: Validation summary now includes handicap field count
+   - PRESERVED: All existing photo and rendering functions from v1.05
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.05";
+window.UTIL_VALIDATE_UI_VERSION = "1.06";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.05");
-    
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.06 - Handicap mismatch display");
+
     // ============================================================
     // HELPERS (with fallback to util-core.js)
     // ============================================================
@@ -417,7 +414,71 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.03: RENDER: Validation Summary
+    // v1.06: RENDER HANDICAP MISMATCHES
+    // ============================================================
+    
+    function renderHandicapMismatches(handicapMismatches, handicapMatches, handicapSummary, handicapValid, containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        if (!handicapMismatches && !handicapMatches) {
+            container.innerHTML = '<div style="color:#888; padding:8px; font-size:0.8rem;">No handicap data</div>';
+            return;
+        }
+        
+        var html = '<div style="padding:8px 0; border-top:1px solid #2a2a2a; margin-top:8px;">';
+        
+        // Handicap status header
+        var isValid = handicapValid !== undefined ? handicapValid : true;
+        html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">';
+        html += '<span style="font-size:1.1rem;">' + (isValid ? '✅' : '❌') + '</span>';
+        html += '<span style="font-weight:600; color:' + (isValid ? '#4caf50' : '#ff6b6b') + '; font-size:0.85rem;">Handicap Adjustment</span>';
+        if (handicapSummary) {
+            var total = handicapSummary.totalFields || 0;
+            var matched = handicapSummary.matched || 0;
+            var mismatched = handicapSummary.mismatched || 0;
+            html += '<span style="font-size:0.7rem; color:#888; margin-left:auto;">' + matched + '/' + total + ' match' + (mismatched > 0 ? ', ' + mismatched + ' mismatch' + (mismatched > 1 ? 'es' : '') : '') + '</span>';
+        }
+        html += '</div>';
+        
+        // Handicap mismatches list
+        if (handicapMismatches && handicapMismatches.length > 0) {
+            html += '<div style="max-height:120px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:6px;">';
+            html += '<div style="font-size:0.6rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Mismatches (' + handicapMismatches.length + ')</div>';
+            for (var i = 0; i < Math.min(handicapMismatches.length, 15); i++) {
+                var m = handicapMismatches[i];
+                html += '<div style="font-size:0.65rem; padding:2px 4px; border-bottom:1px solid #1a1a1a; display:flex; justify-content:space-between; flex-wrap:wrap; gap:2px;">';
+                html += '<span style="color:#888;">' + escapeHtml(m.field) + '</span>';
+                html += '<span style="color:#ff6b6b;">' + escapeHtml(String(m.current)) + '</span>';
+                html += '<span style="color:#666;">→</span>';
+                html += '<span style="color:#4caf50;">' + escapeHtml(String(m.expected)) + '</span>';
+                html += '</div>';
+            }
+            if (handicapMismatches.length > 15) {
+                html += '<div style="font-size:0.6rem; color:#666; text-align:center; padding:4px;">+ ' + (handicapMismatches.length - 15) + ' more mismatches</div>';
+            }
+            html += '</div>';
+        } else if (isValid) {
+            html += '<div style="font-size:0.7rem; color:#4caf50; padding:4px 0;">✅ All handicap fields match</div>';
+        } else {
+            html += '<div style="font-size:0.7rem; color:#888; padding:4px 0;">No mismatches found</div>';
+        }
+        
+        // Handicap summary info
+        if (handicapSummary) {
+            html += '<div style="display:flex; gap:12px; font-size:0.6rem; color:#666; margin-top:6px; padding-top:4px; border-top:1px solid #1a1a1a;">';
+            html += '<span>Total: ' + (handicapSummary.totalFields || 0) + '</span>';
+            html += '<span style="color:#4caf50;">✅ ' + (handicapSummary.matched || 0) + '</span>';
+            html += '<span style="color:#ff6b6b;">❌ ' + (handicapSummary.mismatched || 0) + '</span>';
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // v1.06: RENDER: Validation Summary (updated with handicaps)
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -436,15 +497,45 @@ var UtilValidateUI = (function() {
         var bothSigned = validationResult.bothSigned || false;
         var expectedStatus = validationResult.expectedStatus || status;
         
+        // v1.06: Handicap validation data
+        var handicapValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
+        var handicapMismatches = validationResult.handicapMismatches || [];
+        var handicapMatches = validationResult.handicapMatches || [];
+        var handicapSummary = validationResult.handicapSummary || { totalFields: 0, mismatched: 0, matched: 0 };
+        var handicapNeedsFix = validationResult.handicapNeedsFix !== undefined ? validationResult.handicapNeedsFix : false;
+        
         var html = '<div style="padding:12px 0;">';
         
-        // Overall status
+        // Overall status (includes handicaps)
         var isValid = validationResult.valid;
         html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (isValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (isValid ? '#2a5a2a' : '#5a2a2a') + ';">';
         html += '<span style="font-size:1.5rem;">' + (isValid ? '✅' : '❌') + '</span>';
         html += '<div><div style="font-weight:700; color:' + (isValid ? '#4caf50' : '#ff6b6b') + ';">' + (isValid ? 'VALID' : 'NEEDS FIX') + '</div>';
-        html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention</div></div>';
-        html += '</div>';
+        html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention';
+        // v1.06: Add handicap info to overall status
+        if (handicapSummary.totalFields > 0) {
+            html += ' | HCP: ' + handicapSummary.matched + '/' + handicapSummary.totalFields + ' match';
+            if (handicapSummary.mismatched > 0) {
+                html += ' (' + handicapSummary.mismatched + ' mismatch' + (handicapSummary.mismatched > 1 ? 'es' : '') + ')';
+            }
+        }
+        html += '</div></div></div>';
+        
+        // v1.06: Handicap status section
+        if (handicapSummary.totalFields > 0 || handicapMismatches.length > 0) {
+            var hcpContainerId = containerId + '_hcp';
+            // Create a sub-container for handicap display
+            var hcpContainer = document.createElement('div');
+            hcpContainer.id = hcpContainerId;
+            // Insert after the main status
+            var statusDiv = container.querySelector('div:first-child');
+            if (statusDiv && statusDiv.nextSibling) {
+                statusDiv.parentNode.insertBefore(hcpContainer, statusDiv.nextSibling);
+            } else {
+                container.appendChild(hcpContainer);
+            }
+            renderHandicapMismatches(handicapMismatches, handicapMatches, handicapSummary, handicapValid, hcpContainerId);
+        }
         
         // Status info
         html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">';
@@ -474,7 +565,7 @@ var UtilValidateUI = (function() {
         // Mismatch list
         if (validationResult.mismatches && validationResult.mismatches.length > 0) {
             html += '<div style="margin-top:12px; max-height:150px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:8px;">';
-            html += '<div style="font-size:0.65rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Mismatches (' + validationResult.mismatches.length + ')</div>';
+            html += '<div style="font-size:0.65rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Field Mismatches (' + validationResult.mismatches.length + ')</div>';
             for (var i = 0; i < Math.min(validationResult.mismatches.length, 10); i++) {
                 var m = validationResult.mismatches[i];
                 html += '<div style="font-size:0.7rem; padding:2px 4px; border-bottom:1px solid #1a1a1a; display:flex; justify-content:space-between; flex-wrap:wrap;">';
@@ -785,7 +876,7 @@ var UtilValidateUI = (function() {
         var matchPointsPerHole = matchData.matchPointsPerHole || [];
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
-        // Render validation summary
+        // Render validation summary (v1.06: includes handicap section)
         renderValidationSummary(validation, 'validateSummary');
         
         // Show/hide fix card
@@ -801,7 +892,7 @@ var UtilValidateUI = (function() {
             }
         }
         
-        // Show details card if there are mismatches
+        // Show details card if there are field mismatches
         if (detailsCard && validation.mismatches && validation.mismatches.length > 0) {
             detailsCard.style.display = 'block';
             var detailsDiv = document.getElementById('validateDetails');
@@ -1390,6 +1481,8 @@ var UtilValidateUI = (function() {
         showFixPreview: showFixPreview,
         renderPhotoStatus: renderPhotoStatus,
         renderValidationSummary: renderValidationSummary,
+        // v1.06: New handicap rendering function
+        renderHandicapMismatches: renderHandicapMismatches,
         // v1.03: New functions moved from HTML
         renderValidateResults: renderValidateResults,
         renderPhotoStatusInline: renderPhotoStatusInline,
@@ -1438,21 +1531,17 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 // Validation results renderer (for app.js to call)
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.05 - Photo staging functions exposed globally');
+console.log('[UTIL-VALIDATE-UI] v1.06 - Handicap mismatch display added');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: Thumbnail display for photos in inline selector (actual images, not just filenames)
-   - ADDED: Photo preview on click (shows full image in preview area before attaching)
-   - ADDED: "Attach Photo" button to stage selected photo (does NOT write to Firestore)
-   - ADDED: window._stagedPhoto state for tracking staged photo
-   - ADDED: clearStagedPhoto() and getStagedPhoto() functions
-   - REMOVED: Auto-apply on photo click (no more confirm popup)
-   - CHANGED: Photo click now selects/previews, does NOT update record
-   - CHANGED: loadInlinePhotos() now generates thumbnails using getPhotoDownloadUrl()
-   - PRESERVED: All existing rendering functions from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: Handicap mismatch section to renderValidationSummary()
+   - ADDED: renderHandicapMismatches() function for dedicated handicap display
+   - CHANGED: renderValidationSummary() now shows handicap status and mismatches
+   - CHANGED: Validation summary now includes handicap field count
+   - PRESERVED: All existing photo and rendering functions from v1.05
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
