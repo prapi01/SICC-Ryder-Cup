@@ -1,21 +1,20 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: Validation Summary now correctly shows NEEDS FIX when handicap mismatches exist
-   - FIXED: Combined summary counts (field mismatches + handicap mismatches)
-   - FIXED: Details window now shows ALL mismatches (field + handicap)
-   - This ensures users can verify fixes before clicking Fix Record
-   - PRESERVED: All existing rendering functions from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - ADDED: Category breakdown in Validation Summary (Match, T-1, T-2, Stroke, TR, Handicap)
+   - ADDED: Mismatch counts per category with color coding (green=0, red=>0)
+   - CHANGED: Validation Summary now shows high-level overview before detailed list
+   - PRESERVED: All existing rendering functions from v1.13
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.13";
+window.UTIL_VALIDATE_UI_VERSION = "1.14";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.13 - Fixed validation summary with combined mismatches");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.14 - Added category breakdown");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -673,7 +672,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.13: RENDER: Validation Summary (with combined mismatches)
+    // v1.14: RENDER: Validation Summary (with category breakdown)
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -692,26 +691,51 @@ var UtilValidateUI = (function() {
         var bothSigned = validationResult.bothSigned || false;
         var expectedStatus = validationResult.expectedStatus || status;
         
-        // v1.13: Get both field and handicap mismatches
+        // Get field and handicap mismatches
         var fieldMismatches = validationResult.mismatches || [];
         var fieldMatches = validationResult.matches || [];
         var handicapMismatches = validationResult.handicapMismatches || [];
         var handicapMatches = validationResult.handicapMatches || [];
         var handicapValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
-        var handicapNeedsFix = validationResult.handicapNeedsFix !== undefined ? validationResult.handicapNeedsFix : false;
         
-        // v1.13: Combined totals
+        // v1.14: Categorize field mismatches
+        var categoryCounts = {
+            'Match Play': 0,
+            'T-1': 0,
+            'T-2': 0,
+            'Stroke': 0,
+            'TR': 0,
+            'Other': 0
+        };
+        
+        for (var i = 0; i < fieldMismatches.length; i++) {
+            var field = fieldMismatches[i].field || '';
+            if (field.indexOf('Match') !== -1 || field.indexOf('match') !== -1) {
+                categoryCounts['Match Play']++;
+            } else if (field.indexOf('T-1') !== -1) {
+                categoryCounts['T-1']++;
+            } else if (field.indexOf('T-2') !== -1) {
+                categoryCounts['T-2']++;
+            } else if (field.indexOf('Strk') !== -1 || field.indexOf('Stroke') !== -1) {
+                categoryCounts['Stroke']++;
+            } else if (field.indexOf('TR') !== -1) {
+                categoryCounts['TR']++;
+            } else {
+                categoryCounts['Other']++;
+            }
+        }
+        
+        // Combined totals
         var totalMismatches = fieldMismatches.length + handicapMismatches.length;
         var totalMatches = fieldMatches.length + handicapMatches.length;
         var totalFields = totalMismatches + totalMatches;
-        var isValid = validationResult.valid;
+        var overallValid = (fieldMismatches.length === 0 && handicapMismatches.length === 0);
         
         var html = '<div style="padding:12px 0;">';
         
-        // v1.13: Overall status - show correct status based on combined mismatches
-        var overallValid = (fieldMismatches.length === 0 && handicapMismatches.length === 0);
-        var overallNeedsFix = !overallValid;
-        
+        // ============================================================
+        // 1. OVERALL STATUS
+        // ============================================================
         html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (overallValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (overallValid ? '#2a5a2a' : '#5a2a2a') + ';">';
         html += '<span style="font-size:1.5rem;">' + (overallValid ? '✅' : '❌') + '</span>';
         html += '<div><div style="font-weight:700; color:' + (overallValid ? '#4caf50' : '#ff6b6b') + ';">' + (overallValid ? 'VALID' : 'NEEDS FIX') + '</div>';
@@ -721,7 +745,9 @@ var UtilValidateUI = (function() {
         }
         html += '</div></div></div>';
         
-        // Status info
+        // ============================================================
+        // 2. STATUS INFO
+        // ============================================================
         html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">';
         html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
         html += '<span style="color:#888;">Status</span><br><span style="color:' + (status === expectedStatus ? '#4caf50' : '#ff6b6b') + '; font-weight:600;">' + escapeHtml(status) + (status !== expectedStatus ? ' → ' + escapeHtml(expectedStatus) : '') + '</span>';
@@ -738,8 +764,51 @@ var UtilValidateUI = (function() {
         html += '</div>';
         
         // ============================================================
-        // v1.13: DETAILED VALIDATION TABLE - Shows ALL mismatches
-        // (Field mismatches + Handicap mismatches combined)
+        // 3. CATEGORY BREAKDOWN
+        // ============================================================
+        html += '<div style="margin-bottom:12px; padding:8px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a;">';
+        html += '<div style="font-size:0.65rem; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">📊 Mismatch Breakdown</div>';
+        
+        // Define categories in display order
+        var categories = [
+            { key: 'Match Play', label: 'Match Play' },
+            { key: 'T-1', label: 'T-1' },
+            { key: 'T-2', label: 'T-2' },
+            { key: 'Stroke', label: 'Stroke' },
+            { key: 'TR', label: 'TR' }
+        ];
+        
+        for (var c = 0; c < categories.length; c++) {
+            var cat = categories[c];
+            var count = categoryCounts[cat.key] || 0;
+            var isError = count > 0;
+            var color = isError ? '#ff6b6b' : '#4caf50';
+            var icon = isError ? '❌' : '✅';
+            html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a1a; font-size:0.7rem;">';
+            html += '<span style="color:#888;">' + cat.label + '</span>';
+            html += '<span style="color:' + color + '; font-weight:600;">' + icon + ' ' + count + ' mismatch' + (count !== 1 ? 'es' : '') + '</span>';
+            html += '</div>';
+        }
+        
+        // Handicap category
+        var hcpCount = handicapMismatches.length;
+        var hcpIsError = hcpCount > 0;
+        var hcpColor = hcpIsError ? '#ff6b6b' : '#4caf50';
+        var hcpIcon = hcpIsError ? '❌' : '✅';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a1a; font-size:0.7rem; border-bottom:1px solid #2a2a2a;">';
+        html += '<span style="color:#ffaa44; font-weight:600;">🏌️ Handicap</span>';
+        html += '<span style="color:' + hcpColor + '; font-weight:600;">' + hcpIcon + ' ' + hcpCount + ' mismatch' + (hcpCount !== 1 ? 'es' : '') + '</span>';
+        html += '</div>';
+        
+        // Total row
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; margin-top:2px; font-size:0.75rem; border-top:1px solid #2a2a2a;">';
+        html += '<span style="color:#fff; font-weight:600;">Total</span>';
+        html += '<span style="color:#ff6b6b; font-weight:700;">' + totalMismatches + ' mismatches</span>';
+        html += '</div>';
+        html += '</div>';
+        
+        // ============================================================
+        // 4. DETAILED MISMATCH LIST (scrollable, 300px)
         // ============================================================
         
         // Build combined mismatch list
@@ -768,7 +837,7 @@ var UtilValidateUI = (function() {
         }
         
         if (allMismatches.length > 0) {
-            html += '<div style="margin-top:12px;">';
+            html += '<div style="margin-top:8px;">';
             html += '<div style="font-size:0.7rem; font-weight:600; color:#ff6b6b; margin-bottom:6px;">🔴 All Mismatches (' + allMismatches.length + ')</div>';
             html += '<div style="max-height:300px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:6px;">';
             
@@ -791,7 +860,9 @@ var UtilValidateUI = (function() {
             html += '</div>';
         }
         
-        // Summary counts
+        // ============================================================
+        // 5. SUMMARY COUNTS
+        // ============================================================
         if (totalFields > 0) {
             html += '<div style="display:flex; gap:16px; flex-wrap:wrap; padding:8px; margin-top:12px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; font-size:0.75rem;">';
             html += '<div><span style="color:#888;">Total Fields:</span> <strong style="color:#fff;">' + totalFields + '</strong></div>';
@@ -1136,7 +1207,7 @@ var UtilValidateUI = (function() {
             renderHandicapAdjustmentCard(validation, 'validateHandicapCard');
         }
         
-        // v1.13: Render validation summary with combined mismatches
+        // v1.14: Render validation summary with category breakdown
         renderValidationSummary(validation, 'validateSummary');
         
         // Show/hide fix card
@@ -1752,18 +1823,16 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.13 - Combined mismatches in validation summary');
+console.log('[UTIL-VALIDATE-UI] v1.14 - Category breakdown added');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: Validation Summary now correctly shows NEEDS FIX when handicap mismatches exist
-   - FIXED: Combined summary counts (field mismatches + handicap mismatches)
-   - FIXED: Details window now shows ALL mismatches (field + handicap) with type indicators
-   - FIXED: Overall status now correctly reflects combined validation result
-   - This ensures users can verify fixes before clicking Fix Record
-   - PRESERVED: All existing rendering functions from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - ADDED: Category breakdown in Validation Summary (Match, T-1, T-2, Stroke, TR, Handicap)
+   - ADDED: Mismatch counts per category with color coding (green=0, red=>0)
+   - CHANGED: Validation Summary now shows high-level overview before detailed list
+   - PRESERVED: All existing rendering functions from v1.13
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
