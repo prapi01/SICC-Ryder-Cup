@@ -1,19 +1,19 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: photoListRefreshBtn now properly calls listPhotosInStorage()
-   - FIXED: renderPhotoList() function added to display photos in DELETE tab
-   - FIXED: Photo list checkbox selection and delete functionality
-   - PRESERVED: All existing functionality from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - CHANGED: Default folder from 'celebrations/' to 'celebration/'
+   - CHANGED: Removed automatic PROD_/DEV_ prefix from filename
+   - CHANGED: Filename now uses user-provided value without modification
+   - PRESERVED: All existing functionality from v1.12
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.12";
+window.PHOTO_UTIL_VERSION = "1.13";
 
-console.log('[PHOTO] Loading util-photo.js v1.12...');
+console.log('[PHOTO] Loading util-photo.js v1.13...');
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -225,9 +225,8 @@ function loadPhotoFromUrl() {
         
         var filenameInput = document.getElementById('photoFilename');
         if (filenameInput && !filenameInput.value) {
-            var env = photoStorageEnv || 'PROD';
             var timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            filenameInput.value = env + '_C_' + timestamp + '.jpg';
+            filenameInput.value = 'GM_photo_' + timestamp + '.jpg';
         }
         
         var uploadBtn = document.getElementById('photoUploadBtn');
@@ -275,14 +274,15 @@ function uploadPhotoToStorage() {
         return;
     }
     
+    // v1.13: Use the folder as-is, default to 'celebration/'
     var folderInput = document.getElementById('photoStorageFolder');
-    var folder = folderInput ? folderInput.value.trim() : 'celebrations/';
+    var folder = folderInput ? folderInput.value.trim() : 'celebration/';
     if (folder && !folder.endsWith('/')) {
         folder = folder + '/';
     }
     
-    var env = photoStorageEnv || 'PROD';
-    var fullPath = folder + env + '_' + filename;
+    // v1.13: Use filename as-is, no prefix added
+    var fullPath = folder + filename;
     currentFullPath = fullPath;
     
     var statusDiv = document.getElementById('photoUploadStatus');
@@ -738,7 +738,7 @@ function listPhotosInStorage(folder, callback) {
         return;
     }
     
-    if (!folder) folder = 'celebrations/';
+    if (!folder) folder = 'celebration/';
     if (!folder.endsWith('/')) folder = folder + '/';
     
     photoLog('📂 Listing photos in: ' + folder, 'info');
@@ -777,6 +777,61 @@ function listPhotosInStorage(folder, callback) {
 }
 
 // ============================================================
+// DELETE PHOTOS FROM STORAGE
+// ============================================================
+
+function deletePhotosFromStorage(paths, callback) {
+    if (!photoStorage) {
+        var err = new Error("Select an environment first (PROD/DEV)");
+        if (callback) callback(err);
+        return;
+    }
+    
+    if (!paths || paths.length === 0) {
+        var err = new Error("No photo paths provided");
+        if (callback) callback(err);
+        return;
+    }
+    
+    photoLog('🗑️ Deleting ' + paths.length + ' photos from storage...', 'info');
+    
+    var results = {
+        deleted: 0,
+        notFound: 0,
+        failed: 0,
+        errors: []
+    };
+    
+    var promises = paths.map(function(path) {
+        return photoStorage.ref(path).delete()
+            .then(function() {
+                results.deleted++;
+                photoLog('✅ Deleted: ' + path, 'success');
+            })
+            .catch(function(err) {
+                if (err.code === 'storage/object-not-found') {
+                    results.notFound++;
+                    photoLog('⚠️ Not found: ' + path, 'warning');
+                } else {
+                    results.failed++;
+                    results.errors.push({ path: path, error: err.message });
+                    photoLog('❌ Failed to delete: ' + path + ' - ' + err.message, 'error');
+                }
+            });
+    });
+    
+    Promise.all(promises)
+        .then(function() {
+            photoLog('Delete complete: ' + results.deleted + ' deleted, ' + results.notFound + ' not found, ' + results.failed + ' failed', results.failed === 0 ? 'success' : 'warning');
+            if (callback) callback(null, results);
+        })
+        .catch(function(err) {
+            photoLog('❌ Delete operation failed: ' + err.message, 'error');
+            if (callback) callback(err);
+        });
+}
+
+// ============================================================
 // DELETE TAB: PHOTO LIST FUNCTIONS
 // ============================================================
 
@@ -784,7 +839,7 @@ function refreshPhotoList() {
     console.log('[PHOTO] 🔄 refreshPhotoList called');
     
     var folderInput = document.getElementById('photoListFolder');
-    var folder = folderInput ? folderInput.value.trim() : 'celebrations/';
+    var folder = folderInput ? folderInput.value.trim() : 'celebration/';
     var container = document.getElementById('photoListContainer');
     var countEl = document.getElementById('photoSelectedCount');
     
@@ -1028,13 +1083,6 @@ function showPhotoInfoGuide() {
         existing.remove();
     }
     
-    if (!document.getElementById('photoInfoGuideStyles')) {
-        var style = document.createElement('style');
-        style.id = 'photoInfoGuideStyles';
-        // ... (styles - same as before)
-        document.head.appendChild(style);
-    }
-    
     var overlay = document.createElement('div');
     overlay.className = 'info-overlay';
     overlay.innerHTML = `
@@ -1212,16 +1260,24 @@ function initPhotoTab() {
         console.log('[PHOTO] ✅ Default URL set');
     }
     
+    // v1.13: Default folder is 'celebration/'
     var folderInput = document.getElementById('photoStorageFolder');
     if (folderInput && !folderInput.value) {
-        folderInput.value = 'celebrations/';
-        console.log('[PHOTO] ✅ Default folder set');
+        folderInput.value = 'celebration/';
+        console.log('[PHOTO] ✅ Default folder set to celebration/');
     }
     
     var fieldInput = document.getElementById('photoFirestoreField');
     if (fieldInput && !fieldInput.value) {
         fieldInput.value = 'celebration';
         console.log('[PHOTO] ✅ Default field set');
+    }
+    
+    // v1.13: Photo list folder default is 'celebration/'
+    var listFolderInput = document.getElementById('photoListFolder');
+    if (listFolderInput && !listFolderInput.value) {
+        listFolderInput.value = 'celebration/';
+        console.log('[PHOTO] ✅ Default list folder set to celebration/');
     }
     
     attachPhotoHandlers();
@@ -1284,19 +1340,17 @@ function autoInit() {
 
 autoInit();
 
-console.log('[PHOTO-UTIL] v1.12 loaded (auto-init enabled)');
+console.log('[PHOTO-UTIL] v1.13 loaded (celebration/ folder, no prefix)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: refreshPhotoList() - Now properly loads photos for DELETE tab
-   - FIXED: renderPhotoList() - Displays photos with checkboxes in DELETE tab
-   - FIXED: toggleAllPhotoCheckboxes, togglePhotoCheckbox, onPhotoCheckboxChange
-   - FIXED: deleteSelectedPhotos() - Deletes selected photos from Storage
-   - ADDED: photoListRefreshBtn handler in attachPhotoHandlers()
-   - ADDED: photoDeleteSelectedBtn handler in attachPhotoHandlers()
-   - PRESERVED: All existing functionality from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - CHANGED: Default folder from 'celebrations/' to 'celebration/'
+   - CHANGED: Removed automatic PROD_/DEV_ prefix from filename
+   - CHANGED: Filename now uses user-provided value without modification
+   - CHANGED: Default filename to 'GM_photo_YYYY-MM-DDTHH-MM-SS.jpg'
+   - PRESERVED: All existing functionality from v1.12
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
