@@ -1,12 +1,10 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - ADDED: Handicap Adjustment card in VALIDATE tab (above Photo card)
-   - ADDED: validateHandicapCard container for Handicap Adjustment table
-   - REMOVED: Detailed Validation card (now integrated into Validation Summary)
-   - This completes the handicap validation UI layout
-   - PRESERVED: All existing functionality from v1.26
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - REMOVED: validateProgress div from Fix Record card (progress now goes to LOG card)
+   - ADDED: Note in Fix Record card indicating progress messages appear in LOG card
+   - PRESERVED: All existing functionality from v1.27
 DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
@@ -678,6 +676,7 @@ STATUS: Ready for integration
             
             <!-- v1.27: Detailed Validation removed - now integrated into Validation Summary -->
             
+            <!-- v1.28: Fix Record Card - validateProgress div REMOVED, messages go to LOG card -->
             <div class="card" style="border-color: #ffaa44; display:none;" id="validateFixCard">
                 <div class="card-title">🔧 Fix Record</div>
                 <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
@@ -685,8 +684,8 @@ STATUS: Ready for integration
                     <br><strong style="color:#4caf50;">Preserves: raw scores, players, course, gameInfo</strong>
                     <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults, adjustedHandicaps</strong>
                     <br><strong style="color:#ffaa44;">A backup will be created before updating.</strong>
+                    <br><strong style="color:#4a8af4;">Progress messages will appear in the LOG card below.</strong>
                 </div>
-                <div id="validateProgress" class="validate-progress"></div>
                 <div class="validate-fix-btn-container">
                     <button class="validate-fix-btn validate-fix-btn-backup" id="validateBackupBtn">💾 Backup Only</button>
                     <button class="validate-fix-btn validate-fix-btn-fix" id="validateFixBtn">🔧 Fix Record</button>
@@ -867,15 +866,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.27</div>
+<div class="version-tag">v1.28</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.27
+// VERSION: 1.28
 // ============================================================
 
-var APP_VERSION = "1.27";
+var APP_VERSION = "1.28";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -932,7 +931,7 @@ function renderVersionBadges() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.27...');
+console.log('[REC-MGMT] Initializing v1.28...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1018,7 +1017,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.27 ready', 'success');
+    log('Record Management v1.28 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1028,7 +1027,7 @@ if (typeof log === 'function') {
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.27 ready');
+    console.log('[REC-MGMT] Record Management v1.28 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1038,13 +1037,40 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - ADDED: Handicap Adjustment card in VALIDATE tab (above Photo card)
-   - ADDED: validateHandicapCard container for Handicap Adjustment table
-   - REMOVED: Detailed Validation card (now integrated into Validation Summary)
-   - This completes the handicap validation UI layout
-   - PRESERVED: All existing functionality from v1.26
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - REMOVED: validateProgress div from Fix Record card (progress now goes to LOG card)
+   - ADDED: Note in Fix Record card indicating progress messages appear in LOG card
+   - PRESERVED: All existing functionality from v1.27
 DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
+
+---
+
+## Summary
+
+**File 2: `util-record-management.html` v1.28** is now complete.
+
+| Item | Status |
+|------|--------|
+| Version | 1.28 |
+| validateProgress div removed | ✅ |
+| LOG card note added | ✅ |
+| Version tag updated | ✅ |
+| File header updated | ✅ |
+
+---
+
+## Progress Tracker
+
+| # | File | Status |
+|---|------|--------|
+| 1 | `js/util-validate-app.js` v1.07 | ✅ COMPLETE |
+| 2 | `js/util-record-management.html` v1.28 | ✅ COMPLETE |
+| 3 | `js/util-validate-record.js` v1.14 | ⬜ PENDING |
+| 4 | `js/util-validate-ui.js` v1.15 | ⬜ PENDING |
+
+---
+
+**Do I have permission to proceed with File 3 (`js/util-validate-record.js` v1.14)?**
