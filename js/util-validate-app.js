@@ -1,19 +1,18 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - CHANGED: applyFixToRecord() now uses appLog() for all progress messages
-   - REMOVED: All progressDiv.innerHTML references (no longer used)
-   - Progress messages now go to the persistent LOG card instead of temporary div
-   - This ensures fix progress messages persist after validation reload
-   - PRESERVED: All existing functionality from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: Changed UtilValidateUI.renderValidateResults() to window.renderValidateResults()
+   - The renderValidateResults function is exposed directly on window, not as UtilValidateUI
+   - This fixes the "UtilValidateUI.renderValidateResults not available" error
+   - PRESERVED: All existing functionality from v1.07
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.07";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.07 - Progress messages to LOG card");
+window.UTIL_VALIDATE_APP_VERSION = "1.08";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.08 - Fixed renderValidateResults call");
 
 // ============================================================
 // STATE VARIABLES
@@ -180,11 +179,11 @@ function loadAndValidate() {
         }
     }
     
-    // Use the UI renderer
-    if (typeof UtilValidateUI !== 'undefined' && typeof UtilValidateUI.renderValidateResults === 'function') {
-        UtilValidateUI.renderValidateResults(cleanRecord, validation, validateGameData, validateCurrentValidation);
+    // v1.08: FIXED - Use window.renderValidateResults directly
+    if (typeof window.renderValidateResults === 'function') {
+        window.renderValidateResults(cleanRecord, validation);
     } else {
-        appLog('UtilValidateUI.renderValidateResults not available', 'error');
+        appLog('renderValidateResults not available', 'error');
     }
     
     if (validation.valid) {
@@ -799,17 +798,16 @@ window.validateApplyPhotoOnly = validateApplyPhotoOnly;
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.07 loaded - Progress messages to LOG card');
+console.log('[UTIL-VALIDATE-APP] v1.08 loaded - Fixed renderValidateResults call');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - CHANGED: applyFixToRecord() now uses appLog() for all progress messages
-   - REMOVED: All progressDiv.innerHTML references (no longer used)
-   - Progress messages now go to the persistent LOG card instead of temporary div
-   - This ensures fix progress messages persist after validation reload
-   - PRESERVED: All existing functionality from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: Changed UtilValidateUI.renderValidateResults() to window.renderValidateResults()
+   - The renderValidateResults function is exposed directly on window, not as UtilValidateUI
+   - This fixes the "UtilValidateUI.renderValidateResults not available" error
+   - PRESERVED: All existing functionality from v1.07
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
