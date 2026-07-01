@@ -1,13 +1,15 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - ADDED: "APPLY STAGED PHOTO" button in the VALIDATE tab
-   - ADDED: btn-photo-apply CSS class for the new button
-   - ADDED: Polling logic to enable/disable the button when a photo is staged
-   - This allows users to apply a staged photo even when the record is already valid
-   - PRESERVED: All existing functionality from v1.24
-DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - ADDED: Game Engine dependencies to script section
+     - js/game-data.js
+     - js/game-order.js
+     - js/game-loader.js
+     - js/hcp-adjust.js
+   - This enables handicap adjustment validation in the VALIDATE tab
+   - PRESERVED: All existing functionality from v1.25
+DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -25,6 +27,12 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    
+    <!-- Game Engine Dependencies - Required for handicap validation -->
+    <script src="js/game-data.js"></script>
+    <script src="js/game-order.js"></script>
+    <script src="js/game-loader.js"></script>
+    <script src="js/hcp-adjust.js"></script>
     
     <!-- Utility JS Files -->
     <script src="js/util-core.js"></script>
@@ -860,15 +868,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.25</div>
+<div class="version-tag">v1.26</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.25
+// VERSION: 1.26
 // ============================================================
 
-var APP_VERSION = "1.25";
+var APP_VERSION = "1.26";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -925,7 +933,7 @@ function renderVersionBadges() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.25...');
+console.log('[REC-MGMT] Initializing v1.26...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1011,16 +1019,17 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.25 ready', 'success');
+    log('Record Management v1.26 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
     log('🔬 VALIDATE - Load, validate, and fix corrupted records', 'info');
+    log('🏌️ HANDICAP - Handicap adjustment validation now active', 'info');
     log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.25 ready');
+    console.log('[REC-MGMT] Record Management v1.26 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1030,13 +1039,15 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - ADDED: "APPLY STAGED PHOTO" button in the VALIDATE tab
-   - ADDED: btn-photo-apply CSS class for the new button
-   - ADDED: Polling logic to enable/disable the button when a photo is staged
-   - This allows users to apply a staged photo even when the record is already valid
-   - PRESERVED: All existing functionality from v1.24
-DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - ADDED: Game Engine dependencies to script section
+     - js/game-data.js
+     - js/game-order.js
+     - js/game-loader.js
+     - js/hcp-adjust.js
+   - This enables handicap adjustment validation in the VALIDATE tab
+   - PRESERVED: All existing functionality from v1.25
+DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
