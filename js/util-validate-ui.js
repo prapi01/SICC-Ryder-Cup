@@ -1,20 +1,23 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: Display for MULTIPLE_NEW_ANCHOR = "*multiple*" as "Pending (Multiple)"
-   - CHANGED: renderHandicapAdjustmentCard() now shows friendly text for "*multiple*"
-   - CHANGED: renderValidationSummary() now shows friendly text for "*multiple*"
-   - PRESERVED: All existing rendering functions from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: "Raw" column to Handicap Adjustment table (between Perf and New)
+   - ADDED: Raw column displays pre-zero-rise handicap (rawNew) from recalculated data
+   - ADDED: Color coding for Raw HCP (green = increase, red = decrease, grey = no change)
+   - CHANGED: Team separator colspan updated from 9 to 11 (added 2 columns)
+   - CHANGED: Table header now includes "Raw" column
+   - CHANGED: Sub-header now includes "Raw" column with Cur/Exp
+   - PRESERVED: All existing functionality from v1.15
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.15";
+window.UTIL_VALIDATE_UI_VERSION = "1.16";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.15 - MULTIPLE_NEW_ANCHOR display");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.16 - Added Raw HCP column");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -419,7 +422,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.15: RENDER: Handicap Adjustment Card (with multiple display)
+    // v1.16: RENDER: Handicap Adjustment Card (with Raw HCP column)
     // ============================================================
     
     function renderHandicapAdjustmentCard(validationResult, containerId) {
@@ -552,22 +555,25 @@ var UtilValidateUI = (function() {
         
         // Table
         html += '<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
-        html += '<table style="width:100%; border-collapse:collapse; font-size:0.6rem; min-width:380px;">';
+        html += '<table style="width:100%; border-collapse:collapse; font-size:0.6rem; min-width:420px;">';
         
-        // Table header
+        // Table header - v1.16: Added "Raw" column
         html += '<thead><tr style="background:#1a1a1a;">';
         html += '<th style="padding:3px 3px; text-align:left; font-size:0.6rem; color:#888;">Player</th>';
         html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;">Old</th>';
         html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">Anc</th>';
         html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">Perf</th>';
+        html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">Raw</th>';
         html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">New</th>';
         html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;">Status</th>';
         html += '</tr></thead><tbody>';
         
-        // Sub-header
+        // Sub-header - v1.16: Added "Raw" column
         html += '<tr style="background:#0a0a0a; border-bottom:1px solid #2a2a2a;">';
         html += '<td style="padding:2px 3px;"></td>';
         html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#555;"></td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#4caf50;">Cur</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#ffaa44;">Exp</td>';
         html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#4caf50;">Cur</td>';
         html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#ffaa44;">Exp</td>';
         html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#4caf50;">Cur</td>';
@@ -585,12 +591,12 @@ var UtilValidateUI = (function() {
             var stored = p.stored;
             var recalc = p.recalc;
             
-            // Team separator
+            // Team separator - v1.16: Updated colspan from 9 to 11
             if (p.team !== currentTeam) {
                 currentTeam = p.team;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 html += '<tr style="background:#1a2a1a; border-top:2px solid #000;">';
-                html += '<td colspan="9" style="padding:4px 3px; text-align:center; color:#4caf50; font-weight:600; font-size:0.65rem;">' + teamLabel + '</td>';
+                html += '<td colspan="11" style="padding:4px 3px; text-align:center; color:#4caf50; font-weight:600; font-size:0.65rem;">' + teamLabel + '</td>';
                 html += '</tr>';
             }
             
@@ -629,6 +635,10 @@ var UtilValidateUI = (function() {
             var perfRawCur = stored ? stored.perfRaw : undefined;
             var perfRawExp = recalc ? recalc.perfRaw : 0;
             
+            // v1.16: Raw HCP values (pre-zero-rise)
+            var rawCur = stored ? stored.rawNew : undefined;
+            var rawExp = recalc ? recalc.rawNew : undefined;
+            
             // Get final handicap from recalc
             var finalCur = stored ? stored.finalHcp : '—';
             var finalExp = recalc ? (recalc.newHcp !== undefined ? recalc.newHcp : (recalc.finalHcp !== undefined ? recalc.finalHcp : recalc.rawNew)) : '—';
@@ -640,6 +650,9 @@ var UtilValidateUI = (function() {
             // Format with NaN protection
             var ancDisplay = formatHandicapCell(ancCur, ancRawCur, ancExp, ancRawExp);
             var perfDisplay = formatHandicapCell(perfCur, perfRawCur, perfExp, perfRawExp);
+            
+            // v1.16: Format Raw HCP with color coding
+            var rawDisplay = formatRawHcpCell(rawCur, rawExp, p.startingHcp);
             
             var finalColor = finalMatch ? '#4caf50' : '#ff6b6b';
             var stColor = isAnchor ? '#ffaa44' : '#ffffff';
@@ -656,6 +669,10 @@ var UtilValidateUI = (function() {
             // Perf: Cur | Exp
             html += '<td style="padding:4px 3px; text-align:center;">' + perfDisplay.cur + '</td>';
             html += '<td style="padding:4px 3px; text-align:center;">' + perfDisplay.exp + '</td>';
+            
+            // Raw: Cur | Exp (v1.16: new column)
+            html += '<td style="padding:4px 3px; text-align:center;">' + rawDisplay.cur + '</td>';
+            html += '<td style="padding:4px 3px; text-align:center;">' + rawDisplay.exp + '</td>';
             
             // New: Cur | Exp
             html += '<td style="padding:4px 3px; text-align:center; color:' + finalColor + '; font-weight:600;">' + escapeHtml(String(finalCur)) + '</td>';
@@ -681,6 +698,51 @@ var UtilValidateUI = (function() {
         
         html += '</div>';
         container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // v1.16: FORMAT RAW HCP CELL (with color coding based on startingHcp)
+    // ============================================================
+    
+    function formatRawHcpCell(curRaw, expRaw, startingHcp) {
+        var curDisplay = formatSingleRawValue(curRaw, startingHcp);
+        var expDisplay = formatSingleRawValue(expRaw, startingHcp);
+        
+        return {
+            cur: curDisplay,
+            exp: expDisplay
+        };
+    }
+    
+    // v1.16: Format single Raw HCP value with color coding
+    function formatSingleRawValue(rawVal, startingHcp) {
+        // Safety checks - handle undefined, null, NaN
+        var raw = (rawVal !== undefined && rawVal !== null && !isNaN(rawVal)) ? rawVal : '—';
+        var start = (startingHcp !== undefined && startingHcp !== null && !isNaN(startingHcp)) ? startingHcp : 0;
+        
+        if (raw === '—') {
+            return '<span style="color:#555;">—</span>';
+        }
+        
+        // Color coding based on change from startingHcp
+        var color = '#888';
+        var icon = '';
+        if (raw > start) {
+            color = '#4caf50'; // GREEN - handicap increased (player gets more strokes)
+            icon = ' ▲';
+        } else if (raw < start) {
+            color = '#ff6b6b'; // RED - handicap decreased (player gets fewer strokes)
+            icon = ' ▼';
+        } else {
+            color = '#888'; // GREY - no change
+        }
+        
+        var display = '<span style="color:' + color + '; font-weight:600;">' + raw + '</span>';
+        if (icon) {
+            display += '<span style="color:' + color + '; font-size:0.5rem;">' + icon + '</span>';
+        }
+        
+        return display;
     }
     
     // ============================================================
@@ -1210,7 +1272,7 @@ var UtilValidateUI = (function() {
         var matchPointsPerHole = matchData.matchPointsPerHole || [];
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
-        // v1.15: Render Handicap Adjustment card with multiple display
+        // v1.16: Render Handicap Adjustment card with Raw HCP column
         var hcpCardContainer = document.getElementById('validateHandicapCard');
         if (hcpCardContainer) {
             renderHandicapAdjustmentCard(validation, 'validateHandicapCard');
@@ -1833,16 +1895,19 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.15 - MULTIPLE_NEW_ANCHOR display');
+console.log('[UTIL-VALIDATE-UI] v1.16 - Added Raw HCP column');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: Display for MULTIPLE_NEW_ANCHOR = "*multiple*" as "Pending (Multiple)"
-   - CHANGED: renderHandicapAdjustmentCard() now shows friendly text for "*multiple*"
-   - CHANGED: renderValidationSummary() now shows friendly text for "*multiple*"
-   - PRESERVED: All existing rendering functions from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: "Raw" column to Handicap Adjustment table (between Perf and New)
+   - ADDED: Raw column displays pre-zero-rise handicap (rawNew) from recalculated data
+   - ADDED: Color coding for Raw HCP (green = increase, red = decrease, grey = no change)
+   - CHANGED: Team separator colspan updated from 9 to 11 (added 2 columns)
+   - CHANGED: Table header now includes "Raw" column
+   - CHANGED: Sub-header now includes "Raw" column with Cur/Exp
+   - PRESERVED: All existing functionality from v1.15
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
