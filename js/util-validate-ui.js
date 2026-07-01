@@ -1,22 +1,22 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: renderHandicapValidationPanel() - full handicap table with comparison
-   - ADDED: renderHandicapTableRow() - single row rendering with color coding
-   - CHANGED: renderValidateResults() now calls handicap validation panel
-   - ADDED: Handicap panel shows: Player, Old, Anc (Current→Expected), Perf (Current→Expected), New (Current→Expected)
-   - ADDED: Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
-   - PRESERVED: All existing photo and rendering functions from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: Handicap panel now displays directly within renderValidationSummary()
+   - REMOVED: Separate container dependency (validateHandicapPanel no longer needed)
+   - Integrated handicap table into existing validation summary card
+   - Handicap table shows: Player, Old, Anc (Cur→Exp), Perf (Cur→Exp), New (Cur→Exp), Status
+   - Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
+   - PRESERVED: All existing rendering functions from v1.07
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.07";
+window.UTIL_VALIDATE_UI_VERSION = "1.08";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.07 - Handicap validation panel");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.08 - Integrated handicap panel");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -358,7 +358,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Photo Status (v1.02 - kept for compatibility)
+    // RENDER: Photo Status (kept for compatibility)
     // ============================================================
     
     function renderPhotoStatus(photoStatus, containerId, onSelectPhoto) {
@@ -405,7 +405,6 @@ var UtilValidateUI = (function() {
         html += '</div>';
         container.innerHTML = html;
         
-        // Store the onSelectPhoto function for button clicks
         if (typeof onSelectPhoto === 'function') {
             var buttons = container.querySelectorAll('button');
             for (var i = 0; i < buttons.length; i++) {
@@ -415,328 +414,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.07: RENDER HANDICAP VALIDATION PANEL
-    // ============================================================
-    
-    function renderHandicapValidationPanel(validationResult, containerId) {
-        var container = document.getElementById(containerId);
-        if (!container) return;
-        
-        // Check if handicap data exists
-        var storedHandicaps = validationResult.handicapStored;
-        var recalculated = validationResult.handicapRecalculated;
-        var isValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
-        var mismatches = validationResult.handicapMismatches || [];
-        var matches = validationResult.handicapMatches || [];
-        var summary = validationResult.handicapSummary || { totalFields: 0, mismatched: 0, matched: 0 };
-        
-        // If no stored handicaps, show missing state
-        if (!storedHandicaps) {
-            container.innerHTML = `
-                <div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <span style="font-size:1.1rem;">❌</span>
-                        <span style="font-weight:600; color:#ff6b6b; font-size:0.85rem;">Handicap Adjustment Data</span>
-                        <span style="font-size:0.7rem; color:#ff6b6b; margin-left:auto;">MISSING</span>
-                    </div>
-                    <div style="font-size:0.75rem; color:#888; padding:4px 0;">
-                        No adjustedHandicaps data found in this record.
-                    </div>
-                    <div style="font-size:0.7rem; color:#ffaa44; padding:4px 0; border-top:1px solid #1a1a1a; margin-top:4px;">
-                        Click "Fix Record" to calculate and add handicap data.
-                    </div>
-                </div>
-            `;
-            return;
-        }
-        
-        // Check if recalculated data exists
-        if (!recalculated) {
-            container.innerHTML = `
-                <div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <span style="font-size:1.1rem;">⚠️</span>
-                        <span style="font-weight:600; color:#ffaa44; font-size:0.85rem;">Handicap Adjustment Data</span>
-                        <span style="font-size:0.7rem; color:#ffaa44; margin-left:auto;">CANNOT RECALCULATE</span>
-                    </div>
-                    <div style="font-size:0.75rem; color:#888; padding:4px 0;">
-                        ${validationResult.handicapError || 'Could not recalculate handicaps from raw data.'}
-                    </div>
-                    <div style="font-size:0.7rem; color:#ffaa44; padding:4px 0; border-top:1px solid #1a1a1a; margin-top:4px;">
-                        Ensure all 18 holes are complete and valid.
-                    </div>
-                </div>
-            `;
-            return;
-        }
-        
-        // Build the handicap table
-        var storedPlayers = storedHandicaps.players || [];
-        var recalcPlayers = recalculated.players || [];
-        
-        // Build maps for quick lookup
-        var storedMap = {};
-        for (var i = 0; i < storedPlayers.length; i++) {
-            storedMap[storedPlayers[i].name] = storedPlayers[i];
-        }
-        
-        var recalcMap = {};
-        for (var i = 0; i < recalcPlayers.length; i++) {
-            recalcMap[recalcPlayers[i].name] = recalcPlayers[i];
-        }
-        
-        // Get all player names (union of stored and recalculated)
-        var allNames = {};
-        for (var name in storedMap) { allNames[name] = true; }
-        for (var name in recalcMap) { allNames[name] = true; }
-        var playerNames = Object.keys(allNames);
-        
-        // Sort by team then handicap
-        var players = [];
-        for (var i = 0; i < playerNames.length; i++) {
-            var name = playerNames[i];
-            var stored = storedMap[name];
-            var recalc = recalcMap[name];
-            var team = stored ? stored.team : (recalc ? recalc.team : 'B');
-            var startingHcp = stored ? stored.startingHcp : (recalc ? recalc.startingHcp : 0);
-            players.push({
-                name: name,
-                label: stored ? stored.label : (recalc ? recalc.label : name.substring(0, 3).toUpperCase()),
-                team: team,
-                startingHcp: startingHcp,
-                stored: stored,
-                recalc: recalc
-            });
-        }
-        
-        // Sort by team (A then B), then by starting handicap
-        players.sort(function(a, b) {
-            if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
-            return a.startingHcp - b.startingHcp;
-        });
-        
-        // Build HTML
-        var html = '<div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">';
-        
-        // Header
-        var statusIcon = isValid ? '✅' : '❌';
-        var statusColor = isValid ? '#4caf50' : '#ff6b6b';
-        var statusText = isValid ? 'VALID' : 'NEEDS FIX';
-        
-        html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">';
-        html += '<span style="font-size:1.1rem;">🏌️</span>';
-        html += '<span style="font-weight:600; color:#ffaa44; font-size:0.85rem;">Handicap Adjustment Validation</span>';
-        html += '<span style="font-size:0.7rem; color:' + statusColor + '; margin-left:auto; font-weight:600;">' + statusIcon + ' ' + statusText + '</span>';
-        html += '</div>';
-        
-        // Summary line
-        html += '<div style="display:flex; gap:12px; font-size:0.65rem; color:#888; margin-bottom:8px; padding:4px 0; border-bottom:1px solid #1a1a1a;">';
-        html += '<span>Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.anchor || 'Unknown') + '</strong></span>';
-        html += '<span>New Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.newAnchor || 'None') + '</strong></span>';
-        html += '<span>Zero Rise: <strong style="color:#4caf50;">' + (storedHandicaps.zeroRiseAmount || 0) + '</strong></span>';
-        if (summary.totalFields > 0) {
-            html += '<span style="margin-left:auto;">✅ ' + summary.matched + ' ❌ ' + summary.mismatched + '</span>';
-        }
-        html += '</div>';
-        
-        // Table
-        html += '<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
-        html += '<table style="width:100%; border-collapse:collapse; font-size:0.7rem; min-width:400px;">';
-        
-        // Table header
-        html += '<thead><tr style="background:#1a1a1a;">';
-        html += '<th style="padding:4px 3px; text-align:left; font-size:0.65rem; color:#888;">Player</th>';
-        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;">Old</th>';
-        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;" colspan="2">Anc</th>';
-        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;" colspan="2">Perf</th>';
-        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;" colspan="2">New</th>';
-        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;">Status</th>';
-        html += '</tr></thead><tbody>';
-        
-        // Sub-header for current/expected
-        html += '<tr style="background:#0a0a0a; border-bottom:1px solid #2a2a2a;">';
-        html += '<td style="padding:2px 3px;"></td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#555;"></td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#4caf50;">Cur</td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#ffaa44;">Exp</td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#4caf50;">Cur</td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#ffaa44;">Exp</td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#4caf50;">Cur</td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#ffaa44;">Exp</td>';
-        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#555;"></td>';
-        html += '</tr>';
-        
-        var currentTeam = null;
-        var hasMismatch = false;
-        
-        for (var i = 0; i < players.length; i++) {
-            var p = players[i];
-            var stored = p.stored;
-            var recalc = p.recalc;
-            
-            // Team separator
-            if (p.team !== currentTeam) {
-                currentTeam = p.team;
-                var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
-                html += '<tr style="background:#1a2a1a; border-top:2px solid #000;">';
-                html += '<td colspan="9" style="padding:4px 3px; text-align:center; color:#4caf50; font-weight:600; font-size:0.7rem;">' + teamLabel + '</td>';
-                html += '</tr>';
-            }
-            
-            // Determine if this player has any mismatches
-            var playerHasMismatch = false;
-            var fields = ['anchorAdj', 'perfAdj', 'finalHcp', 'anchorRaw', 'perfRaw'];
-            var fieldLabels = ['Anc', 'Perf', 'New', 'AncRaw', 'PerfRaw'];
-            
-            // Check each field
-            var fieldStatus = {};
-            for (var f = 0; f < fields.length; f++) {
-                var field = fields[f];
-                var storedVal = stored ? stored[field] : undefined;
-                var recalcVal = recalc ? recalc[field] : undefined;
-                var isEqual;
-                if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
-                    isEqual = Math.abs(storedVal - recalcVal) < 0.01;
-                } else {
-                    isEqual = storedVal === recalcVal;
-                }
-                fieldStatus[field] = isEqual;
-                if (!isEqual) playerHasMismatch = true;
-            }
-            
-            if (playerHasMismatch) hasMismatch = true;
-            
-            // Starting handicap
-            var stDisplay = (p.startingHcp !== undefined && p.startingHcp !== null) ? p.startingHcp : '?';
-            var isAnchor = stored && storedHandicaps.anchor === p.name;
-            var isNewAnchor = stored && storedHandicaps.newAnchor === p.name;
-            
-            // Get values
-            var ancCur = stored ? stored.anchorAdj : '—';
-            var ancExp = recalc ? recalc.anchorAdj : '—';
-            var perfCur = stored ? stored.perfAdj : '—';
-            var perfExp = recalc ? recalc.perfAdj : '—';
-            var finalCur = stored ? stored.finalHcp : '—';
-            var finalExp = recalc ? recalc.finalHcp : '—';
-            
-            // Color coding
-            var ancMatch = fieldStatus.anchorAdj;
-            var perfMatch = fieldStatus.perfAdj;
-            var finalMatch = fieldStatus.finalHcp;
-            
-            var ancColor = ancMatch ? '#4caf50' : '#ff6b6b';
-            var perfColor = perfMatch ? '#4caf50' : '#ff6b6b';
-            var finalColor = finalMatch ? '#4caf50' : '#ff6b6b';
-            
-            var stColor = isAnchor ? '#ffaa44' : '#ffffff';
-            
-            var rowBg = playerHasMismatch ? '#1a0a0a' : '#0a0a0a';
-            html += '<tr style="border-bottom:1px solid #1a1a1a; background:' + rowBg + ';">';
-            html += '<td style="padding:4px 3px; text-align:left; font-weight:600; color:' + stColor + ';">' + escapeHtml(p.label) + (isAnchor ? ' ⭐' : '') + (isNewAnchor ? ' 👑' : '') + '</td>';
-            html += '<td style="padding:4px 3px; text-align:center; color:' + stColor + ';">' + stDisplay + '</td>';
-            
-            // Anc column: Cur | Exp
-            html += '<td style="padding:4px 3px; text-align:center; color:' + ancColor + ';">' + escapeHtml(String(ancCur)) + '</td>';
-            html += '<td style="padding:4px 3px; text-align:center; color:' + (ancMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (ancMatch ? '400' : '700') + ';">' + escapeHtml(String(ancExp)) + '</td>';
-            
-            // Perf column: Cur | Exp
-            html += '<td style="padding:4px 3px; text-align:center; color:' + perfColor + ';">' + escapeHtml(String(perfCur)) + '</td>';
-            html += '<td style="padding:4px 3px; text-align:center; color:' + (perfMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (perfMatch ? '400' : '700') + ';">' + escapeHtml(String(perfExp)) + '</td>';
-            
-            // New column: Cur | Exp
-            html += '<td style="padding:4px 3px; text-align:center; color:' + finalColor + '; font-weight:600;">' + escapeHtml(String(finalCur)) + '</td>';
-            html += '<td style="padding:4px 3px; text-align:center; color:' + (finalMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (finalMatch ? '400' : '700') + ';">' + escapeHtml(String(finalExp)) + '</td>';
-            
-            // Status
-            var statusIcon2 = playerHasMismatch ? '❌' : '✅';
-            html += '<td style="padding:4px 3px; text-align:center;">' + statusIcon2 + '</td>';
-            
-            html += '</tr>';
-        }
-        
-        html += '</tbody></table></div>';
-        
-        // Footer - mismatch summary
-        if (hasMismatch) {
-            html += '<div style="font-size:0.7rem; color:#ff6b6b; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
-            html += '❌ ' + (summary.mismatched || 0) + ' field mismatch' + ((summary.mismatched || 0) > 1 ? 'es' : '') + ' found. Click "Fix Record" to correct.';
-            html += '</div>';
-        } else {
-            html += '<div style="font-size:0.7rem; color:#4caf50; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
-            html += '✅ All handicap fields match recalculated values.';
-            html += '</div>';
-        }
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-    
-    // ============================================================
-    // v1.06: RENDER HANDICAP MISMATCHES (legacy - kept for compatibility)
-    // ============================================================
-    
-    function renderHandicapMismatches(handicapMismatches, handicapMatches, handicapSummary, handicapValid, containerId) {
-        var container = document.getElementById(containerId);
-        if (!container) return;
-        
-        if (!handicapMismatches && !handicapMatches) {
-            container.innerHTML = '<div style="color:#888; padding:8px; font-size:0.8rem;">No handicap data</div>';
-            return;
-        }
-        
-        var html = '<div style="padding:8px 0; border-top:1px solid #2a2a2a; margin-top:8px;">';
-        
-        // Handicap status header
-        var isValid = handicapValid !== undefined ? handicapValid : true;
-        html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">';
-        html += '<span style="font-size:1.1rem;">' + (isValid ? '✅' : '❌') + '</span>';
-        html += '<span style="font-weight:600; color:' + (isValid ? '#4caf50' : '#ff6b6b') + '; font-size:0.85rem;">Handicap Adjustment</span>';
-        if (handicapSummary) {
-            var total = handicapSummary.totalFields || 0;
-            var matched = handicapSummary.matched || 0;
-            var mismatched = handicapSummary.mismatched || 0;
-            html += '<span style="font-size:0.7rem; color:#888; margin-left:auto;">' + matched + '/' + total + ' match' + (mismatched > 0 ? ', ' + mismatched + ' mismatch' + (mismatched > 1 ? 'es' : '') : '') + '</span>';
-        }
-        html += '</div>';
-        
-        // Handicap mismatches list
-        if (handicapMismatches && handicapMismatches.length > 0) {
-            html += '<div style="max-height:120px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:6px;">';
-            html += '<div style="font-size:0.6rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Mismatches (' + handicapMismatches.length + ')</div>';
-            for (var i = 0; i < Math.min(handicapMismatches.length, 15); i++) {
-                var m = handicapMismatches[i];
-                html += '<div style="font-size:0.65rem; padding:2px 4px; border-bottom:1px solid #1a1a1a; display:flex; justify-content:space-between; flex-wrap:wrap; gap:2px;">';
-                html += '<span style="color:#888;">' + escapeHtml(m.field) + '</span>';
-                html += '<span style="color:#ff6b6b;">' + escapeHtml(String(m.current)) + '</span>';
-                html += '<span style="color:#666;">→</span>';
-                html += '<span style="color:#4caf50;">' + escapeHtml(String(m.expected)) + '</span>';
-                html += '</div>';
-            }
-            if (handicapMismatches.length > 15) {
-                html += '<div style="font-size:0.6rem; color:#666; text-align:center; padding:4px;">+ ' + (handicapMismatches.length - 15) + ' more mismatches</div>';
-            }
-            html += '</div>';
-        } else if (isValid) {
-            html += '<div style="font-size:0.7rem; color:#4caf50; padding:4px 0;">✅ All handicap fields match</div>';
-        } else {
-            html += '<div style="font-size:0.7rem; color:#888; padding:4px 0;">No mismatches found</div>';
-        }
-        
-        // Handicap summary info
-        if (handicapSummary) {
-            html += '<div style="display:flex; gap:12px; font-size:0.6rem; color:#666; margin-top:6px; padding-top:4px; border-top:1px solid #1a1a1a;">';
-            html += '<span>Total: ' + (handicapSummary.totalFields || 0) + '</span>';
-            html += '<span style="color:#4caf50;">✅ ' + (handicapSummary.matched || 0) + '</span>';
-            html += '<span style="color:#ff6b6b;">❌ ' + (handicapSummary.mismatched || 0) + '</span>';
-            html += '</div>';
-        }
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-    
-    // ============================================================
-    // v1.06: RENDER: Validation Summary (updated with handicaps)
+    // v1.08: RENDER: Validation Summary (with integrated handicap table)
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -755,22 +433,22 @@ var UtilValidateUI = (function() {
         var bothSigned = validationResult.bothSigned || false;
         var expectedStatus = validationResult.expectedStatus || status;
         
-        // v1.06: Handicap validation data
+        // Handicap validation data
         var handicapValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
         var handicapMismatches = validationResult.handicapMismatches || [];
-        var handicapMatches = validationResult.handicapMatches || [];
         var handicapSummary = validationResult.handicapSummary || { totalFields: 0, mismatched: 0, matched: 0 };
+        var storedHandicaps = validationResult.handicapStored;
+        var recalculated = validationResult.handicapRecalculated;
         var handicapNeedsFix = validationResult.handicapNeedsFix !== undefined ? validationResult.handicapNeedsFix : false;
         
         var html = '<div style="padding:12px 0;">';
         
-        // Overall status (includes handicaps)
+        // Overall status
         var isValid = validationResult.valid;
         html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (isValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (isValid ? '#2a5a2a' : '#5a2a2a') + ';">';
         html += '<span style="font-size:1.5rem;">' + (isValid ? '✅' : '❌') + '</span>';
         html += '<div><div style="font-weight:700; color:' + (isValid ? '#4caf50' : '#ff6b6b') + ';">' + (isValid ? 'VALID' : 'NEEDS FIX') + '</div>';
         html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention';
-        // v1.06: Add handicap info to overall status
         if (handicapSummary.totalFields > 0) {
             html += ' | HCP: ' + handicapSummary.matched + '/' + handicapSummary.totalFields + ' match';
             if (handicapSummary.mismatched > 0) {
@@ -779,20 +457,225 @@ var UtilValidateUI = (function() {
         }
         html += '</div></div></div>';
         
-        // v1.06: Handicap status section
-        if (handicapSummary.totalFields > 0 || handicapMismatches.length > 0) {
-            var hcpContainerId = containerId + '_hcp';
-            // Create a sub-container for handicap display
-            var hcpContainer = document.createElement('div');
-            hcpContainer.id = hcpContainerId;
-            // Insert after the main status
-            var statusDiv = container.querySelector('div:first-child');
-            if (statusDiv && statusDiv.nextSibling) {
-                statusDiv.parentNode.insertBefore(hcpContainer, statusDiv.nextSibling);
-            } else {
-                container.appendChild(hcpContainer);
+        // ============================================================
+        // v1.08: INTEGRATED HANDICAP TABLE
+        // ============================================================
+        
+        if (storedHandicaps && recalculated) {
+            var storedPlayers = storedHandicaps.players || [];
+            var recalcPlayers = recalculated.players || [];
+            
+            // Build maps for lookup
+            var storedMap = {};
+            for (var i = 0; i < storedPlayers.length; i++) {
+                storedMap[storedPlayers[i].name] = storedPlayers[i];
             }
-            renderHandicapMismatches(handicapMismatches, handicapMatches, handicapSummary, handicapValid, hcpContainerId);
+            
+            var recalcMap = {};
+            for (var i = 0; i < recalcPlayers.length; i++) {
+                recalcMap[recalcPlayers[i].name] = recalcPlayers[i];
+            }
+            
+            // Get all player names
+            var allNames = {};
+            for (var name in storedMap) { allNames[name] = true; }
+            for (var name in recalcMap) { allNames[name] = true; }
+            var playerNames = Object.keys(allNames);
+            
+            // Build player list
+            var players = [];
+            for (var i = 0; i < playerNames.length; i++) {
+                var name = playerNames[i];
+                var stored = storedMap[name];
+                var recalc = recalcMap[name];
+                var team = stored ? stored.team : (recalc ? recalc.team : 'B');
+                var startingHcp = stored ? stored.startingHcp : (recalc ? recalc.startingHcp : 0);
+                players.push({
+                    name: name,
+                    label: stored ? stored.label : (recalc ? recalc.label : name.substring(0, 3).toUpperCase()),
+                    team: team,
+                    startingHcp: startingHcp,
+                    stored: stored,
+                    recalc: recalc
+                });
+            }
+            
+            // Sort by team (A then B), then by starting handicap
+            players.sort(function(a, b) {
+                if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
+                return a.startingHcp - b.startingHcp;
+            });
+            
+            // Build handicap table
+            html += '<div style="background:#0a0a0a; border-radius:8px; padding:10px; border:1px solid #2a2a2a; margin-bottom:12px;">';
+            
+            // Header
+            var hcpStatusIcon = handicapValid ? '✅' : '❌';
+            var hcpStatusColor = handicapValid ? '#4caf50' : '#ff6b6b';
+            html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">';
+            html += '<span style="font-size:0.9rem;">🏌️</span>';
+            html += '<span style="font-weight:600; color:#ffaa44; font-size:0.8rem;">Handicap Adjustment</span>';
+            html += '<span style="font-size:0.65rem; color:' + hcpStatusColor + '; margin-left:auto; font-weight:600;">' + hcpStatusIcon + ' ' + (handicapValid ? 'VALID' : 'NEEDS FIX') + '</span>';
+            html += '</div>';
+            
+            // Summary line
+            html += '<div style="display:flex; gap:12px; font-size:0.6rem; color:#888; margin-bottom:6px; padding:4px 0; border-bottom:1px solid #1a1a1a;">';
+            html += '<span>Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.anchor || 'Unknown') + '</strong></span>';
+            html += '<span>New Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.newAnchor || 'None') + '</strong></span>';
+            html += '<span>Zero Rise: <strong style="color:#4caf50;">' + (storedHandicaps.zeroRiseAmount || 0) + '</strong></span>';
+            if (handicapSummary.totalFields > 0) {
+                html += '<span style="margin-left:auto;">✅ ' + handicapSummary.matched + ' ❌ ' + handicapSummary.mismatched + '</span>';
+            }
+            html += '</div>';
+            
+            // Table
+            html += '<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
+            html += '<table style="width:100%; border-collapse:collapse; font-size:0.6rem; min-width:380px;">';
+            
+            // Table header
+            html += '<thead><tr style="background:#1a1a1a;">';
+            html += '<th style="padding:3px 3px; text-align:left; font-size:0.6rem; color:#888;">Player</th>';
+            html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;">Old</th>';
+            html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">Anc</th>';
+            html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">Perf</th>';
+            html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;" colspan="2">New</th>';
+            html += '<th style="padding:3px 3px; text-align:center; font-size:0.6rem; color:#888;">Status</th>';
+            html += '</tr></thead><tbody>';
+            
+            // Sub-header: Cur | Exp
+            html += '<tr style="background:#0a0a0a; border-bottom:1px solid #2a2a2a;">';
+            html += '<td style="padding:2px 3px;"></td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#555;"></td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#4caf50;">Cur</td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#ffaa44;">Exp</td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#4caf50;">Cur</td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#ffaa44;">Exp</td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#4caf50;">Cur</td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#ffaa44;">Exp</td>';
+            html += '<td style="padding:2px 3px; text-align:center; font-size:0.5rem; color:#555;"></td>';
+            html += '</tr>';
+            
+            var currentTeam = null;
+            var hasMismatch = false;
+            
+            for (var i = 0; i < players.length; i++) {
+                var p = players[i];
+                var stored = p.stored;
+                var recalc = p.recalc;
+                
+                // Team separator
+                if (p.team !== currentTeam) {
+                    currentTeam = p.team;
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    html += '<tr style="background:#1a2a1a; border-top:2px solid #000;">';
+                    html += '<td colspan="9" style="padding:4px 3px; text-align:center; color:#4caf50; font-weight:600; font-size:0.65rem;">' + teamLabel + '</td>';
+                    html += '</tr>';
+                }
+                
+                // Check field mismatches
+                var playerHasMismatch = false;
+                var fields = ['anchorAdj', 'perfAdj', 'finalHcp'];
+                var fieldStatus = {};
+                for (var f = 0; f < fields.length; f++) {
+                    var field = fields[f];
+                    var storedVal = stored ? stored[field] : undefined;
+                    var recalcVal = recalc ? recalc[field] : undefined;
+                    var isEqual;
+                    if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
+                        isEqual = Math.abs(storedVal - recalcVal) < 0.01;
+                    } else {
+                        isEqual = storedVal === recalcVal;
+                    }
+                    fieldStatus[field] = isEqual;
+                    if (!isEqual) playerHasMismatch = true;
+                }
+                if (playerHasMismatch) hasMismatch = true;
+                
+                // Starting handicap
+                var stDisplay = (p.startingHcp !== undefined && p.startingHcp !== null) ? p.startingHcp : '?';
+                var isAnchor = stored && storedHandicaps.anchor === p.name;
+                var isNewAnchor = stored && storedHandicaps.newAnchor === p.name;
+                
+                // Get values
+                var ancCur = stored ? stored.anchorAdj : '—';
+                var ancExp = recalc ? recalc.anchorAdj : '—';
+                var perfCur = stored ? stored.perfAdj : '—';
+                var perfExp = recalc ? recalc.perfAdj : '—';
+                var finalCur = stored ? stored.finalHcp : '—';
+                var finalExp = recalc ? recalc.finalHcp : '—';
+                
+                var ancMatch = fieldStatus.anchorAdj;
+                var perfMatch = fieldStatus.perfAdj;
+                var finalMatch = fieldStatus.finalHcp;
+                
+                var ancColor = ancMatch ? '#4caf50' : '#ff6b6b';
+                var perfColor = perfMatch ? '#4caf50' : '#ff6b6b';
+                var finalColor = finalMatch ? '#4caf50' : '#ff6b6b';
+                var stColor = isAnchor ? '#ffaa44' : '#ffffff';
+                
+                var rowBg = playerHasMismatch ? '#1a0a0a' : '#0a0a0a';
+                html += '<tr style="border-bottom:1px solid #1a1a1a; background:' + rowBg + ';">';
+                html += '<td style="padding:4px 3px; text-align:left; font-weight:600; color:' + stColor + ';">' + escapeHtml(p.label) + (isAnchor ? ' ⭐' : '') + (isNewAnchor ? ' 👑' : '') + '</td>';
+                html += '<td style="padding:4px 3px; text-align:center; color:' + stColor + ';">' + stDisplay + '</td>';
+                
+                // Anc: Cur | Exp
+                html += '<td style="padding:4px 3px; text-align:center; color:' + ancColor + ';">' + escapeHtml(String(ancCur)) + '</td>';
+                html += '<td style="padding:4px 3px; text-align:center; color:' + (ancMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (ancMatch ? '400' : '700') + ';">' + escapeHtml(String(ancExp)) + '</td>';
+                
+                // Perf: Cur | Exp
+                html += '<td style="padding:4px 3px; text-align:center; color:' + perfColor + ';">' + escapeHtml(String(perfCur)) + '</td>';
+                html += '<td style="padding:4px 3px; text-align:center; color:' + (perfMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (perfMatch ? '400' : '700') + ';">' + escapeHtml(String(perfExp)) + '</td>';
+                
+                // New: Cur | Exp
+                html += '<td style="padding:4px 3px; text-align:center; color:' + finalColor + '; font-weight:600;">' + escapeHtml(String(finalCur)) + '</td>';
+                html += '<td style="padding:4px 3px; text-align:center; color:' + (finalMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (finalMatch ? '400' : '700') + ';">' + escapeHtml(String(finalExp)) + '</td>';
+                
+                var statusIcon = playerHasMismatch ? '❌' : '✅';
+                html += '<td style="padding:4px 3px; text-align:center;">' + statusIcon + '</td>';
+                html += '</tr>';
+            }
+            
+            html += '</tbody></table></div>';
+            
+            // Footer
+            if (hasMismatch) {
+                html += '<div style="font-size:0.65rem; color:#ff6b6b; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
+                html += '❌ ' + (handicapSummary.mismatched || 0) + ' field mismatch' + ((handicapSummary.mismatched || 0) > 1 ? 'es' : '') + ' found. Click "Fix Record" to correct.';
+                html += '</div>';
+            } else {
+                html += '<div style="font-size:0.65rem; color:#4caf50; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
+                html += '✅ All handicap fields match recalculated values.';
+                html += '</div>';
+            }
+            
+            html += '</div>'; // End handicap panel
+        } else if (storedHandicaps && !recalculated) {
+            // Stored exists but can't recalculate
+            html += '<div style="background:#0a0a0a; border-radius:8px; padding:10px; border:1px solid #2a2a2a; margin-bottom:12px;">';
+            html += '<div style="display:flex; align-items:center; gap:8px;">';
+            html += '<span style="font-size:0.9rem;">⚠️</span>';
+            html += '<span style="font-weight:600; color:#ffaa44; font-size:0.8rem;">Handicap Adjustment</span>';
+            html += '<span style="font-size:0.65rem; color:#ffaa44; margin-left:auto;">CANNOT RECALCULATE</span>';
+            html += '</div>';
+            html += '<div style="font-size:0.7rem; color:#888; padding:4px 0;">';
+            html += 'Cannot recalculate handicaps from raw data. Ensure all 18 holes are complete.';
+            html += '</div>';
+            html += '</div>';
+        } else if (!storedHandicaps) {
+            // No stored handicaps
+            html += '<div style="background:#0a0a0a; border-radius:8px; padding:10px; border:1px solid #2a2a2a; margin-bottom:12px;">';
+            html += '<div style="display:flex; align-items:center; gap:8px;">';
+            html += '<span style="font-size:0.9rem;">❌</span>';
+            html += '<span style="font-weight:600; color:#ff6b6b; font-size:0.8rem;">Handicap Adjustment</span>';
+            html += '<span style="font-size:0.65rem; color:#ff6b6b; margin-left:auto;">MISSING</span>';
+            html += '</div>';
+            html += '<div style="font-size:0.7rem; color:#888; padding:4px 0;">';
+            html += 'No adjustedHandicaps data found in this record.';
+            html += '</div>';
+            html += '<div style="font-size:0.65rem; color:#ffaa44; padding:4px 0; border-top:1px solid #1a1a1a; margin-top:4px;">';
+            html += 'Click "Fix Record" to calculate and add handicap data.';
+            html += '</div>';
+            html += '</div>';
         }
         
         // Status info
@@ -820,7 +703,7 @@ var UtilValidateUI = (function() {
             html += '</div>';
         }
         
-        // Mismatch list
+        // Field mismatch list
         if (validationResult.mismatches && validationResult.mismatches.length > 0) {
             html += '<div style="margin-top:12px; max-height:150px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:8px;">';
             html += '<div style="font-size:0.65rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Field Mismatches (' + validationResult.mismatches.length + ')</div>';
@@ -1065,7 +948,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.03: RENDER VALIDATE RESULTS (moved from HTML)
+    // v1.03: RENDER VALIDATE RESULTS
     // ============================================================
     
     function renderValidateResults(recordData, validation, validateGameData, validateCurrentValidation) {
@@ -1134,13 +1017,7 @@ var UtilValidateUI = (function() {
         var matchPointsPerHole = matchData.matchPointsPerHole || [];
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
-        // v1.07: Render handicap validation panel
-        var hcpPanelContainer = document.getElementById('validateHandicapPanel');
-        if (hcpPanelContainer) {
-            renderHandicapValidationPanel(validation, 'validateHandicapPanel');
-        }
-        
-        // Render validation summary (v1.06: includes handicap section)
+        // v1.08: Render validation summary with integrated handicap panel
         renderValidationSummary(validation, 'validateSummary');
         
         // Show/hide fix card
@@ -1178,7 +1055,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.03: RENDER PHOTO STATUS INLINE (no modal)
+    // v1.03: RENDER PHOTO STATUS INLINE
     // ============================================================
     
     function renderPhotoStatusInline(photoStatus, recordId, collection, isCompleted) {
@@ -1232,14 +1109,13 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.05: INLINE PHOTO SELECTOR WITH THUMBNAILS AND PREVIEW
+    // v1.05: INLINE PHOTO SELECTOR FUNCTIONS
     // ============================================================
     
     var inlinePhotoSelectorActive = false;
     var selectedPhotoPath = null;
     var selectedPhotoUrl = null;
     
-    // Store staged photo for Fix Record to use
     window._stagedPhoto = {
         fullPath: null,
         downloadUrl: null,
@@ -1260,7 +1136,6 @@ var UtilValidateUI = (function() {
         container.style.display = 'block';
         inlinePhotoSelectorActive = true;
         
-        // Reset selected photo
         selectedPhotoPath = null;
         selectedPhotoUrl = null;
         window._stagedPhoto.fullPath = null;
@@ -1268,11 +1143,9 @@ var UtilValidateUI = (function() {
         window._stagedPhoto.recordId = recordId;
         window._stagedPhoto.collection = collection;
         
-        // Store record info for the selector
         window._inlineSelectorRecordId = recordId;
         window._inlineSelectorCollection = collection;
         
-        // Build the inline selector with preview area
         var html = '<div style="background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:12px; margin-top:8px; max-height:500px; overflow-y:auto;">';
         html += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">';
         html += '<input type="text" id="inlinePhotoFolder" value="celebration/" placeholder="Folder path" style="flex:2; min-width:120px; padding:6px 12px; font-size:0.7rem; border-radius:20px; background:#0a0a0a; border:1px solid #2a2a2a; color:#fff;">';
@@ -1280,7 +1153,6 @@ var UtilValidateUI = (function() {
         html += '<button onclick="closeInlinePhotoSelector()" style="flex:0 0 auto; padding:6px 16px; font-size:0.65rem; border-radius:20px; border:1px solid #333; background:#1a1a1a; color:#888; cursor:pointer;">✕ Close</button>';
         html += '</div>';
         
-        // Preview area
         html += '<div id="inlinePhotoPreview" style="display:none; background:#0a0a0a; border-radius:8px; border:1px solid #2a2a2a; padding:8px; margin-bottom:8px; text-align:center;">';
         html += '<div style="font-size:0.6rem; color:#888; margin-bottom:4px;">📸 SELECTED PHOTO</div>';
         html += '<img id="inlinePhotoPreviewImg" src="" style="max-width:100%; max-height:150px; object-fit:contain; border-radius:4px; display:none;">';
@@ -1319,7 +1191,6 @@ var UtilValidateUI = (function() {
         
         if (!listContainer) return;
         
-        // Hide preview while loading
         if (previewDiv) previewDiv.style.display = 'none';
         
         if (typeof listPhotosInStorage !== 'function') {
@@ -1362,7 +1233,6 @@ var UtilValidateUI = (function() {
             listContainer.innerHTML = html;
             if (statusDiv) statusDiv.textContent = '📸 ' + photos.length + ' photos found. Click a photo to preview.';
             
-            // Load thumbnails for all photos
             loadPhotoThumbnails();
         });
     }
@@ -1425,7 +1295,6 @@ var UtilValidateUI = (function() {
             if (attachBtn) attachBtn.style.display = 'inline-block';
             if (statusDiv) statusDiv.textContent = '✅ Preview loaded. Click "Attach Photo" to stage it.';
             
-            // Highlight selected item
             var items = document.querySelectorAll('#inlinePhotoList .photo-item-inline');
             items.forEach(function(item) {
                 item.style.borderColor = '#2a2a2a';
@@ -1457,7 +1326,6 @@ var UtilValidateUI = (function() {
             return;
         }
         
-        // Stage the photo (do NOT write to Firestore yet)
         window._stagedPhoto.fullPath = selectedPhotoPath;
         window._stagedPhoto.downloadUrl = selectedPhotoUrl;
         window._stagedPhoto.recordId = recordId;
@@ -1467,7 +1335,6 @@ var UtilValidateUI = (function() {
             window.log('📎 Photo staged for record: ' + recordId + ' - ' + selectedPhotoPath, 'success');
         }
         
-        // Update UI to show staged status
         var statusDiv = document.getElementById('inlinePhotoStatus');
         if (statusDiv) {
             statusDiv.innerHTML = '<span style="color:#4caf50;">✅ Photo staged! Click "Fix Record" to save it.</span>';
@@ -1483,7 +1350,6 @@ var UtilValidateUI = (function() {
             attachBtn.style.cursor = 'default';
         }
         
-        // Update the photo status card to show staged photo
         var photoContainer = document.getElementById('validatePhotoStatus');
         if (photoContainer) {
             var stagedHtml = '<div style="background:#0a2a0a; border-radius:8px; padding:12px; border:1px solid #4caf50;">';
@@ -1504,7 +1370,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.03: MODAL PHOTO SELECTOR FUNCTIONS (legacy, kept for compatibility)
+    // v1.03: MODAL PHOTO SELECTOR (legacy)
     // ============================================================
     
     function openPhotoSelector(recordId, collection) {
@@ -1615,8 +1481,6 @@ var UtilValidateUI = (function() {
     }
     
     function selectPhotoFromList(fullPath, fileName) {
-        // LEGACY - kept for modal selector compatibility
-        // This should NOT auto-apply - it should preview
         if (!window._photoSelectorRecordId || !window._photoSelectorCollection) {
             if (typeof window.log === 'function') {
                 window.log('Missing record info for photo selection', 'error');
@@ -1627,7 +1491,6 @@ var UtilValidateUI = (function() {
         var recordId = window._photoSelectorRecordId;
         var collection = window._photoSelectorCollection;
         
-        // Preview the photo instead of auto-applying
         if (typeof window.log === 'function') {
             window.log('📸 Previewing photo: ' + fullPath, 'info');
         }
@@ -1640,7 +1503,6 @@ var UtilValidateUI = (function() {
                 return;
             }
             
-            // Show preview in modal
             var previewArea = document.querySelector('#photoSelectorList');
             if (previewArea) {
                 previewArea.innerHTML = '<div style="text-align:center; padding:12px; background:#0a0a0a; border-radius:8px; border:1px solid #ffaa44;">' +
@@ -1655,8 +1517,6 @@ var UtilValidateUI = (function() {
     }
     
     function applyPhotoToRecord(recordId, collection, fullPath, url) {
-        // LEGACY - kept for modal selector compatibility
-        // This stages the photo, doesn't write to Firestore
         if (!recordId || !collection || !fullPath || !url) {
             if (typeof window.log === 'function') {
                 window.log('Missing required data for photo staging', 'error');
@@ -1664,7 +1524,6 @@ var UtilValidateUI = (function() {
             return;
         }
         
-        // Stage the photo (do NOT write to Firestore yet)
         window._stagedPhoto.fullPath = fullPath;
         window._stagedPhoto.downloadUrl = url;
         window._stagedPhoto.recordId = recordId;
@@ -1675,10 +1534,8 @@ var UtilValidateUI = (function() {
             window.log('Click "Fix Record" to save this photo to the record.', 'info');
         }
         
-        // Close modal and refresh validation display to show staged photo
         closePhotoSelector();
         
-        // Update the photo status card to show staged photo
         var photoContainer = document.getElementById('validatePhotoStatus');
         if (photoContainer) {
             var stagedHtml = '<div style="background:#0a2a0a; border-radius:8px; padding:12px; border:1px solid #4caf50;">';
@@ -1698,13 +1555,12 @@ var UtilValidateUI = (function() {
         }
         
         if (typeof window.loadAndValidate === 'function') {
-            // Reload validation to show staged photo status
             window.loadAndValidate();
         }
     }
     
     // ============================================================
-    // v1.05: CLEAR STAGED PHOTO (for when Fix Record completes)
+    // v1.05: CLEAR STAGED PHOTO
     // ============================================================
     
     function clearStagedPhoto() {
@@ -1721,7 +1577,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.05: GET STAGED PHOTO (for Fix Record to use)
+    // v1.05: GET STAGED PHOTO
     // ============================================================
     
     function getStagedPhoto() {
@@ -1745,11 +1601,6 @@ var UtilValidateUI = (function() {
         showFixPreview: showFixPreview,
         renderPhotoStatus: renderPhotoStatus,
         renderValidationSummary: renderValidationSummary,
-        // v1.06: Handicap rendering functions
-        renderHandicapMismatches: renderHandicapMismatches,
-        // v1.07: Handicap validation panel
-        renderHandicapValidationPanel: renderHandicapValidationPanel,
-        // v1.03: New functions moved from HTML
         renderValidateResults: renderValidateResults,
         renderPhotoStatusInline: renderPhotoStatusInline,
         toggleInlinePhotoSelector: toggleInlinePhotoSelector,
@@ -1758,10 +1609,8 @@ var UtilValidateUI = (function() {
         loadPhotoThumbnails: loadPhotoThumbnails,
         previewInlinePhoto: previewInlinePhoto,
         stageSelectedPhoto: stageSelectedPhoto,
-        // v1.05: New photo staging functions
         clearStagedPhoto: clearStagedPhoto,
         getStagedPhoto: getStagedPhoto,
-        // v1.03: Modal selector (kept for compatibility)
         openPhotoSelector: openPhotoSelector,
         closePhotoSelector: closePhotoSelector,
         loadPhotoSelector: loadPhotoSelector,
@@ -1777,14 +1626,12 @@ window.UtilValidateUI = UtilValidateUI;
 // EXPOSE GLOBALLY FOR HTML ONCLICK BINDINGS
 // ============================================================
 
-// Photo selector functions (modal)
 window.openPhotoSelector = UtilValidateUI.openPhotoSelector;
 window.closePhotoSelector = UtilValidateUI.closePhotoSelector;
 window.loadPhotoSelector = UtilValidateUI.loadPhotoSelector;
 window.selectPhotoFromList = UtilValidateUI.selectPhotoFromList;
 window.applyPhotoToRecord = UtilValidateUI.applyPhotoToRecord;
 
-// Inline photo selector functions
 window.toggleInlinePhotoSelector = UtilValidateUI.toggleInlinePhotoSelector;
 window.closeInlinePhotoSelector = UtilValidateUI.closeInlinePhotoSelector;
 window.loadInlinePhotos = UtilValidateUI.loadInlinePhotos;
@@ -1794,21 +1641,20 @@ window.stageSelectedPhoto = UtilValidateUI.stageSelectedPhoto;
 window.clearStagedPhoto = UtilValidateUI.clearStagedPhoto;
 window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
-// Validation results renderer (for app.js to call)
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.07 - Handicap validation panel added');
+console.log('[UTIL-VALIDATE-UI] v1.08 - Integrated handicap panel');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: renderHandicapValidationPanel() - full handicap table with comparison
-   - ADDED: renderHandicapTableRow() - single row rendering with color coding
-   - CHANGED: renderValidateResults() now calls handicap validation panel
-   - ADDED: Handicap panel shows: Player, Old, Anc (Current→Expected), Perf (Current→Expected), New (Current→Expected)
-   - ADDED: Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
-   - PRESERVED: All existing photo and rendering functions from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: Handicap panel now displays directly within renderValidationSummary()
+   - REMOVED: Separate container dependency (validateHandicapPanel no longer needed)
+   - Integrated handicap table into existing validation summary card
+   - Handicap table shows: Player, Old, Anc (Cur→Exp), Perf (Cur→Exp), New (Cur→Exp), Status
+   - Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
+   - PRESERVED: All existing rendering functions from v1.07
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
