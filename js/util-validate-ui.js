@@ -1,20 +1,21 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: formatSingleHandicapValue() now handles undefined/null/NaN values
-   - FIXED: NaN no longer appears in handicap table
-   - CHANGED: Undefined raw values default to 0
-   - PRESERVED: All existing rendering functions from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: Validation Summary now correctly shows NEEDS FIX when handicap mismatches exist
+   - FIXED: Combined summary counts (field mismatches + handicap mismatches)
+   - FIXED: Details window now shows ALL mismatches (field + handicap)
+   - This ensures users can verify fixes before clicking Fix Record
+   - PRESERVED: All existing rendering functions from v1.12
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.12";
+window.UTIL_VALIDATE_UI_VERSION = "1.13";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.12 - Fixed NaN in handicap table");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.13 - Fixed validation summary with combined mismatches");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -672,7 +673,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.11: RENDER: Validation Summary (with integrated detailed validation)
+    // v1.13: RENDER: Validation Summary (with combined mismatches)
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -690,17 +691,35 @@ var UtilValidateUI = (function() {
         var status = validationResult.status || 'unknown';
         var bothSigned = validationResult.bothSigned || false;
         var expectedStatus = validationResult.expectedStatus || status;
-        var mismatches = validationResult.mismatches || [];
+        
+        // v1.13: Get both field and handicap mismatches
+        var fieldMismatches = validationResult.mismatches || [];
+        var fieldMatches = validationResult.matches || [];
+        var handicapMismatches = validationResult.handicapMismatches || [];
+        var handicapMatches = validationResult.handicapMatches || [];
+        var handicapValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
+        var handicapNeedsFix = validationResult.handicapNeedsFix !== undefined ? validationResult.handicapNeedsFix : false;
+        
+        // v1.13: Combined totals
+        var totalMismatches = fieldMismatches.length + handicapMismatches.length;
+        var totalMatches = fieldMatches.length + handicapMatches.length;
+        var totalFields = totalMismatches + totalMatches;
+        var isValid = validationResult.valid;
         
         var html = '<div style="padding:12px 0;">';
         
-        // Overall status
-        var isValid = validationResult.valid;
-        html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (isValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (isValid ? '#2a5a2a' : '#5a2a2a') + ';">';
-        html += '<span style="font-size:1.5rem;">' + (isValid ? '✅' : '❌') + '</span>';
-        html += '<div><div style="font-weight:700; color:' + (isValid ? '#4caf50' : '#ff6b6b') + ';">' + (isValid ? 'VALID' : 'NEEDS FIX') + '</div>';
-        html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention</div></div>';
-        html += '</div>';
+        // v1.13: Overall status - show correct status based on combined mismatches
+        var overallValid = (fieldMismatches.length === 0 && handicapMismatches.length === 0);
+        var overallNeedsFix = !overallValid;
+        
+        html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (overallValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (overallValid ? '#2a5a2a' : '#5a2a2a') + ';">';
+        html += '<span style="font-size:1.5rem;">' + (overallValid ? '✅' : '❌') + '</span>';
+        html += '<div><div style="font-weight:700; color:' + (overallValid ? '#4caf50' : '#ff6b6b') + ';">' + (overallValid ? 'VALID' : 'NEEDS FIX') + '</div>';
+        html += '<div style="font-size:0.7rem; color:#888;">' + totalMatches + ' fields match, ' + totalMismatches + ' fields need attention';
+        if (handicapMismatches.length > 0) {
+            html += ' (' + handicapMismatches.length + ' handicap)';
+        }
+        html += '</div></div></div>';
         
         // Status info
         html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">';
@@ -719,18 +738,45 @@ var UtilValidateUI = (function() {
         html += '</div>';
         
         // ============================================================
-        // v1.11: INTEGRATED DETAILED VALIDATION TABLE (scrollable, 300px)
+        // v1.13: DETAILED VALIDATION TABLE - Shows ALL mismatches
+        // (Field mismatches + Handicap mismatches combined)
         // ============================================================
         
-        if (mismatches && mismatches.length > 0) {
+        // Build combined mismatch list
+        var allMismatches = [];
+        
+        // Add field mismatches
+        for (var i = 0; i < fieldMismatches.length; i++) {
+            var m = fieldMismatches[i];
+            allMismatches.push({
+                field: m.field,
+                current: m.current,
+                expected: m.expected,
+                type: 'field'
+            });
+        }
+        
+        // Add handicap mismatches
+        for (var i = 0; i < handicapMismatches.length; i++) {
+            var m = handicapMismatches[i];
+            allMismatches.push({
+                field: 'HCP: ' + m.field,
+                current: m.current,
+                expected: m.expected,
+                type: 'handicap'
+            });
+        }
+        
+        if (allMismatches.length > 0) {
             html += '<div style="margin-top:12px;">';
-            html += '<div style="font-size:0.7rem; font-weight:600; color:#ff6b6b; margin-bottom:6px;">🔴 Field Mismatches (' + mismatches.length + ')</div>';
+            html += '<div style="font-size:0.7rem; font-weight:600; color:#ff6b6b; margin-bottom:6px;">🔴 All Mismatches (' + allMismatches.length + ')</div>';
             html += '<div style="max-height:300px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:6px;">';
             
-            for (var i = 0; i < mismatches.length; i++) {
-                var m = mismatches[i];
+            for (var i = 0; i < allMismatches.length; i++) {
+                var m = allMismatches[i];
+                var typeLabel = m.type === 'handicap' ? '🏌️' : '📊';
                 html += '<div style="font-size:0.7rem; padding:3px 6px; border-bottom:1px solid #1a1a1a; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">';
-                html += '<span style="color:#888; flex:1; min-width:80px;">' + escapeHtml(m.field) + '</span>';
+                html += '<span style="color:#888; flex:1; min-width:80px;">' + typeLabel + ' ' + escapeHtml(m.field) + '</span>';
                 html += '<span style="color:#ff6b6b;">' + escapeHtml(String(m.current)) + '</span>';
                 html += '<span style="color:#666;">→</span>';
                 html += '<span style="color:#4caf50;">' + escapeHtml(String(m.expected)) + '</span>';
@@ -746,11 +792,14 @@ var UtilValidateUI = (function() {
         }
         
         // Summary counts
-        if (summary.totalFields > 0) {
+        if (totalFields > 0) {
             html += '<div style="display:flex; gap:16px; flex-wrap:wrap; padding:8px; margin-top:12px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; font-size:0.75rem;">';
-            html += '<div><span style="color:#888;">Total Fields:</span> <strong style="color:#fff;">' + summary.totalFields + '</strong></div>';
-            html += '<div><span style="color:#4caf50;">✅ Matched:</span> <strong style="color:#4caf50;">' + summary.matched + '</strong></div>';
-            html += '<div><span style="color:#ff6b6b;">❌ Mismatched:</span> <strong style="color:#ff6b6b;">' + summary.mismatched + '</strong></div>';
+            html += '<div><span style="color:#888;">Total Fields:</span> <strong style="color:#fff;">' + totalFields + '</strong></div>';
+            html += '<div><span style="color:#4caf50;">✅ Matched:</span> <strong style="color:#4caf50;">' + totalMatches + '</strong></div>';
+            html += '<div><span style="color:#ff6b6b;">❌ Mismatched:</span> <strong style="color:#ff6b6b;">' + totalMismatches + '</strong></div>';
+            if (handicapMismatches.length > 0) {
+                html += '<div><span style="color:#ffaa44;">🏌️ Handicap:</span> <strong style="color:#ffaa44;">' + handicapMismatches.length + ' mismatches</strong></div>';
+            }
             html += '</div>';
         }
         
@@ -1087,7 +1136,7 @@ var UtilValidateUI = (function() {
             renderHandicapAdjustmentCard(validation, 'validateHandicapCard');
         }
         
-        // v1.11: Render validation summary with integrated detailed validation
+        // v1.13: Render validation summary with combined mismatches
         renderValidationSummary(validation, 'validateSummary');
         
         // Show/hide fix card
@@ -1703,16 +1752,18 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.12 - Fixed NaN in handicap table');
+console.log('[UTIL-VALIDATE-UI] v1.13 - Combined mismatches in validation summary');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: formatSingleHandicapValue() now handles undefined/null/NaN values
-   - FIXED: NaN no longer appears in handicap table
-   - CHANGED: Undefined raw values default to 0
-   - PRESERVED: All existing rendering functions from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: Validation Summary now correctly shows NEEDS FIX when handicap mismatches exist
+   - FIXED: Combined summary counts (field mismatches + handicap mismatches)
+   - FIXED: Details window now shows ALL mismatches (field + handicap) with type indicators
+   - FIXED: Overall status now correctly reflects combined validation result
+   - This ensures users can verify fixes before clicking Fix Record
+   - PRESERVED: All existing rendering functions from v1.12
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
