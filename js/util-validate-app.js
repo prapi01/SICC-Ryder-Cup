@@ -1,21 +1,19 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: Handicap mismatches now included in validation results
-   - CHANGED: validateFixRecord() now checks for handicap mismatches
-   - CHANGED: applyFixToRecord() now properly handles handicap fix payload
-   - CHANGED: loadAndValidate() now passes handicap validation to UI
-   - CHANGED: showValidateInfoGuide() updated to include handicap adjustment check
-   - PRESERVED: All existing functionality from v1.05
-   - PRESERVED: Photo staging and application logic unchanged
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - CHANGED: applyFixToRecord() now uses appLog() for all progress messages
+   - REMOVED: All progressDiv.innerHTML references (no longer used)
+   - Progress messages now go to the persistent LOG card instead of temporary div
+   - This ensures fix progress messages persist after validation reload
+   - PRESERVED: All existing functionality from v1.06
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.06";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.06 - Handicap fix support");
+window.UTIL_VALIDATE_APP_VERSION = "1.07";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.07 - Progress messages to LOG card");
 
 // ============================================================
 // STATE VARIABLES
@@ -166,7 +164,6 @@ function loadAndValidate() {
         gameId: data.gameId || record.id,
         date: data.date || 'Unknown',
         createdAt: data.createdAt || null,
-        // v1.06: Include adjustedHandicaps for validation
         adjustedHandicaps: data.adjustedHandicaps || null,
         anchor: data.anchor || null
     };
@@ -174,7 +171,6 @@ function loadAndValidate() {
     var validation = UtilValidate.validateRecord(cleanRecord);
     validateCurrentValidation = validation;
     
-    // v1.06: Log handicap validation status
     if (validation.handicapValid !== undefined) {
         if (validation.handicapValid) {
             appLog('✅ Handicap data is valid', 'success');
@@ -232,12 +228,6 @@ function clearValidateResults() {
     
     var statusDiv = document.getElementById('validateStatus');
     if (statusDiv) statusDiv.style.display = 'none';
-    
-    var progressDiv = document.getElementById('validateProgress');
-    if (progressDiv) {
-        progressDiv.className = 'validate-progress';
-        progressDiv.innerHTML = '';
-    }
     
     var backupBtn = document.getElementById('validateBackupBtn');
     var fixBtn = document.getElementById('validateFixBtn');
@@ -319,7 +309,6 @@ function validateFixRecord() {
         return;
     }
     
-    // v1.06: Check if record is valid (including handicaps)
     if (validateCurrentValidation.valid) {
         appLog('Record is already valid. No fix needed.', 'info');
         return;
@@ -341,18 +330,12 @@ function validateFixRecord() {
         return;
     }
     
-    // v1.06: Build complete fix payload including handicaps
     var recalculated = validateCurrentValidation.recalculated;
-    
-    // Get the full validation result with handicaps
     var fullValidation = validateCurrentValidation;
     
-    // Build preview with all changes including handicaps
     var previewData = UtilValidate.buildFixPreview(validateGameData, recalculated);
     
-    // v1.06: Add handicap mismatch info to preview
     if (fullValidation.handicapMismatches && fullValidation.handicapMismatches.length > 0) {
-        // Add handicap mismatches to the preview changes
         for (var i = 0; i < fullValidation.handicapMismatches.length; i++) {
             var hcpMismatch = fullValidation.handicapMismatches[i];
             previewData.changes.push({
@@ -391,13 +374,11 @@ function validateFixRecord() {
 // ============================================================
 
 function applyStagedPhotoToRecord(recordId, collection, db) {
-    // Check if there's a staged photo
     if (!window._stagedPhoto || !window._stagedPhoto.fullPath || !window._stagedPhoto.downloadUrl) {
         appLog('No staged photo to apply', 'info');
         return Promise.resolve();
     }
     
-    // v1.04: Removed the recordId mismatch check that was silently skipping photo updates
     if (window._stagedPhoto.recordId && window._stagedPhoto.recordId !== recordId) {
         appLog('⚠️ Staged photo was selected for a different record: ' + window._stagedPhoto.recordId + ' (current: ' + recordId + ')', 'warning');
         appLog('⚠️ Applying photo anyway (user selected it intentionally)', 'warning');
@@ -421,7 +402,6 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
         .then(function() {
             appLog('✅ Photo applied to record: ' + recordId, 'success');
             
-            // Clear the staged photo after successful write
             if (typeof UtilValidateUI !== 'undefined' && typeof UtilValidateUI.clearStagedPhoto === 'function') {
                 UtilValidateUI.clearStagedPhoto();
             }
@@ -439,15 +419,11 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
 }
 
 // ============================================================
-// VALIDATE TAB: APPLY FIX TO RECORD
+// v1.07: VALIDATE TAB: APPLY FIX TO RECORD - Uses LOG card
 // ============================================================
 
 function applyFixToRecord(recordId, collection, db, recalculated) {
-    var progressDiv = document.getElementById('validateProgress');
-    if (progressDiv) {
-        progressDiv.className = 'validate-progress active';
-        progressDiv.innerHTML = '<div class="step info">🔄 Creating backup...</div>';
-    }
+    appLog('🔄 Starting fix for record: ' + recordId, 'info');
     
     var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
     
@@ -456,64 +432,43 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
             if (!doc.exists) {
                 throw new Error('Record not found');
             }
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step done">✅ Backup created</div>';
-            }
+            appLog('✅ Backup created: ' + backupId, 'success');
             return db.collection('backupFolder').doc(backupId).set(doc.data());
         })
         .then(function() {
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step done">✅ Backup saved to backupFolder/' + backupId + '</div>';
-                progressDiv.innerHTML += '<div class="step info">📝 Building fix payload...</div>';
-            }
+            appLog('📝 Building fix payload...', 'info');
             
             if (typeof UtilValidate === 'undefined') {
                 throw new Error('UtilValidate not available');
             }
             
-            // v1.06: buildFixPayload now includes handicap fixes
             var fixResult = UtilValidate.buildFixPayload(validateGameData, recalculated);
             
             if (!fixResult.hasChanges) {
-                if (progressDiv) {
-                    progressDiv.innerHTML += '<div class="step warning">⚠️ No changes to apply</div>';
-                }
+                appLog('⚠️ No changes to apply', 'warning');
                 throw new Error('No changes to apply');
             }
             
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step info">✍️ Applying ' + fixResult.fieldsUpdated.length + ' updates...</div>';
-                progressDiv.innerHTML += '<div class="step info">Fields: ' + fixResult.fieldsUpdated.join(', ') + '</div>';
-            }
+            appLog('✍️ Applying ' + fixResult.fieldsUpdated.length + ' updates...', 'info');
+            appLog('Fields: ' + fixResult.fieldsUpdated.join(', '), 'info');
             
-            // Apply the fix payload
             return db.collection(collection).doc(recordId).update(fixResult.updatePayload);
         })
         .then(function() {
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step done">✅ Fix applied successfully!</div>';
-            }
-            appLog('✅ Record fixed: ' + recordId, 'success');
+            appLog('✅ Fix applied successfully!', 'success');
             
-            // Now apply the staged photo if there is one
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step info">📸 Applying staged photo...</div>';
-            }
             return applyStagedPhotoToRecord(recordId, collection, db);
         })
         .then(function() {
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step done">✅ Photo applied successfully!</div>';
-            }
+            appLog('✅ Photo applied successfully!', 'success');
+            appLog('🔄 Reloading validation...', 'info');
             
             setTimeout(function() {
                 loadAndValidate();
+                appLog('✅ Validation reload complete', 'success');
             }, 1000);
         })
         .catch(function(err) {
-            if (progressDiv) {
-                progressDiv.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
-            }
             appLog('❌ Fix failed: ' + err.message, 'error');
         });
 }
@@ -539,7 +494,6 @@ function validateApplyPhotoOnly() {
         return;
     }
     
-    // Check if there's a staged photo
     if (!window._stagedPhoto || !window._stagedPhoto.fullPath || !window._stagedPhoto.downloadUrl) {
         appLog('No staged photo to apply. Select a photo first using "Change Photo" or "Select Photo".', 'error');
         return;
@@ -548,7 +502,6 @@ function validateApplyPhotoOnly() {
     appLog('📸 Applying staged photo to record: ' + recordId + ' (photo only, no data fix)', 'info');
     appLog('📸 Photo: ' + window._stagedPhoto.fullPath, 'info');
     
-    // Disable the button while processing
     var applyPhotoBtn = document.getElementById('validateApplyPhotoBtn');
     if (applyPhotoBtn) {
         applyPhotoBtn.disabled = true;
@@ -559,20 +512,17 @@ function validateApplyPhotoOnly() {
         .then(function() {
             appLog('✅ Photo applied successfully!', 'success');
             
-            // Re-enable the button
             if (applyPhotoBtn) {
                 applyPhotoBtn.disabled = false;
                 applyPhotoBtn.textContent = '📸 APPLY STAGED PHOTO';
             }
             
-            // Refresh the validation display to show the updated photo
             if (typeof loadAndValidate === 'function') {
                 setTimeout(function() {
                     loadAndValidate();
                 }, 500);
             }
             
-            // Show success status
             var statusDiv = document.getElementById('validateStatus');
             if (statusDiv) {
                 statusDiv.style.display = 'block';
@@ -583,7 +533,6 @@ function validateApplyPhotoOnly() {
         .catch(function(err) {
             appLog('❌ Failed to apply photo: ' + err.message, 'error');
             
-            // Re-enable the button
             if (applyPhotoBtn) {
                 applyPhotoBtn.disabled = false;
                 applyPhotoBtn.textContent = '📸 APPLY STAGED PHOTO';
@@ -603,7 +552,6 @@ function validateApplyPhotoOnly() {
 // ============================================================
 
 function initValidateTabEvents() {
-    // Environment buttons
     var prodBtn = document.getElementById('validateProdBtn');
     var devBtn = document.getElementById('validateDevBtn');
     
@@ -631,7 +579,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // Load and Validate button
     var loadBtn = document.getElementById('validateLoadBtn');
     if (loadBtn) {
         loadBtn.onclick = function() {
@@ -639,7 +586,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // Refresh button
     var refreshBtn = document.getElementById('validateRefreshBtn');
     if (refreshBtn) {
         refreshBtn.onclick = function() {
@@ -647,7 +593,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // Backup button
     var backupBtn = document.getElementById('validateBackupBtn');
     if (backupBtn) {
         backupBtn.onclick = function() {
@@ -655,7 +600,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // Fix button
     var fixBtn = document.getElementById('validateFixBtn');
     if (fixBtn) {
         fixBtn.onclick = function() {
@@ -663,7 +607,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // v1.05: Apply Photo Only button
     var applyPhotoBtn = document.getElementById('validateApplyPhotoBtn');
     if (applyPhotoBtn) {
         applyPhotoBtn.onclick = function() {
@@ -671,7 +614,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // Collection dropdown change
     var collectionSelect = document.getElementById('validateCollection');
     if (collectionSelect) {
         collectionSelect.onchange = function() {
@@ -679,7 +621,6 @@ function initValidateTabEvents() {
         };
     }
     
-    // Record select change
     var recordSelect = document.getElementById('validateRecordSelect');
     if (recordSelect) {
         recordSelect.onchange = function() {
@@ -702,11 +643,10 @@ function initValidateTabEvents() {
 }
 
 // ============================================================
-// v1.06: VALIDATE TAB: INFORMATION GUIDE (updated with handicap)
+// VALIDATE TAB: INFORMATION GUIDE
 // ============================================================
 
 function showValidateInfoGuide() {
-    // Remove existing overlay if present
     var existing = document.querySelector('.info-overlay');
     if (existing) existing.remove();
     
@@ -811,6 +751,7 @@ function showValidateInfoGuide() {
                     <li><strong>Field Names:</strong> Uses documented schema (game1, game2, game3) with fallbacks</li>
                     <li><strong>Handicaps:</strong> Recalculated using hcp-adjust.js engine - no duplicate logic</li>
                     <li><strong>18 Holes Required:</strong> Handicap adjustment requires all 18 holes to be complete</li>
+                    <li><strong>Fix Progress:</strong> All progress messages are logged to the persistent LOG card</li>
                 </ul>
             </div>
             
@@ -828,17 +769,14 @@ function showValidateInfoGuide() {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Set default environment indicator
     var indicator = document.getElementById('validateIndicator');
     if (indicator) {
         indicator.textContent = 'PROD';
         indicator.className = 'env-indicator-small prod';
     }
     
-    // Initialize event bindings
     initValidateTabEvents();
     
-    // Load records after a short delay
     setTimeout(function() {
         loadValidateRecords();
     }, 300);
@@ -857,23 +795,21 @@ window.validateBackupOnly = validateBackupOnly;
 window.validateFixRecord = validateFixRecord;
 window.applyFixToRecord = applyFixToRecord;
 window.applyStagedPhotoToRecord = applyStagedPhotoToRecord;
-window.validateApplyPhotoOnly = validateApplyPhotoOnly;  // v1.05: New function
+window.validateApplyPhotoOnly = validateApplyPhotoOnly;
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 
-console.log('[UTIL-VALIDATE-APP] v1.06 loaded - Handicap fix support');
+console.log('[UTIL-VALIDATE-APP] v1.07 loaded - Progress messages to LOG card');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: Handicap mismatches now included in validation results
-   - CHANGED: validateFixRecord() now checks for handicap mismatches
-   - CHANGED: applyFixToRecord() now properly handles handicap fix payload
-   - CHANGED: loadAndValidate() now passes handicap validation to UI
-   - CHANGED: showValidateInfoGuide() updated to include handicap adjustment check
-   - PRESERVED: All existing functionality from v1.05
-   - PRESERVED: Photo staging and application logic unchanged
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - CHANGED: applyFixToRecord() now uses appLog() for all progress messages
+   - REMOVED: All progressDiv.innerHTML references (no longer used)
+   - Progress messages now go to the persistent LOG card instead of temporary div
+   - This ensures fix progress messages persist after validation reload
+   - PRESERVED: All existing functionality from v1.06
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
 STATUS: Ready for integration
 */
