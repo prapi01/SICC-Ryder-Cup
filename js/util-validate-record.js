@@ -1,22 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: recalculateHandicapsFromRecord() now properly sets HandicapAdjustment internal state
-   - FIXED: Now calls HandicapAdjustment.calculateAllAdjustmentsFromRaw() instead of calculateAllAdjustments()
-   - ADDED: Proper error handling and logging for handicap recalculation
-   - FIXED: validateHandicapAdjustment() now correctly returns recalculated data
-   - PRESERVED: All existing validation logic from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: compareHandicapFields() now correctly maps recalculated fields
+     - finalHcp → uses newHcp, rawNew, or currentHcp from recalculated data
+     - newHcp → uses rawNew or currentHcp from recalculated data
+   - FIXED: buildHandicapFixPayload() now correctly maps finalHcp from recalculated data
+   - FIXED: anchor and newAnchor comparison now uses recalculated values
+   - This prevents "some value → undefined" corruption in handicap validation
+   - PRESERVED: All existing validation logic from v1.12
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.12";
+window.UTIL_VALIDATE_VERSION = "1.13";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.12 - Fixed handicap recalculation");
+    console.log("[UTIL-VALIDATE] Initializing v1.13 - Fixed handicap field mapping");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -836,7 +838,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.12: HANDICAP ADJUSTMENT VALIDATION - FIXED
+    // v1.13: HANDICAP ADJUSTMENT VALIDATION - Fixed field mapping
     // ============================================================
     
     /**
@@ -898,31 +900,15 @@ var UtilValidate = (function() {
             var courseSi = recordData.course?.si || [];
             var coursePar = recordData.course?.par || [];
             
-            // ============================================================
-            // v1.12: FIX - Call calculateAllAdjustments with proper state
-            // ============================================================
-            // The calculateAllAdjustments() function in hcp-adjust.js uses
-            // internal state variables (allPlayers, flight1Data, flight2Data, courseSi, coursePar)
-            // We need to call a function that sets these first.
-            // Since we exposed calculateAllAdjustments, we need to use the
-            // internal state setter or add a new function.
-            // ============================================================
-            
             console.log('[UTIL-VALIDATE] Recalculating handicaps...');
             console.log('[UTIL-VALIDATE]   anchor:', anchorName);
             console.log('[UTIL-VALIDATE]   players:', players.length);
             console.log('[UTIL-VALIDATE]   f1DataString length:', f1DataString.length);
             console.log('[UTIL-VALIDATE]   f2DataString length:', f2DataString.length);
             
-            // v1.12: Use the exposed calculateAllAdjustments function
-            // Note: This function relies on the internal state being set.
-            // Since we're not setting the internal state, we need to use
-            // the function that does set it.
-            
-            // Check if calculateAllAdjustmentsFromRaw exists (v2.53+)
+            // Use calculateAllAdjustmentsFromRaw (v2.53+)
             var calculationResult;
             if (typeof HandicapAdjustment.calculateAllAdjustmentsFromRaw === 'function') {
-                // Use the new function that sets internal state
                 calculationResult = HandicapAdjustment.calculateAllAdjustmentsFromRaw(
                     anchor,
                     players,
@@ -932,8 +918,6 @@ var UtilValidate = (function() {
                     coursePar
                 );
             } else {
-                // Fallback: Use calculateAllAdjustments with internal state set
-                // Note: This only works if the internal state was already set
                 console.warn('[UTIL-VALIDATE] calculateAllAdjustmentsFromRaw not available, trying calculateAllAdjustments');
                 calculationResult = HandicapAdjustment.calculateAllAdjustments(anchor);
             }
@@ -957,6 +941,10 @@ var UtilValidate = (function() {
             return { success: false, error: err.message || 'Unknown error' };
         }
     }
+    
+    // ============================================================
+    // v1.13: COMPARE HANDICAP FIELDS - Fixed field mapping
+    // ============================================================
     
     /**
      * Compare stored handicap fields with recalculated values
@@ -1025,22 +1013,34 @@ var UtilValidate = (function() {
                 continue;
             }
             
-            // Compare each field
+            // v1.13: Define field mappings with fallbacks
             var fieldsToCompare = [
-                { key: 'startingHcp', label: 'Starting Hcp' },
-                { key: 'anchorAdj', label: 'Anchor Adj' },
-                { key: 'perfAdj', label: 'Perf Adj' },
-                { key: 'finalHcp', label: 'Final Hcp' },
-                { key: 'anchorRaw', label: 'Anchor Raw' },
-                { key: 'perfRaw', label: 'Perf Raw' }
+                { key: 'startingHcp', label: 'Starting Hcp', recalcKey: 'startingHcp' },
+                { key: 'anchorAdj', label: 'Anchor Adj', recalcKey: 'anchorAdj' },
+                { key: 'perfAdj', label: 'Perf Adj', recalcKey: 'perfAdj' },
+                { key: 'finalHcp', label: 'Final Hcp', recalcKey: 'newHcp', fallbackKeys: ['rawNew', 'currentHcp'] },
+                { key: 'anchorRaw', label: 'Anchor Raw', recalcKey: 'anchorRaw' },
+                { key: 'perfRaw', label: 'Perf Raw', recalcKey: 'perfRaw' }
             ];
             
             for (var f = 0; f < fieldsToCompare.length; f++) {
                 var field = fieldsToCompare[f];
                 var storedVal = stored[field.key];
-                var recalcVal = recalc[field.key];
                 
-                // Handle decimal comparisons (perfRaw can be 0.5, etc.)
+                // v1.13: Get recalculated value with fallbacks
+                var recalcVal = recalc[field.recalcKey];
+                if (recalcVal === undefined && field.fallbackKeys) {
+                    for (var fb = 0; fb < field.fallbackKeys.length; fb++) {
+                        recalcVal = recalc[field.fallbackKeys[fb]];
+                        if (recalcVal !== undefined) break;
+                    }
+                }
+                
+                // Handle undefined values
+                var storedDisplay = storedVal !== undefined ? storedVal : 'undefined';
+                var recalcDisplay = recalcVal !== undefined ? recalcVal : 'undefined';
+                
+                // Compare
                 var isEqual;
                 if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
                     isEqual = Math.abs(storedVal - recalcVal) < 0.01;
@@ -1051,8 +1051,8 @@ var UtilValidate = (function() {
                 if (!isEqual) {
                     mismatches.push({
                         field: stored.name + ' - ' + field.label,
-                        current: storedVal !== undefined ? storedVal : 'undefined',
-                        expected: recalcVal !== undefined ? recalcVal : 'undefined'
+                        current: storedDisplay,
+                        expected: recalcDisplay
                     });
                     summary.mismatched++;
                 } else {
@@ -1067,18 +1067,22 @@ var UtilValidate = (function() {
             }
         }
         
-        // Compare top-level fields
+        // v1.13: Compare top-level fields with recalculated values
         var topFields = [
-            { key: 'anchor', label: 'Anchor' },
-            { key: 'newAnchor', label: 'New Anchor' },
-            { key: 'needsZeroRise', label: 'Needs Zero Rise' },
-            { key: 'zeroRiseAmount', label: 'Zero Rise Amount' }
+            { key: 'anchor', label: 'Anchor', recalcKey: 'anchor' },
+            { key: 'newAnchor', label: 'New Anchor', recalcKey: 'newAnchorName' },
+            { key: 'needsZeroRise', label: 'Needs Zero Rise', recalcKey: 'needsZeroRise' },
+            { key: 'zeroRiseAmount', label: 'Zero Rise Amount', recalcKey: 'zeroRiseAmount' }
         ];
         
         for (var t = 0; t < topFields.length; t++) {
             var top = topFields[t];
             var storedVal = storedHandicaps[top.key];
-            var recalcVal = recalculated[top.key];
+            var recalcVal = recalculated[top.recalcKey];
+            
+            // Handle undefined values
+            var storedDisplay = storedVal !== undefined ? storedVal : 'undefined';
+            var recalcDisplay = recalcVal !== undefined ? recalcVal : 'undefined';
             
             var isEqual;
             if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
@@ -1090,8 +1094,8 @@ var UtilValidate = (function() {
             if (!isEqual) {
                 mismatches.push({
                     field: top.label,
-                    current: storedVal !== undefined ? storedVal : 'undefined',
-                    expected: recalcVal !== undefined ? recalcVal : 'undefined'
+                    current: storedDisplay,
+                    expected: recalcDisplay
                 });
                 summary.mismatched++;
             } else {
@@ -1198,7 +1202,7 @@ var UtilValidate = (function() {
     }
     
     /**
-     * Build fix payload for handicaps
+     * v1.13: Build fix payload for handicaps - Fixed field mapping
      * 
      * @param {Object} recordData - The record data object
      * @param {Object} recalculated - The recalculated result
@@ -1216,13 +1220,27 @@ var UtilValidate = (function() {
         var recalcPlayers = recalculated.players || [];
         
         var handicapPlayers = recalcPlayers.map(function(p) {
+            // v1.13: Get final handicap - try newHcp, then newAnchor, then rawNew, then currentHcp
+            var finalHcp;
+            if (recalculated.needsZeroRise && p.newAnchor !== undefined) {
+                finalHcp = p.newAnchor;
+            } else if (p.newHcp !== undefined) {
+                finalHcp = p.newHcp;
+            } else if (p.rawNew !== undefined) {
+                finalHcp = p.rawNew;
+            } else if (p.currentHcp !== undefined) {
+                finalHcp = p.currentHcp;
+            } else {
+                finalHcp = p.startingHcp || 0;
+            }
+            
             return {
                 name: p.name,
                 label: p.label || p.name.substring(0, 3).toUpperCase(),
                 startingHcp: p.startingHcp !== undefined ? p.startingHcp : p.currentHcp,
                 anchorAdj: p.anchorAdj || 0,
                 perfAdj: p.perfAdj || 0,
-                finalHcp: recalculated.needsZeroRise ? p.newAnchor : p.newHcp,
+                finalHcp: finalHcp,
                 anchorRaw: p.anchorRaw || 0,
                 perfRaw: p.perfRaw || 0
             };
@@ -1354,7 +1372,7 @@ var UtilValidate = (function() {
             summary.totalFields++;
         }
         
-        // 6-8. Match Play, Team Game, Stroke Game Points - REMOVED in v4.0
+        // 6-8. Removed in v4.0
         
         // 9. Player Totals
         var curTotals = recordData.results?.playerTotals || {};
@@ -1502,7 +1520,7 @@ var UtilValidate = (function() {
         
         var fieldValidation = validateAllFields(recordData, recalculated);
         
-        // v1.11: Also validate handicaps
+        // v1.13: Validate handicaps with fixed field mapping
         var handicapValidation = validateHandicapAdjustment(recordData);
         
         var needsFix = fieldValidation.summary.mismatched > 0 || handicapValidation.needsFix;
@@ -1525,7 +1543,7 @@ var UtilValidate = (function() {
             courseSi: courseSi,
             coursePar: coursePar,
             players: players,
-            // v1.11: Handicap validation results
+            // v1.13: Handicap validation results
             handicapValid: handicapValidation.valid,
             handicapNeedsFix: handicapValidation.needsFix,
             handicapMismatches: handicapValidation.mismatches || [],
@@ -1654,8 +1672,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD FIX PAYLOAD - v4.0: Removed duplicate summary fields
-    // v1.11: Added handicap fix
+    // v1.13: BUILD FIX PAYLOAD - With handicap field mapping
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1789,7 +1806,7 @@ var UtilValidate = (function() {
         }
         
         // ============================================================
-        // v1.11: HANDICAP FIX - Recalculate and update adjustedHandicaps
+        // v1.13: HANDICAP FIX - Fixed field mapping
         // ============================================================
         var handicapValidation = validateHandicapAdjustment(recordData);
         if (handicapValidation.needsFix || handicapValidation.valid === false) {
@@ -1847,7 +1864,7 @@ var UtilValidate = (function() {
         validateRecord: validateRecord,
         buildFixPreview: buildFixPreview,
         buildFixPayload: buildFixPayload,
-        // v1.11: New handicap validation functions
+        // v1.13: Handicap validation functions with fixed field mapping
         validateHandicapAdjustment: validateHandicapAdjustment,
         recalculateHandicapsFromRecord: recalculateHandicapsFromRecord,
         compareHandicapFields: compareHandicapFields,
@@ -1860,13 +1877,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: recalculateHandicapsFromRecord() now properly sets HandicapAdjustment internal state
-   - FIXED: Now calls HandicapAdjustment.calculateAllAdjustmentsFromRaw() if available
-   - ADDED: Proper error handling and logging for handicap recalculation
-   - FIXED: validateHandicapAdjustment() now correctly returns recalculated data
-   - PRESERVED: All existing validation logic from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: compareHandicapFields() now correctly maps recalculated fields
+     - finalHcp → uses newHcp, rawNew, or currentHcp from recalculated data
+     - newHcp → uses rawNew or currentHcp from recalculated data
+   - FIXED: buildHandicapFixPayload() now correctly maps finalHcp from recalculated data
+   - FIXED: anchor and newAnchor comparison now uses recalculated values
+   - This prevents "some value → undefined" corruption in handicap validation
+   - PRESERVED: All existing validation logic from v1.12
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
