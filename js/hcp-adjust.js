@@ -1,18 +1,23 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.53
-KEY CHANGES from v2.52:
-   - ADDED: calculateAllAdjustmentsFromRaw() function for VALIDATE tab
-   - This function sets internal state (allPlayers, flight1Data, flight2Data, courseSi, coursePar)
-   - Then calls calculateAllAdjustments() to get the result
-   - EXPOSED: calculateAllAdjustmentsFromRaw in public API
-   - PRESERVED: ALL v2.52 functions and API unchanged
+VERSION: 2.54
+KEY CHANGES from v2.53:
+   - ADDED: Constant MULTIPLE_NEW_ANCHOR = "*multiple*" for multiple zero handicap scenario
+   - CHANGED: When multiple players have 0 after zero-rise, newAnchorName = "*multiple*"
+   - This makes the state intentional and self-documenting instead of null
+   - CHANGED: displayStoredAdjustment() now handles "*multiple*" value
+   - PRESERVED: ALL v2.53 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
 
 var HandicapAdjustment = (function() {
+    
+    // ============================================================
+    // v2.54: CONSTANT for multiple new anchor scenario
+    // ============================================================
+    var MULTIPLE_NEW_ANCHOR = "*multiple*";
     
     var currentGameId = null;
     var currentArchiveId = null;
@@ -254,6 +259,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Calculate all adjustments
+    // v2.54: Set newAnchorName to "*multiple*" if multiple players have 0
     // ============================================================
     
     function calculateAllAdjustments(anchor) {
@@ -301,13 +307,36 @@ var HandicapAdjustment = (function() {
                 playersWithAdjustments[i].newAnchor = playersWithAdjustments[i].rawNew + zeroRiseAmount;
             }
             playersWithAdjustments.sort(function(a, b) { return a.newAnchor - b.newAnchor; });
-            var newAnchorPlayer = playersWithAdjustments.find(function(p) { return p.newAnchor === 0; });
-            newAnchorName = newAnchorPlayer ? newAnchorPlayer.name : null;
+            
+            // v2.54: Check for multiple players with 0
+            var zeroPlayers = playersWithAdjustments.filter(function(p) { return p.newAnchor === 0; });
+            if (zeroPlayers.length > 1) {
+                // Multiple players have 0 - set to "*multiple*"
+                newAnchorName = MULTIPLE_NEW_ANCHOR;
+                console.log('[HCP-ADJUST] Multiple players with 0 newAnchor, setting newAnchorName to:', MULTIPLE_NEW_ANCHOR);
+                console.log('[HCP-ADJUST] Zero players:', zeroPlayers.map(function(p) { return p.name; }).join(', '));
+            } else if (zeroPlayers.length === 1) {
+                newAnchorName = zeroPlayers[0].name;
+            } else {
+                newAnchorName = null;
+            }
         } else {
             for (var i = 0; i < playersWithAdjustments.length; i++) {
                 playersWithAdjustments[i].newHcp = playersWithAdjustments[i].rawNew;
             }
             playersWithAdjustments.sort(function(a, b) { return a.newHcp - b.newHcp; });
+            
+            // v2.54: Check for multiple players with 0 when no zero-rise needed
+            var zeroPlayers = playersWithAdjustments.filter(function(p) { return p.newHcp === 0; });
+            if (zeroPlayers.length > 1) {
+                newAnchorName = MULTIPLE_NEW_ANCHOR;
+                console.log('[HCP-ADJUST] Multiple players with 0 newHcp, setting newAnchorName to:', MULTIPLE_NEW_ANCHOR);
+                console.log('[HCP-ADJUST] Zero players:', zeroPlayers.map(function(p) { return p.name; }).join(', '));
+            } else if (zeroPlayers.length === 1) {
+                newAnchorName = zeroPlayers[0].name;
+            } else {
+                newAnchorName = null;
+            }
         }
         
         return {
@@ -854,7 +883,8 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display stored adjustment from history record
+    // v2.54: Display stored adjustment from history record
+    // Handles "*multiple*" newAnchor value
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
@@ -894,11 +924,14 @@ var HandicapAdjustment = (function() {
             };
         });
         
+        // v2.54: Pass through the newAnchor value (may be "*multiple*")
+        var newAnchorValue = adjustedHandicaps.newAnchor || null;
+        
         var calculationResult = {
             players: players,
             needsZeroRise: adjustedHandicaps.needsZeroRise || false,
             zeroRiseAmount: adjustedHandicaps.zeroRiseAmount || 0,
-            newAnchorName: adjustedHandicaps.newAnchor
+            newAnchorName: newAnchorValue
         };
         
         showAdjustmentTable(calculationResult, anchorName, true);
@@ -1338,14 +1371,14 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.53";
+    window.HANDICAP_ADJUST_VERSION = "2.54";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
     // ============================================================
-    // v2.53: EXPOSE calculateAllAdjustmentsFromRaw for VALIDATE tab
+    // v2.54: EXPOSE MULTIPLE_NEW_ANCHOR constant for other files
     // ============================================================
     return {
         init: init,
@@ -1355,7 +1388,8 @@ var HandicapAdjustment = (function() {
         checkUrlAndInit: checkUrlAndInit,
         displayStoredAdjustment: displayStoredAdjustment,
         calculateAllAdjustments: calculateAllAdjustments,
-        calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw  // v2.53: New for VALIDATE
+        calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw,
+        MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR  // v2.54: Exposed for other files
     };
     
 })();
@@ -1365,13 +1399,14 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.53
-KEY CHANGES from v2.52:
-   - ADDED: calculateAllAdjustmentsFromRaw() function for VALIDATE tab
-   - This function sets internal state (allPlayers, flight1Data, flight2Data, courseSi, coursePar)
-   - Then calls calculateAllAdjustments() to get the result
-   - EXPOSED: calculateAllAdjustmentsFromRaw in public API
-   - PRESERVED: ALL v2.52 functions and API unchanged
+VERSION: 2.54
+KEY CHANGES from v2.53:
+   - ADDED: Constant MULTIPLE_NEW_ANCHOR = "*multiple*" for multiple zero handicap scenario
+   - CHANGED: When multiple players have 0 after zero-rise, newAnchorName = "*multiple*"
+   - This makes the state intentional and self-documenting instead of null
+   - CHANGED: displayStoredAdjustment() now handles "*multiple*" value
+   - EXPOSED: MULTIPLE_NEW_ANCHOR in public API for other files to use
+   - PRESERVED: ALL v2.53 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
