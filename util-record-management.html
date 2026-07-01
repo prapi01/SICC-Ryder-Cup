@@ -1,14 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - ADDED: Game Engine dependencies to script section
-     - js/game-data.js
-     - js/game-order.js
-     - js/game-loader.js
-     - js/hcp-adjust.js
-   - This enables handicap adjustment validation in the VALIDATE tab
-   - PRESERVED: All existing functionality from v1.25
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - ADDED: Handicap Adjustment card in VALIDATE tab (above Photo card)
+   - ADDED: validateHandicapCard container for Handicap Adjustment table
+   - REMOVED: Detailed Validation card (now integrated into Validation Summary)
+   - This completes the handicap validation UI layout
+   - PRESERVED: All existing functionality from v1.26
 DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
@@ -143,7 +141,6 @@ STATUS: Ready for integration
         .btn-load { background: #1a2a1a; border: 1px solid #4caf50; color: #4caf50; }
         .btn-photo { background: #2a2a0a; border: 1px solid #ffaa44; color: #ffaa44; }
         .btn-photo:hover { background: #3a3a0a; }
-        /* v1.25: Apply Photo button */
         .btn-photo-apply {
             border-color: #8b5cf6;
             color: #8b5cf6;
@@ -655,6 +652,12 @@ STATUS: Ready for integration
                 <div id="validateTR"></div>
             </div>
             
+            <!-- v1.27: Handicap Adjustment Card -->
+            <div class="card" style="border-color: #ffaa44;">
+                <div class="card-title" style="color: #ffaa44;">🏌️ HANDICAP ADJUSTMENT</div>
+                <div id="validateHandicapCard"></div>
+            </div>
+            
             <!-- Photo Status Section -->
             <div class="card" style="border-color: #ffaa44;">
                 <div class="card-title photo">📸 CELEBRATION PHOTO</div>
@@ -673,11 +676,7 @@ STATUS: Ready for integration
                 <div id="validateSummary"></div>
             </div>
             
-            <!-- Validation Details Section -->
-            <div class="card" style="border-color: #4a8af4; display:none;" id="validateDetailsCard">
-                <div class="card-title" style="color:#4a8af4;">📊 DETAILED VALIDATION</div>
-                <div id="validateDetails" style="font-size:0.8rem; max-height:300px; overflow-y:auto;"></div>
-            </div>
+            <!-- v1.27: Detailed Validation removed - now integrated into Validation Summary -->
             
             <div class="card" style="border-color: #ffaa44; display:none;" id="validateFixCard">
                 <div class="card-title">🔧 Fix Record</div>
@@ -868,15 +867,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.26</div>
+<div class="version-tag">v1.27</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.26
+// VERSION: 1.27
 // ============================================================
 
-var APP_VERSION = "1.26";
+var APP_VERSION = "1.27";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -933,7 +932,7 @@ function renderVersionBadges() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.26...');
+console.log('[REC-MGMT] Initializing v1.27...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1019,7 +1018,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.26 ready', 'success');
+    log('Record Management v1.27 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1029,7 +1028,7 @@ if (typeof log === 'function') {
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.26 ready');
+    console.log('[REC-MGMT] Record Management v1.27 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1039,15 +1038,13 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - ADDED: Game Engine dependencies to script section
-     - js/game-data.js
-     - js/game-order.js
-     - js/game-loader.js
-     - js/hcp-adjust.js
-   - This enables handicap adjustment validation in the VALIDATE tab
-   - PRESERVED: All existing functionality from v1.25
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - ADDED: Handicap Adjustment card in VALIDATE tab (above Photo card)
+   - ADDED: validateHandicapCard container for Handicap Adjustment table
+   - REMOVED: Detailed Validation card (now integrated into Validation Summary)
+   - This completes the handicap validation UI layout
+   - PRESERVED: All existing functionality from v1.26
 DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
