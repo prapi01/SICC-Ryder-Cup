@@ -1,24 +1,22 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: compareHandicapFields() now receives anchorName parameter
-   - FIXED: anchor comparison now uses passed anchorName instead of recalculated data
-   - FIXED: newAnchor comparison now handles "*multiple*" as valid state
-   - FIXED: buildHandicapFixPayload() now preserves existing values when recalc is undefined/null
-   - FIXED: Safety rule: never overwrite valid stored values with undefined/null
-   - ADDED: SKIP validation for newAnchor when value is null, undefined, or "*multiple*"
-   - PRESERVED: All existing validation logic from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: courseSi extraction in recalculateHandicapsFromRecord()
+   - Now checks recordData.gameInfo?.course?.si first (where SI is actually stored)
+   - Fallback to recordData.course?.si, then recordData.results?.si, then empty array
+   - This fixes handicap calculation using default SI instead of actual course SI
+   - PRESERVED: All existing validation logic from v1.14
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.14";
+window.UTIL_VALIDATE_VERSION = "1.15";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.14 - Fixed anchor/newAnchor comparison, safety rule");
+    console.log("[UTIL-VALIDATE] Initializing v1.15 - Fixed courseSI extraction");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -838,7 +836,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.14: HANDICAP ADJUSTMENT VALIDATION - Fixed anchor/newAnchor
+    // v1.15: HANDICAP ADJUSTMENT VALIDATION - Fixed courseSI extraction
     // ============================================================
     
     /**
@@ -897,8 +895,23 @@ var UtilValidate = (function() {
             // Get flight data strings
             var f1DataString = recordData.f1DataString || '';
             var f2DataString = recordData.f2DataString || '';
-            var courseSi = recordData.course?.si || [];
-            var coursePar = recordData.course?.par || [];
+            
+            // v1.15: FIX - Get SI from the correct location
+            // The record stores course data in different places depending on how it was created
+            // 1. gameInfo.course.si - Standard location (most recent)
+            // 2. course.si - Older location (some records)
+            // 3. results.si - Legacy location (rare)
+            var courseSi = (recordData.gameInfo?.course?.si) || 
+                           (recordData.course?.si) || 
+                           (recordData.results?.si) || 
+                           [];
+            
+            var coursePar = (recordData.gameInfo?.course?.par) || 
+                            (recordData.course?.par) || 
+                            [];
+            
+            console.log('[UTIL-VALIDATE] courseSi:', courseSi ? courseSi.length : 0);
+            console.log('[UTIL-VALIDATE] coursePar:', coursePar ? coursePar.length : 0);
             
             console.log('[UTIL-VALIDATE] Recalculating handicaps...');
             console.log('[UTIL-VALIDATE]   anchor:', anchorName);
@@ -1601,8 +1614,16 @@ var UtilValidate = (function() {
         var f1Scores = parseDataString(f1DataString);
         var f2Scores = parseDataString(f2DataString);
         var players = recordData.players || [];
-        var courseSi = (recordData.gameInfo?.course?.si) || (recordData.course?.si) || [];
-        var coursePar = (recordData.gameInfo?.course?.par) || (recordData.course?.par) || [];
+        
+        // v1.15: Get SI from the correct location
+        var courseSi = (recordData.gameInfo?.course?.si) || 
+                       (recordData.course?.si) || 
+                       (recordData.results?.si) || 
+                       [];
+        
+        var coursePar = (recordData.gameInfo?.course?.par) || 
+                        (recordData.course?.par) || 
+                        [];
         
         if (!f1Scores && !f2Scores) {
             return { valid: false, error: 'No valid flight data found' };
@@ -1992,15 +2013,13 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: compareHandicapFields() now receives anchorName parameter
-   - FIXED: anchor comparison now uses passed anchorName instead of recalculated data
-   - FIXED: newAnchor comparison now handles "*multiple*" as valid state
-   - FIXED: buildHandicapFixPayload() now preserves existing values when recalc is undefined/null
-   - FIXED: Safety rule: never overwrite valid stored values with undefined/null
-   - ADDED: SKIP validation for newAnchor when value is null, undefined, or "*multiple*"
-   - PRESERVED: All existing validation logic from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: courseSi extraction in recalculateHandicapsFromRecord()
+   - Now checks recordData.gameInfo?.course?.si first (where SI is actually stored)
+   - Fallback to recordData.course?.si, then recordData.results?.si, then empty array
+   - This fixes handicap calculation using default SI instead of actual course SI
+   - PRESERVED: All existing validation logic from v1.14
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
