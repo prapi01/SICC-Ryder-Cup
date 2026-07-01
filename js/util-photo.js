@@ -1,19 +1,21 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - CHANGED: Default folder from 'celebrations/' to 'celebration/'
-   - CHANGED: Removed automatic PROD_/DEV_ prefix from filename
-   - CHANGED: Filename now uses user-provided value without modification
-   - PRESERVED: All existing functionality from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - REMOVED: Image resizing to 1200px max dimension
+   - REMOVED: JPEG compression at 85% quality
+   - CHANGED: Now uploads original image without any modification
+   - CHANGED: Uses canvas to preserve image but at FULL quality (1.0)
+   - This ensures uploaded photos retain original quality and file size
+   - PRESERVED: All existing functionality from v1.13
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.13";
+window.PHOTO_UTIL_VERSION = "1.14";
 
-console.log('[PHOTO] Loading util-photo.js v1.13...');
+console.log('[PHOTO] Loading util-photo.js v1.14 - No resizing, full quality');
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -250,7 +252,7 @@ function loadPhotoFromUrl() {
 }
 
 // ============================================================
-// UPLOAD TO STORAGE
+// v1.14: UPLOAD TO STORAGE - NO RESIZING, FULL QUALITY
 // ============================================================
 
 function uploadPhotoToStorage() {
@@ -274,14 +276,14 @@ function uploadPhotoToStorage() {
         return;
     }
     
-    // v1.13: Use the folder as-is, default to 'celebration/'
+    // Use the folder as-is, default to 'celebration/'
     var folderInput = document.getElementById('photoStorageFolder');
     var folder = folderInput ? folderInput.value.trim() : 'celebration/';
     if (folder && !folder.endsWith('/')) {
         folder = folder + '/';
     }
     
-    // v1.13: Use filename as-is, no prefix added
+    // Use filename as-is, no prefix added
     var fullPath = folder + filename;
     currentFullPath = fullPath;
     
@@ -300,23 +302,19 @@ function uploadPhotoToStorage() {
     photoLog('Uploading to: ' + fullPath, 'info');
     console.log('[PHOTO] Uploading to:', fullPath);
     
+    // v1.14: Use canvas to preserve original dimensions and FULL quality
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     
-    var maxDim = 1200;
+    // Use the original image dimensions - NO RESIZING
     var width = currentPhotoData.width;
     var height = currentPhotoData.height;
-    
-    if (width > maxDim || height > maxDim) {
-        var ratio = Math.min(maxDim / width, maxDim / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-    }
     
     canvas.width = width;
     canvas.height = height;
     ctx.drawImage(currentPhotoData, 0, 0, width, height);
     
+    // v1.14: Use FULL quality (1.0) - NO COMPRESSION
     canvas.toBlob(function(blob) {
         if (!blob) {
             photoLog('❌ Failed to convert image', 'error');
@@ -325,6 +323,9 @@ function uploadPhotoToStorage() {
             }
             return;
         }
+        
+        console.log('[PHOTO] Image blob size:', (blob.size / 1024).toFixed(1), 'KB');
+        photoLog('Image size: ' + (blob.size / 1024).toFixed(1) + ' KB', 'info');
         
         var storageRef = photoStorage.ref(fullPath);
         var uploadTask = storageRef.put(blob);
@@ -381,7 +382,7 @@ function uploadPhotoToStorage() {
                 });
             }
         );
-    }, 'image/jpeg', 0.85);
+    }, 'image/jpeg', 1.0);  // v1.14: FULL QUALITY (no compression)
 }
 
 // ============================================================
@@ -1143,8 +1144,8 @@ function showPhotoInfoGuide() {
                 <div class="info-section-title">⚠️ Important Notes</div>
                 <ul class="info-warnings">
                     <li><strong>CORS:</strong> The image URL must allow cross-origin access</li>
-                    <li><strong>Image Size:</strong> Images are automatically resized to max 1200px</li>
-                    <li><strong>File Format:</strong> Images are uploaded as JPEG with 85% quality</li>
+                    <li><strong>Original Quality:</strong> Images are uploaded at full quality, no resizing or compression</li>
+                    <li><strong>File Format:</strong> Images are uploaded as JPEG</li>
                     <li><strong>Environment:</strong> PROD and DEV have separate Storage buckets</li>
                 </ul>
             </div>
@@ -1340,17 +1341,18 @@ function autoInit() {
 
 autoInit();
 
-console.log('[PHOTO-UTIL] v1.13 loaded (celebration/ folder, no prefix)');
+console.log('[PHOTO-UTIL] v1.14 loaded (no resizing, full quality)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - CHANGED: Default folder from 'celebrations/' to 'celebration/'
-   - CHANGED: Removed automatic PROD_/DEV_ prefix from filename
-   - CHANGED: Filename now uses user-provided value without modification
-   - CHANGED: Default filename to 'GM_photo_YYYY-MM-DDTHH-MM-SS.jpg'
-   - PRESERVED: All existing functionality from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - REMOVED: Image resizing to 1200px max dimension
+   - REMOVED: JPEG compression at 85% quality
+   - CHANGED: Now uploads original image without any modification
+   - CHANGED: Uses canvas to preserve image but at FULL quality (1.0)
+   - This ensures uploaded photos retain original quality and file size
+   - PRESERVED: All existing functionality from v1.13
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
