@@ -1,13 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.51
-KEY CHANGES from v2.50:
-   - CHANGED: saveAdjustmentToFirestore() now uses WRV.write() for reliability
-   - CHANGED: updateAnchorAndRecalculate() now uses WRV.update() for reliability
-   - CHANGED: updatePlayerProfiles() now uses WRV.write() for reliability
-   - ADDED: Promise wrapper for WRV to maintain callback compatibility
-   - ADDED: Fallback to direct write/update if WRV not available
-   - PRESERVED: ALL v2.50 functions and API unchanged
+VERSION: 2.52
+KEY CHANGES from v2.51:
+   - EXPOSED: calculateAllAdjustments() in public API
+   - This allows VALIDATE tab to recalculate handicaps from raw data
+   - PRESERVED: ALL v2.51 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
@@ -1313,19 +1310,23 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.51";
+    window.HANDICAP_ADJUST_VERSION = "2.52";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
+    // ============================================================
+    // v2.52: EXPOSE calculateAllAdjustments for VALIDATE tab
+    // ============================================================
     return {
         init: init,
         initForViewer: initForViewer,
         initForHistory: initForHistory,
         initReadOnly: initReadOnly,
         checkUrlAndInit: checkUrlAndInit,
-        displayStoredAdjustment: displayStoredAdjustment
+        displayStoredAdjustment: displayStoredAdjustment,
+        calculateAllAdjustments: calculateAllAdjustments  // v2.52: Exposed for VALIDATE
     };
     
 })();
@@ -1335,14 +1336,11 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.51
-KEY CHANGES from v2.50:
-   - CHANGED: saveAdjustmentToFirestore() now uses WRV.write() for reliability
-   - CHANGED: updateAnchorAndRecalculate() now uses WRV.update() for reliability
-   - CHANGED: updatePlayerProfiles() now uses WRV.write() for reliability
-   - ADDED: Promise wrapper for WRV to maintain callback compatibility
-   - ADDED: Fallback to direct write/update if WRV not available
-   - PRESERVED: ALL v2.50 functions and API unchanged
+VERSION: 2.52
+KEY CHANGES from v2.51:
+   - EXPOSED: calculateAllAdjustments() in public API
+   - This allows VALIDATE tab to recalculate handicaps from raw data
+   - PRESERVED: ALL v2.51 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
