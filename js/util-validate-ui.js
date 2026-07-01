@@ -1,22 +1,20 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - ADDED: Separate Handicap Adjustment card above Photo card
-   - REMOVED: Handicap table from Validation Summary card
-   - CHANGED: Validation Summary now shows overall status, status info, scrollable detailed validation table (300px), and summary counts
-   - CHANGED: Detailed Validation table shows ALL field mismatches (TR, T-1, T-2, Strk, Player Totals, ClinchedAt, etc.)
-   - REMOVED: Separate Detailed Validation card (now integrated into Validation Summary)
-   - PRESERVED: All existing rendering functions from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: formatSingleHandicapValue() now handles undefined/null/NaN values
+   - FIXED: NaN no longer appears in handicap table
+   - CHANGED: Undefined raw values default to 0
+   - PRESERVED: All existing rendering functions from v1.11
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.11";
+window.UTIL_VALIDATE_UI_VERSION = "1.12";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.11 - Separate handicap card, integrated detailed validation");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.12 - Fixed NaN in handicap table");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -611,12 +609,12 @@ var UtilValidateUI = (function() {
             // Get values
             var ancCur = stored ? stored.anchorAdj : 0;
             var ancExp = recalc ? recalc.anchorAdj : 0;
-            var ancRawCur = stored ? stored.anchorRaw : 0;
+            var ancRawCur = stored ? stored.anchorRaw : undefined;
             var ancRawExp = recalc ? recalc.anchorRaw : 0;
             
             var perfCur = stored ? stored.perfAdj : 0;
             var perfExp = recalc ? recalc.perfAdj : 0;
-            var perfRawCur = stored ? stored.perfRaw : 0;
+            var perfRawCur = stored ? stored.perfRaw : undefined;
             var perfRawExp = recalc ? recalc.perfRaw : 0;
             
             // Get final handicap from recalc
@@ -627,7 +625,7 @@ var UtilValidateUI = (function() {
             var perfMatch = fieldStatus.perfAdj;
             var finalMatch = (finalCur === finalExp) || (typeof finalCur === 'number' && typeof finalExp === 'number' && Math.abs(finalCur - finalExp) < 0.01);
             
-            // Format: adjustment [raw] with colors
+            // v1.12: Format with NaN protection
             var ancDisplay = formatHandicapCell(ancCur, ancRawCur, ancExp, ancRawExp);
             var perfDisplay = formatHandicapCell(perfCur, perfRawCur, perfExp, perfRawExp);
             
@@ -761,7 +759,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.10: FORMAT HANDICAP CELL - adjustment [raw] with colors
+    // v1.12: FORMAT HANDICAP CELL - with NaN protection
     // ============================================================
     
     function formatHandicapCell(curAdj, curRaw, expAdj, expRaw) {
@@ -774,17 +772,22 @@ var UtilValidateUI = (function() {
         };
     }
     
+    // v1.12: Fixed - handles undefined/null/NaN values
     function formatSingleHandicapValue(adj, raw) {
-        var adjAbs = Math.abs(adj);
-        var rawAbs = Math.abs(raw);
+        // Safety checks - handle undefined, null, NaN
+        var adjVal = (adj !== undefined && adj !== null && !isNaN(adj)) ? adj : 0;
+        var rawVal = (raw !== undefined && raw !== null && !isNaN(raw)) ? raw : 0;
+        
+        var adjAbs = Math.abs(adjVal);
+        var rawAbs = Math.abs(rawVal);
         
         var adjColor = '#888';
         var rawColor = '#888';
         
-        if (adj > 0) {
+        if (adjVal > 0) {
             adjColor = '#4caf50';
             rawColor = '#ff6b6b';
-        } else if (adj < 0) {
+        } else if (adjVal < 0) {
             adjColor = '#ff6b6b';
             rawColor = '#4caf50';
         } else {
@@ -1700,18 +1703,16 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.11 - Separate handicap card, integrated detailed validation');
+console.log('[UTIL-VALIDATE-UI] v1.12 - Fixed NaN in handicap table');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - ADDED: Separate Handicap Adjustment card above Photo card
-   - REMOVED: Handicap table from Validation Summary card
-   - CHANGED: Validation Summary now shows overall status, status info, scrollable detailed validation table (300px), and summary counts
-   - CHANGED: Detailed Validation table shows ALL field mismatches (TR, T-1, T-2, Strk, Player Totals, ClinchedAt, etc.)
-   - REMOVED: Separate Detailed Validation card (now integrated into Validation Summary)
-   - PRESERVED: All existing rendering functions from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: formatSingleHandicapValue() now handles undefined/null/NaN values
+   - FIXED: NaN no longer appears in handicap table
+   - CHANGED: Undefined raw values default to 0
+   - PRESERVED: All existing rendering functions from v1.11
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
