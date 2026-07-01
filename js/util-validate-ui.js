@@ -1,21 +1,22 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: Handicap mismatch section to renderValidationSummary()
-   - ADDED: renderHandicapMismatches() function for dedicated handicap display
-   - CHANGED: renderValidationSummary() now shows handicap status and mismatches
-   - CHANGED: Validation summary now includes handicap field count
-   - PRESERVED: All existing photo and rendering functions from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: renderHandicapValidationPanel() - full handicap table with comparison
+   - ADDED: renderHandicapTableRow() - single row rendering with color coding
+   - CHANGED: renderValidateResults() now calls handicap validation panel
+   - ADDED: Handicap panel shows: Player, Old, Anc (Current→Expected), Perf (Current→Expected), New (Current→Expected)
+   - ADDED: Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
+   - PRESERVED: All existing photo and rendering functions from v1.06
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.06";
+window.UTIL_VALIDATE_UI_VERSION = "1.07";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.06 - Handicap mismatch display");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.07 - Handicap validation panel");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -414,7 +415,264 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.06: RENDER HANDICAP MISMATCHES
+    // v1.07: RENDER HANDICAP VALIDATION PANEL
+    // ============================================================
+    
+    function renderHandicapValidationPanel(validationResult, containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Check if handicap data exists
+        var storedHandicaps = validationResult.handicapStored;
+        var recalculated = validationResult.handicapRecalculated;
+        var isValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
+        var mismatches = validationResult.handicapMismatches || [];
+        var matches = validationResult.handicapMatches || [];
+        var summary = validationResult.handicapSummary || { totalFields: 0, mismatched: 0, matched: 0 };
+        
+        // If no stored handicaps, show missing state
+        if (!storedHandicaps) {
+            container.innerHTML = `
+                <div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span style="font-size:1.1rem;">❌</span>
+                        <span style="font-weight:600; color:#ff6b6b; font-size:0.85rem;">Handicap Adjustment Data</span>
+                        <span style="font-size:0.7rem; color:#ff6b6b; margin-left:auto;">MISSING</span>
+                    </div>
+                    <div style="font-size:0.75rem; color:#888; padding:4px 0;">
+                        No adjustedHandicaps data found in this record.
+                    </div>
+                    <div style="font-size:0.7rem; color:#ffaa44; padding:4px 0; border-top:1px solid #1a1a1a; margin-top:4px;">
+                        Click "Fix Record" to calculate and add handicap data.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Check if recalculated data exists
+        if (!recalculated) {
+            container.innerHTML = `
+                <div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span style="font-size:1.1rem;">⚠️</span>
+                        <span style="font-weight:600; color:#ffaa44; font-size:0.85rem;">Handicap Adjustment Data</span>
+                        <span style="font-size:0.7rem; color:#ffaa44; margin-left:auto;">CANNOT RECALCULATE</span>
+                    </div>
+                    <div style="font-size:0.75rem; color:#888; padding:4px 0;">
+                        ${validationResult.handicapError || 'Could not recalculate handicaps from raw data.'}
+                    </div>
+                    <div style="font-size:0.7rem; color:#ffaa44; padding:4px 0; border-top:1px solid #1a1a1a; margin-top:4px;">
+                        Ensure all 18 holes are complete and valid.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Build the handicap table
+        var storedPlayers = storedHandicaps.players || [];
+        var recalcPlayers = recalculated.players || [];
+        
+        // Build maps for quick lookup
+        var storedMap = {};
+        for (var i = 0; i < storedPlayers.length; i++) {
+            storedMap[storedPlayers[i].name] = storedPlayers[i];
+        }
+        
+        var recalcMap = {};
+        for (var i = 0; i < recalcPlayers.length; i++) {
+            recalcMap[recalcPlayers[i].name] = recalcPlayers[i];
+        }
+        
+        // Get all player names (union of stored and recalculated)
+        var allNames = {};
+        for (var name in storedMap) { allNames[name] = true; }
+        for (var name in recalcMap) { allNames[name] = true; }
+        var playerNames = Object.keys(allNames);
+        
+        // Sort by team then handicap
+        var players = [];
+        for (var i = 0; i < playerNames.length; i++) {
+            var name = playerNames[i];
+            var stored = storedMap[name];
+            var recalc = recalcMap[name];
+            var team = stored ? stored.team : (recalc ? recalc.team : 'B');
+            var startingHcp = stored ? stored.startingHcp : (recalc ? recalc.startingHcp : 0);
+            players.push({
+                name: name,
+                label: stored ? stored.label : (recalc ? recalc.label : name.substring(0, 3).toUpperCase()),
+                team: team,
+                startingHcp: startingHcp,
+                stored: stored,
+                recalc: recalc
+            });
+        }
+        
+        // Sort by team (A then B), then by starting handicap
+        players.sort(function(a, b) {
+            if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
+            return a.startingHcp - b.startingHcp;
+        });
+        
+        // Build HTML
+        var html = '<div style="background:#0a0a0a; border-radius:8px; padding:12px; border:1px solid #2a2a2a;">';
+        
+        // Header
+        var statusIcon = isValid ? '✅' : '❌';
+        var statusColor = isValid ? '#4caf50' : '#ff6b6b';
+        var statusText = isValid ? 'VALID' : 'NEEDS FIX';
+        
+        html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">';
+        html += '<span style="font-size:1.1rem;">🏌️</span>';
+        html += '<span style="font-weight:600; color:#ffaa44; font-size:0.85rem;">Handicap Adjustment Validation</span>';
+        html += '<span style="font-size:0.7rem; color:' + statusColor + '; margin-left:auto; font-weight:600;">' + statusIcon + ' ' + statusText + '</span>';
+        html += '</div>';
+        
+        // Summary line
+        html += '<div style="display:flex; gap:12px; font-size:0.65rem; color:#888; margin-bottom:8px; padding:4px 0; border-bottom:1px solid #1a1a1a;">';
+        html += '<span>Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.anchor || 'Unknown') + '</strong></span>';
+        html += '<span>New Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.newAnchor || 'None') + '</strong></span>';
+        html += '<span>Zero Rise: <strong style="color:#4caf50;">' + (storedHandicaps.zeroRiseAmount || 0) + '</strong></span>';
+        if (summary.totalFields > 0) {
+            html += '<span style="margin-left:auto;">✅ ' + summary.matched + ' ❌ ' + summary.mismatched + '</span>';
+        }
+        html += '</div>';
+        
+        // Table
+        html += '<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
+        html += '<table style="width:100%; border-collapse:collapse; font-size:0.7rem; min-width:400px;">';
+        
+        // Table header
+        html += '<thead><tr style="background:#1a1a1a;">';
+        html += '<th style="padding:4px 3px; text-align:left; font-size:0.65rem; color:#888;">Player</th>';
+        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;">Old</th>';
+        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;" colspan="2">Anc</th>';
+        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;" colspan="2">Perf</th>';
+        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;" colspan="2">New</th>';
+        html += '<th style="padding:4px 3px; text-align:center; font-size:0.65rem; color:#888;">Status</th>';
+        html += '</tr></thead><tbody>';
+        
+        // Sub-header for current/expected
+        html += '<tr style="background:#0a0a0a; border-bottom:1px solid #2a2a2a;">';
+        html += '<td style="padding:2px 3px;"></td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#555;"></td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#4caf50;">Cur</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#ffaa44;">Exp</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#4caf50;">Cur</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#ffaa44;">Exp</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#4caf50;">Cur</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#ffaa44;">Exp</td>';
+        html += '<td style="padding:2px 3px; text-align:center; font-size:0.55rem; color:#555;"></td>';
+        html += '</tr>';
+        
+        var currentTeam = null;
+        var hasMismatch = false;
+        
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            var stored = p.stored;
+            var recalc = p.recalc;
+            
+            // Team separator
+            if (p.team !== currentTeam) {
+                currentTeam = p.team;
+                var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                html += '<tr style="background:#1a2a1a; border-top:2px solid #000;">';
+                html += '<td colspan="9" style="padding:4px 3px; text-align:center; color:#4caf50; font-weight:600; font-size:0.7rem;">' + teamLabel + '</td>';
+                html += '</tr>';
+            }
+            
+            // Determine if this player has any mismatches
+            var playerHasMismatch = false;
+            var fields = ['anchorAdj', 'perfAdj', 'finalHcp', 'anchorRaw', 'perfRaw'];
+            var fieldLabels = ['Anc', 'Perf', 'New', 'AncRaw', 'PerfRaw'];
+            
+            // Check each field
+            var fieldStatus = {};
+            for (var f = 0; f < fields.length; f++) {
+                var field = fields[f];
+                var storedVal = stored ? stored[field] : undefined;
+                var recalcVal = recalc ? recalc[field] : undefined;
+                var isEqual;
+                if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
+                    isEqual = Math.abs(storedVal - recalcVal) < 0.01;
+                } else {
+                    isEqual = storedVal === recalcVal;
+                }
+                fieldStatus[field] = isEqual;
+                if (!isEqual) playerHasMismatch = true;
+            }
+            
+            if (playerHasMismatch) hasMismatch = true;
+            
+            // Starting handicap
+            var stDisplay = (p.startingHcp !== undefined && p.startingHcp !== null) ? p.startingHcp : '?';
+            var isAnchor = stored && storedHandicaps.anchor === p.name;
+            var isNewAnchor = stored && storedHandicaps.newAnchor === p.name;
+            
+            // Get values
+            var ancCur = stored ? stored.anchorAdj : '—';
+            var ancExp = recalc ? recalc.anchorAdj : '—';
+            var perfCur = stored ? stored.perfAdj : '—';
+            var perfExp = recalc ? recalc.perfAdj : '—';
+            var finalCur = stored ? stored.finalHcp : '—';
+            var finalExp = recalc ? recalc.finalHcp : '—';
+            
+            // Color coding
+            var ancMatch = fieldStatus.anchorAdj;
+            var perfMatch = fieldStatus.perfAdj;
+            var finalMatch = fieldStatus.finalHcp;
+            
+            var ancColor = ancMatch ? '#4caf50' : '#ff6b6b';
+            var perfColor = perfMatch ? '#4caf50' : '#ff6b6b';
+            var finalColor = finalMatch ? '#4caf50' : '#ff6b6b';
+            
+            var stColor = isAnchor ? '#ffaa44' : '#ffffff';
+            
+            var rowBg = playerHasMismatch ? '#1a0a0a' : '#0a0a0a';
+            html += '<tr style="border-bottom:1px solid #1a1a1a; background:' + rowBg + ';">';
+            html += '<td style="padding:4px 3px; text-align:left; font-weight:600; color:' + stColor + ';">' + escapeHtml(p.label) + (isAnchor ? ' ⭐' : '') + (isNewAnchor ? ' 👑' : '') + '</td>';
+            html += '<td style="padding:4px 3px; text-align:center; color:' + stColor + ';">' + stDisplay + '</td>';
+            
+            // Anc column: Cur | Exp
+            html += '<td style="padding:4px 3px; text-align:center; color:' + ancColor + ';">' + escapeHtml(String(ancCur)) + '</td>';
+            html += '<td style="padding:4px 3px; text-align:center; color:' + (ancMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (ancMatch ? '400' : '700') + ';">' + escapeHtml(String(ancExp)) + '</td>';
+            
+            // Perf column: Cur | Exp
+            html += '<td style="padding:4px 3px; text-align:center; color:' + perfColor + ';">' + escapeHtml(String(perfCur)) + '</td>';
+            html += '<td style="padding:4px 3px; text-align:center; color:' + (perfMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (perfMatch ? '400' : '700') + ';">' + escapeHtml(String(perfExp)) + '</td>';
+            
+            // New column: Cur | Exp
+            html += '<td style="padding:4px 3px; text-align:center; color:' + finalColor + '; font-weight:600;">' + escapeHtml(String(finalCur)) + '</td>';
+            html += '<td style="padding:4px 3px; text-align:center; color:' + (finalMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (finalMatch ? '400' : '700') + ';">' + escapeHtml(String(finalExp)) + '</td>';
+            
+            // Status
+            var statusIcon2 = playerHasMismatch ? '❌' : '✅';
+            html += '<td style="padding:4px 3px; text-align:center;">' + statusIcon2 + '</td>';
+            
+            html += '</tr>';
+        }
+        
+        html += '</tbody></table></div>';
+        
+        // Footer - mismatch summary
+        if (hasMismatch) {
+            html += '<div style="font-size:0.7rem; color:#ff6b6b; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
+            html += '❌ ' + (summary.mismatched || 0) + ' field mismatch' + ((summary.mismatched || 0) > 1 ? 'es' : '') + ' found. Click "Fix Record" to correct.';
+            html += '</div>';
+        } else {
+            html += '<div style="font-size:0.7rem; color:#4caf50; padding:6px 0; border-top:1px solid #1a1a1a; margin-top:6px;">';
+            html += '✅ All handicap fields match recalculated values.';
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // v1.06: RENDER HANDICAP MISMATCHES (legacy - kept for compatibility)
     // ============================================================
     
     function renderHandicapMismatches(handicapMismatches, handicapMatches, handicapSummary, handicapValid, containerId) {
@@ -875,6 +1133,12 @@ var UtilValidateUI = (function() {
         
         var matchPointsPerHole = matchData.matchPointsPerHole || [];
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
+        
+        // v1.07: Render handicap validation panel
+        var hcpPanelContainer = document.getElementById('validateHandicapPanel');
+        if (hcpPanelContainer) {
+            renderHandicapValidationPanel(validation, 'validateHandicapPanel');
+        }
         
         // Render validation summary (v1.06: includes handicap section)
         renderValidationSummary(validation, 'validateSummary');
@@ -1481,8 +1745,10 @@ var UtilValidateUI = (function() {
         showFixPreview: showFixPreview,
         renderPhotoStatus: renderPhotoStatus,
         renderValidationSummary: renderValidationSummary,
-        // v1.06: New handicap rendering function
+        // v1.06: Handicap rendering functions
         renderHandicapMismatches: renderHandicapMismatches,
+        // v1.07: Handicap validation panel
+        renderHandicapValidationPanel: renderHandicapValidationPanel,
         // v1.03: New functions moved from HTML
         renderValidateResults: renderValidateResults,
         renderPhotoStatusInline: renderPhotoStatusInline,
@@ -1531,17 +1797,18 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 // Validation results renderer (for app.js to call)
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.06 - Handicap mismatch display added');
+console.log('[UTIL-VALIDATE-UI] v1.07 - Handicap validation panel added');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: Handicap mismatch section to renderValidationSummary()
-   - ADDED: renderHandicapMismatches() function for dedicated handicap display
-   - CHANGED: renderValidationSummary() now shows handicap status and mismatches
-   - CHANGED: Validation summary now includes handicap field count
-   - PRESERVED: All existing photo and rendering functions from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: renderHandicapValidationPanel() - full handicap table with comparison
+   - ADDED: renderHandicapTableRow() - single row rendering with color coding
+   - CHANGED: renderValidateResults() now calls handicap validation panel
+   - ADDED: Handicap panel shows: Player, Old, Anc (Current→Expected), Perf (Current→Expected), New (Current→Expected)
+   - ADDED: Color coding: RED for mismatches, GREEN for matches, GOLD for anchor/new zero
+   - PRESERVED: All existing photo and rendering functions from v1.06
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
