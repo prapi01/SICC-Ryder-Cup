@@ -1,20 +1,20 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - ADDED: Category breakdown in Validation Summary (Match, T-1, T-2, Stroke, TR, Handicap)
-   - ADDED: Mismatch counts per category with color coding (green=0, red=>0)
-   - CHANGED: Validation Summary now shows high-level overview before detailed list
-   - PRESERVED: All existing rendering functions from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: Display for MULTIPLE_NEW_ANCHOR = "*multiple*" as "Pending (Multiple)"
+   - CHANGED: renderHandicapAdjustmentCard() now shows friendly text for "*multiple*"
+   - CHANGED: renderValidationSummary() now shows friendly text for "*multiple*"
+   - PRESERVED: All existing rendering functions from v1.14
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.14";
+window.UTIL_VALIDATE_UI_VERSION = "1.15";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.14 - Added category breakdown");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.15 - MULTIPLE_NEW_ANCHOR display");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -44,6 +44,15 @@ var UtilValidateUI = (function() {
             return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0];
         }
         return dateStr;
+    }
+    
+    // v1.15: Format new anchor display
+    function formatNewAnchorDisplay(value) {
+        if (!value) return 'None';
+        if (value === '*multiple*') {
+            return '<span style="color:#ffaa44;">Pending (Multiple)</span>';
+        }
+        return '<span style="color:#ffaa44;">' + escapeHtml(value) + '</span>';
     }
     
     // ============================================================
@@ -410,7 +419,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.11: RENDER: Handicap Adjustment Card (separate card)
+    // v1.15: RENDER: Handicap Adjustment Card (with multiple display)
     // ============================================================
     
     function renderHandicapAdjustmentCard(validationResult, containerId) {
@@ -423,6 +432,7 @@ var UtilValidateUI = (function() {
         var isValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
         var summary = validationResult.handicapSummary || { totalFields: 0, mismatched: 0, matched: 0 };
         var recordPlayers = validationResult.players || [];
+        var MULTIPLE_NEW_ANCHOR = "*multiple*";
         
         // If no stored handicaps, show missing state
         if (!storedHandicaps) {
@@ -528,10 +538,12 @@ var UtilValidateUI = (function() {
         html += '<span style="font-size:0.7rem; color:' + hcpStatusColor + '; margin-left:auto; font-weight:600;">' + hcpStatusIcon + ' ' + (isValid ? 'VALID' : 'NEEDS FIX') + '</span>';
         html += '</div>';
         
-        // Summary line
+        // v1.15: Summary line with formatted newAnchor
+        var newAnchorDisplay = formatNewAnchorDisplay(storedHandicaps.newAnchor);
+        
         html += '<div style="display:flex; gap:12px; font-size:0.65rem; color:#888; margin-bottom:8px; padding:4px 0; border-bottom:1px solid #1a1a1a;">';
         html += '<span>Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.anchor || 'Unknown') + '</strong></span>';
-        html += '<span>New Anchor: <strong style="color:#ffaa44;">' + escapeHtml(storedHandicaps.newAnchor || 'None') + '</strong></span>';
+        html += '<span>New Anchor: <strong>' + newAnchorDisplay + '</strong></span>';
         html += '<span>Zero Rise: <strong style="color:#4caf50;">' + (storedHandicaps.zeroRiseAmount || 0) + '</strong></span>';
         if (summary.totalFields > 0) {
             html += '<span style="margin-left:auto;">✅ ' + summary.matched + ' ❌ ' + summary.mismatched + '</span>';
@@ -625,7 +637,7 @@ var UtilValidateUI = (function() {
             var perfMatch = fieldStatus.perfAdj;
             var finalMatch = (finalCur === finalExp) || (typeof finalCur === 'number' && typeof finalExp === 'number' && Math.abs(finalCur - finalExp) < 0.01);
             
-            // v1.12: Format with NaN protection
+            // Format with NaN protection
             var ancDisplay = formatHandicapCell(ancCur, ancRawCur, ancExp, ancRawExp);
             var perfDisplay = formatHandicapCell(perfCur, perfRawCur, perfExp, perfRawExp);
             
@@ -672,7 +684,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.14: RENDER: Validation Summary (with category breakdown)
+    // v1.15: RENDER: Validation Summary (with multiple display)
     // ============================================================
     
     function renderValidationSummary(validationResult, containerId) {
@@ -697,8 +709,9 @@ var UtilValidateUI = (function() {
         var handicapMismatches = validationResult.handicapMismatches || [];
         var handicapMatches = validationResult.handicapMatches || [];
         var handicapValid = validationResult.handicapValid !== undefined ? validationResult.handicapValid : true;
+        var storedHandicaps = validationResult.handicapStored;
         
-        // v1.14: Categorize field mismatches
+        // v1.15: Categorize field mismatches
         var categoryCounts = {
             'Match Play': 0,
             'T-1': 0,
@@ -769,7 +782,6 @@ var UtilValidateUI = (function() {
         html += '<div style="margin-bottom:12px; padding:8px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a;">';
         html += '<div style="font-size:0.65rem; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">📊 Mismatch Breakdown</div>';
         
-        // Define categories in display order
         var categories = [
             { key: 'Match Play', label: 'Match Play' },
             { key: 'T-1', label: 'T-1' },
@@ -795,7 +807,7 @@ var UtilValidateUI = (function() {
         var hcpIsError = hcpCount > 0;
         var hcpColor = hcpIsError ? '#ff6b6b' : '#4caf50';
         var hcpIcon = hcpIsError ? '❌' : '✅';
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a1a; font-size:0.7rem; border-bottom:1px solid #2a2a2a;">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #2a2a2a; font-size:0.7rem; border-bottom:1px solid #2a2a2a;">';
         html += '<span style="color:#ffaa44; font-weight:600;">🏌️ Handicap</span>';
         html += '<span style="color:' + hcpColor + '; font-weight:600;">' + hcpIcon + ' ' + hcpCount + ' mismatch' + (hcpCount !== 1 ? 'es' : '') + '</span>';
         html += '</div>';
@@ -811,10 +823,8 @@ var UtilValidateUI = (function() {
         // 4. DETAILED MISMATCH LIST (scrollable, 300px)
         // ============================================================
         
-        // Build combined mismatch list
         var allMismatches = [];
         
-        // Add field mismatches
         for (var i = 0; i < fieldMismatches.length; i++) {
             var m = fieldMismatches[i];
             allMismatches.push({
@@ -825,7 +835,6 @@ var UtilValidateUI = (function() {
             });
         }
         
-        // Add handicap mismatches
         for (var i = 0; i < handicapMismatches.length; i++) {
             var m = handicapMismatches[i];
             allMismatches.push({
@@ -852,7 +861,7 @@ var UtilValidateUI = (function() {
                 html += '</div>';
             }
             
-            html += '</div>'; // end scrollable
+            html += '</div>';
             html += '</div>';
         } else {
             html += '<div style="margin-top:12px; padding:8px; background:#0a2a0a; border-radius:6px; border:1px solid #2a5a2a; text-align:center; font-size:0.75rem; color:#4caf50;">';
@@ -1201,13 +1210,13 @@ var UtilValidateUI = (function() {
         var matchPointsPerHole = matchData.matchPointsPerHole || [];
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
-        // v1.11: Render Handicap Adjustment card (separate card, above Photo)
+        // v1.15: Render Handicap Adjustment card with multiple display
         var hcpCardContainer = document.getElementById('validateHandicapCard');
         if (hcpCardContainer) {
             renderHandicapAdjustmentCard(validation, 'validateHandicapCard');
         }
         
-        // v1.14: Render validation summary with category breakdown
+        // v1.15: Render validation summary with multiple display
         renderValidationSummary(validation, 'validateSummary');
         
         // Show/hide fix card
@@ -1223,7 +1232,7 @@ var UtilValidateUI = (function() {
             }
         }
         
-        // v1.11: Remove separate details card (now integrated into validation summary)
+        // Remove separate details card (now integrated into validation summary)
         var detailsCard = document.getElementById('validateDetailsCard');
         if (detailsCard) {
             detailsCard.style.display = 'none';
@@ -1795,7 +1804,8 @@ var UtilValidateUI = (function() {
         loadPhotoSelector: loadPhotoSelector,
         selectPhotoFromList: selectPhotoFromList,
         applyPhotoToRecord: applyPhotoToRecord,
-        renderHandicapAdjustmentCard: renderHandicapAdjustmentCard
+        renderHandicapAdjustmentCard: renderHandicapAdjustmentCard,
+        formatNewAnchorDisplay: formatNewAnchorDisplay
     };
     
 })();
@@ -1823,16 +1833,16 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.14 - Category breakdown added');
+console.log('[UTIL-VALIDATE-UI] v1.15 - MULTIPLE_NEW_ANCHOR display');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - ADDED: Category breakdown in Validation Summary (Match, T-1, T-2, Stroke, TR, Handicap)
-   - ADDED: Mismatch counts per category with color coding (green=0, red=>0)
-   - CHANGED: Validation Summary now shows high-level overview before detailed list
-   - PRESERVED: All existing rendering functions from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: Display for MULTIPLE_NEW_ANCHOR = "*multiple*" as "Pending (Multiple)"
+   - CHANGED: renderHandicapAdjustmentCard() now shows friendly text for "*multiple*"
+   - CHANGED: renderValidationSummary() now shows friendly text for "*multiple*"
+   - PRESERVED: All existing rendering functions from v1.14
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
