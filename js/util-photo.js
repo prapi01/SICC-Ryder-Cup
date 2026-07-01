@@ -2,7 +2,7 @@
 FILE: js/util-photo.js
 VERSION: 1.16
 KEY CHANGES from v1.15:
-   - CHANGED: JPEG quality from 1.0 to 0.85 for better file size
+   - CHANGED: JPEG quality from 1.0 to 0.90 for better file size
    - Keeps original resolution (no resizing)
    - Reduces file size while maintaining good visual quality
    - PRESERVED: Cache-busting from v1.15
@@ -14,7 +14,7 @@ STATUS: Ready for integration
 // Version exposure
 window.PHOTO_UTIL_VERSION = "1.16";
 
-console.log('[PHOTO] Loading util-photo.js v1.16 - JPEG quality 0.85');
+console.log('[PHOTO] Loading util-photo.js v1.16 - JPEG quality 0.90');
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -264,7 +264,7 @@ function loadPhotoFromUrl() {
 }
 
 // ============================================================
-// v1.16: UPLOAD TO STORAGE - No resizing, Quality 0.85
+// v1.16: UPLOAD TO STORAGE - No resizing, Quality 0.90
 // ============================================================
 
 function uploadPhotoToStorage() {
@@ -323,7 +323,7 @@ function uploadPhotoToStorage() {
     canvas.height = height;
     ctx.drawImage(currentPhotoData, 0, 0, width, height);
     
-    // v1.16: Use JPEG quality 0.85 - good balance of quality and file size
+    // v1.16: Use JPEG quality 0.90 - good balance of quality and file size
     canvas.toBlob(function(blob) {
         if (!blob) {
             photoLog('❌ Failed to convert image', 'error');
@@ -391,7 +391,7 @@ function uploadPhotoToStorage() {
                 });
             }
         );
-    }, 'image/jpeg', 0.85);  // v1.16: Quality 0.85
+    }, 'image/jpeg', 0.90);  // v1.16: Quality 0.90
 }
 
 // ============================================================
@@ -1152,7 +1152,7 @@ function showPhotoInfoGuide() {
                 <ul class="info-warnings">
                     <li><strong>CORS:</strong> The image URL must allow cross-origin access</li>
                     <li><strong>Original Resolution:</strong> Images are uploaded at original resolution, not resized</li>
-                    <li><strong>JPEG Quality:</strong> 0.85 - good balance of quality and file size</li>
+                    <li><strong>JPEG Quality:</strong> 0.90 - good balance of quality and file size</li>
                     <li><strong>Environment:</strong> PROD and DEV have separate Storage buckets</li>
                     <li><strong>Cache Busting:</strong> A timestamp is automatically added to URLs to bypass browser cache</li>
                 </ul>
@@ -1344,13 +1344,13 @@ function autoInit() {
 
 autoInit();
 
-console.log('[PHOTO-UTIL] v1.16 loaded (JPEG quality 0.85)');
+console.log('[PHOTO-UTIL] v1.16 loaded (JPEG quality 0.90)');
 
 /*
 FILE: js/util-photo.js
 VERSION: 1.16
 KEY CHANGES from v1.15:
-   - CHANGED: JPEG quality from 1.0 to 0.85 for better file size
+   - CHANGED: JPEG quality from 1.0 to 0.90 for better file size
    - Keeps original resolution (no resizing)
    - Reduces file size while maintaining good visual quality
    - PRESERVED: Cache-busting from v1.15
