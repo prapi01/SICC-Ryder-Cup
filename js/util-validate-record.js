@@ -1,28 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - REMOVED: Validation checks for duplicated summary fields
-     - results.game1.pointsA (derived from matchResults)
-     - results.game1.pointsB (derived from matchResults)
-     - results.game2.pointsA (not used)
-     - results.game2.pointsB (not used)
-     - results.game3.pointsA (not used)
-     - results.game3.pointsB (not used)
-   - These fields were removed from the schema in v4.0
-   - VALIDATE now skips these fields entirely
-   - PRESERVED: All other validation logic unchanged
-   - PRESERVED: AS = 0.5, game1/game2/game3 field names
-DEPENDS ON: Firebase Firestore
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - ADDED: validateHandicapAdjustment() function
+   - ADDED: recalculateHandicapsFromRecord() function
+   - ADDED: buildHandicapFixPayload() function
+   - ADDED: compareHandicapFields() helper
+   - These functions use GameLoader.buildCacheFromDoc() and HandicapAdjustment.calculateAllAdjustments()
+   - No duplicate logic - reuses existing hcp-adjust.js calculation engine
+   - PRESERVED: All existing validation logic from v1.10
+DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.10";
+window.UTIL_VALIDATE_VERSION = "1.11";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.10 - Removed duplicated summary fields from validation");
+    console.log("[UTIL-VALIDATE] Initializing v1.11 - Added handicap validation");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -842,6 +838,377 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
+    // v1.11: HANDICAP ADJUSTMENT VALIDATION
+    // ============================================================
+    
+    /**
+     * Recalculate handicaps from record data using hcp-adjust.js
+     * 
+     * @param {Object} recordData - The record data object
+     * @returns {Object} - { success: boolean, result: calculationResult, error: string }
+     */
+    function recalculateHandicapsFromRecord(recordData) {
+        if (!recordData) {
+            return { success: false, error: 'No record data provided' };
+        }
+        
+        // Check if GameLoader is available
+        if (typeof GameLoader === 'undefined') {
+            console.error('[UTIL-VALIDATE] GameLoader not available');
+            return { success: false, error: 'GameLoader not available' };
+        }
+        
+        // Check if HandicapAdjustment is available
+        if (typeof HandicapAdjustment === 'undefined') {
+            console.error('[UTIL-VALIDATE] HandicapAdjustment not available');
+            return { success: false, error: 'HandicapAdjustment not available' };
+        }
+        
+        // Check if buildCacheFromDoc is available
+        if (typeof GameLoader.buildCacheFromDoc !== 'function') {
+            console.error('[UTIL-VALIDATE] GameLoader.buildCacheFromDoc not available');
+            return { success: false, error: 'GameLoader.buildCacheFromDoc not available' };
+        }
+        
+        try {
+            // Build cache from record data
+            var cache = GameLoader.buildCacheFromDoc(recordData);
+            
+            // Set the cache in GameLoader
+            GameLoader.setLocalCache(cache);
+            
+            // Get players from record
+            var players = recordData.players || [];
+            if (players.length === 0) {
+                return { success: false, error: 'No players found in record' };
+            }
+            
+            // Sort players by handicap to find anchor
+            var sortedPlayers = players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            // Determine anchor: use stored anchor or lowest handicap
+            var anchorName = recordData.anchor || sortedPlayers[0].name;
+            var anchor = players.find(function(p) { return p.name === anchorName; });
+            if (!anchor) {
+                anchor = sortedPlayers[0];
+            }
+            
+            // Call calculateAllAdjustments - this uses GameLoader.getLocalCache() internally
+            var calculationResult = HandicapAdjustment.calculateAllAdjustments(anchor);
+            
+            return {
+                success: true,
+                result: calculationResult,
+                anchor: anchor,
+                anchorName: anchor.name
+            };
+            
+        } catch (err) {
+            console.error('[UTIL-VALIDATE] Error recalculating handicaps:', err);
+            return { success: false, error: err.message || 'Unknown error' };
+        }
+    }
+    
+    /**
+     * Compare stored handicap fields with recalculated values
+     * 
+     * @param {Object} storedHandicaps - The adjustedHandicaps object from record
+     * @param {Object} recalculated - The recalculated result from hcp-adjust.js
+     * @param {Array} players - The players array from record
+     * @returns {Object} - { valid: boolean, mismatches: [], matches: [], summary: {} }
+     */
+    function compareHandicapFields(storedHandicaps, recalculated, players) {
+        var mismatches = [];
+        var matches = [];
+        var summary = {
+            totalFields: 0,
+            mismatched: 0,
+            matched: 0
+        };
+        
+        if (!storedHandicaps) {
+            return {
+                valid: false,
+                mismatches: [{ field: 'adjustedHandicaps', current: 'MISSING', expected: 'Present' }],
+                matches: [],
+                summary: { totalFields: 1, mismatched: 1, matched: 0 }
+            };
+        }
+        
+        if (!storedHandicaps.players || storedHandicaps.players.length === 0) {
+            return {
+                valid: false,
+                mismatches: [{ field: 'adjustedHandicaps.players', current: 'EMPTY', expected: players.length + ' players' }],
+                matches: [],
+                summary: { totalFields: 1, mismatched: 1, matched: 0 }
+            };
+        }
+        
+        // Get recalculated players data
+        var recalcPlayers = recalculated.players || [];
+        if (recalcPlayers.length === 0) {
+            return {
+                valid: false,
+                mismatches: [{ field: 'recalculated.players', current: 'EMPTY', expected: players.length + ' players' }],
+                matches: [],
+                summary: { totalFields: 1, mismatched: 1, matched: 0 }
+            };
+        }
+        
+        // Build map of recalculated data by player name
+        var recalcMap = {};
+        for (var i = 0; i < recalcPlayers.length; i++) {
+            recalcMap[recalcPlayers[i].name] = recalcPlayers[i];
+        }
+        
+        // Check each player in the stored data
+        for (var i = 0; i < storedHandicaps.players.length; i++) {
+            var stored = storedHandicaps.players[i];
+            var recalc = recalcMap[stored.name];
+            
+            if (!recalc) {
+                mismatches.push({
+                    field: 'Player: ' + stored.name,
+                    current: 'Not found in recalculated data',
+                    expected: 'Present'
+                });
+                summary.mismatched++;
+                continue;
+            }
+            
+            // Compare each field
+            var fieldsToCompare = [
+                { key: 'startingHcp', label: 'Starting Hcp' },
+                { key: 'anchorAdj', label: 'Anchor Adj' },
+                { key: 'perfAdj', label: 'Perf Adj' },
+                { key: 'finalHcp', label: 'Final Hcp' },
+                { key: 'anchorRaw', label: 'Anchor Raw' },
+                { key: 'perfRaw', label: 'Perf Raw' }
+            ];
+            
+            for (var f = 0; f < fieldsToCompare.length; f++) {
+                var field = fieldsToCompare[f];
+                var storedVal = stored[field.key];
+                var recalcVal = recalc[field.key];
+                
+                // Handle decimal comparisons (perfRaw can be 0.5, etc.)
+                var isEqual;
+                if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
+                    isEqual = Math.abs(storedVal - recalcVal) < 0.01;
+                } else {
+                    isEqual = storedVal === recalcVal;
+                }
+                
+                if (!isEqual) {
+                    mismatches.push({
+                        field: stored.name + ' - ' + field.label,
+                        current: storedVal !== undefined ? storedVal : 'undefined',
+                        expected: recalcVal !== undefined ? recalcVal : 'undefined'
+                    });
+                    summary.mismatched++;
+                } else {
+                    matches.push({
+                        field: stored.name + ' - ' + field.label,
+                        current: storedVal,
+                        expected: recalcVal
+                    });
+                    summary.matched++;
+                }
+                summary.totalFields++;
+            }
+        }
+        
+        // Compare top-level fields
+        var topFields = [
+            { key: 'anchor', label: 'Anchor' },
+            { key: 'newAnchor', label: 'New Anchor' },
+            { key: 'needsZeroRise', label: 'Needs Zero Rise' },
+            { key: 'zeroRiseAmount', label: 'Zero Rise Amount' }
+        ];
+        
+        for (var t = 0; t < topFields.length; t++) {
+            var top = topFields[t];
+            var storedVal = storedHandicaps[top.key];
+            var recalcVal = recalculated[top.key];
+            
+            var isEqual;
+            if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
+                isEqual = Math.abs(storedVal - recalcVal) < 0.01;
+            } else {
+                isEqual = storedVal === recalcVal;
+            }
+            
+            if (!isEqual) {
+                mismatches.push({
+                    field: top.label,
+                    current: storedVal !== undefined ? storedVal : 'undefined',
+                    expected: recalcVal !== undefined ? recalcVal : 'undefined'
+                });
+                summary.mismatched++;
+            } else {
+                matches.push({
+                    field: top.label,
+                    current: storedVal,
+                    expected: recalcVal
+                });
+                summary.matched++;
+            }
+            summary.totalFields++;
+        }
+        
+        // Check calculatedAt (warning only)
+        var calcAt = storedHandicaps.calculatedAt;
+        if (calcAt) {
+            matches.push({
+                field: 'calculatedAt',
+                current: calcAt,
+                expected: 'Present'
+            });
+            summary.matched++;
+        } else {
+            matches.push({
+                field: 'calculatedAt',
+                current: 'MISSING',
+                expected: 'Timestamp'
+            });
+            summary.matched++;
+        }
+        summary.totalFields++;
+        
+        return {
+            valid: summary.mismatched === 0,
+            mismatches: mismatches,
+            matches: matches,
+            summary: summary
+        };
+    }
+    
+    /**
+     * Validate handicap adjustment in a record
+     * 
+     * @param {Object} recordData - The record data object
+     * @returns {Object} - { valid: boolean, needsFix: boolean, mismatches: [], matches: [], 
+     *                       summary: {}, recalculated: {}, storedHandicaps: {}, handicapValid: boolean }
+     */
+    function validateHandicapAdjustment(recordData) {
+        if (!recordData) {
+            return { valid: false, error: 'No record data provided' };
+        }
+        
+        var storedHandicaps = recordData.adjustedHandicaps || null;
+        var players = recordData.players || [];
+        
+        // If no stored handicaps, report as MISSING
+        if (!storedHandicaps) {
+            return {
+                valid: false,
+                needsFix: true,
+                handicapValid: false,
+                storedHandicaps: null,
+                recalculated: null,
+                mismatches: [{ field: 'adjustedHandicaps', current: 'MISSING', expected: 'Present' }],
+                matches: [],
+                summary: { totalFields: 1, mismatched: 1, matched: 0 },
+                error: 'Handicap data MISSING'
+            };
+        }
+        
+        // Recalculate handicaps from record data
+        var recalcResult = recalculateHandicapsFromRecord(recordData);
+        if (!recalcResult.success) {
+            return {
+                valid: false,
+                needsFix: true,
+                handicapValid: false,
+                storedHandicaps: storedHandicaps,
+                recalculated: null,
+                mismatches: [{ field: 'recalculation', current: 'ERROR', expected: 'Success' }],
+                matches: [],
+                summary: { totalFields: 1, mismatched: 1, matched: 0 },
+                error: recalcResult.error
+            };
+        }
+        
+        var recalculated = recalcResult.result;
+        
+        // Compare stored vs recalculated
+        var comparison = compareHandicapFields(storedHandicaps, recalculated, players);
+        
+        return {
+            valid: comparison.valid,
+            needsFix: !comparison.valid,
+            handicapValid: comparison.valid,
+            storedHandicaps: storedHandicaps,
+            recalculated: recalculated,
+            mismatches: comparison.mismatches,
+            matches: comparison.matches,
+            summary: comparison.summary,
+            anchor: recalcResult.anchor,
+            anchorName: recalcResult.anchorName
+        };
+    }
+    
+    /**
+     * Build fix payload for handicaps
+     * 
+     * @param {Object} recordData - The record data object
+     * @param {Object} recalculated - The recalculated result
+     * @returns {Object} - { hasChanges: boolean, updatePayload: {}, fieldsUpdated: [] }
+     */
+    function buildHandicapFixPayload(recordData, recalculated) {
+        if (!recordData || !recalculated) {
+            return { hasChanges: false, updatePayload: {}, fieldsUpdated: [] };
+        }
+        
+        var updatePayload = {};
+        var fieldsUpdated = [];
+        
+        // Build the adjustedHandicaps object
+        var recalcPlayers = recalculated.players || [];
+        
+        var handicapPlayers = recalcPlayers.map(function(p) {
+            return {
+                name: p.name,
+                label: p.label || p.name.substring(0, 3).toUpperCase(),
+                startingHcp: p.startingHcp !== undefined ? p.startingHcp : p.currentHcp,
+                anchorAdj: p.anchorAdj || 0,
+                perfAdj: p.perfAdj || 0,
+                finalHcp: recalculated.needsZeroRise ? p.newAnchor : p.newHcp,
+                anchorRaw: p.anchorRaw || 0,
+                perfRaw: p.perfRaw || 0
+            };
+        });
+        
+        var newHandicapData = {
+            calculatedAt: new Date().toISOString(),
+            anchor: recalculated.anchor || recordData.anchor,
+            newAnchor: recalculated.newAnchorName || null,
+            needsZeroRise: recalculated.needsZeroRise || false,
+            zeroRiseAmount: recalculated.zeroRiseAmount || 0,
+            players: handicapPlayers
+        };
+        
+        // Check if existing data is different
+        var stored = recordData.adjustedHandicaps || {};
+        
+        // Simple deep compare (use JSON stringify for quick comparison)
+        var storedStr = JSON.stringify(stored);
+        var newStr = JSON.stringify(newHandicapData);
+        
+        if (storedStr !== newStr) {
+            updatePayload['adjustedHandicaps'] = newHandicapData;
+            fieldsUpdated.push('adjustedHandicaps');
+        }
+        
+        return {
+            hasChanges: Object.keys(updatePayload).length > 0,
+            updatePayload: updatePayload,
+            fieldsUpdated: fieldsUpdated,
+            newHandicapData: newHandicapData
+        };
+    }
+    
+    // ============================================================
     // COMPREHENSIVE FIELD VALIDATION (v4.0 Schema)
     // ============================================================
     // v4.0 REMOVED: game1.pointsA/B, game2.pointsA/B, game3.pointsA/B
@@ -1097,8 +1464,11 @@ var UtilValidate = (function() {
         
         var fieldValidation = validateAllFields(recordData, recalculated);
         
-        var needsFix = fieldValidation.summary.mismatched > 0;
-        var isValid = fieldValidation.valid;
+        // v1.11: Also validate handicaps
+        var handicapValidation = validateHandicapAdjustment(recordData);
+        
+        var needsFix = fieldValidation.summary.mismatched > 0 || handicapValidation.needsFix;
+        var isValid = fieldValidation.valid && handicapValidation.valid;
         
         return {
             valid: isValid,
@@ -1116,7 +1486,17 @@ var UtilValidate = (function() {
             f2Scores: f2Scores,
             courseSi: courseSi,
             coursePar: coursePar,
-            players: players
+            players: players,
+            // v1.11: Handicap validation results
+            handicapValid: handicapValidation.valid,
+            handicapNeedsFix: handicapValidation.needsFix,
+            handicapMismatches: handicapValidation.mismatches || [],
+            handicapMatches: handicapValidation.matches || [],
+            handicapSummary: handicapValidation.summary || { totalFields: 0, mismatched: 0, matched: 0 },
+            handicapRecalculated: handicapValidation.recalculated,
+            handicapStored: handicapValidation.storedHandicaps,
+            handicapAnchor: handicapValidation.anchor,
+            handicapAnchorName: handicapValidation.anchorName
         };
     }
     
@@ -1237,6 +1617,7 @@ var UtilValidate = (function() {
     
     // ============================================================
     // BUILD FIX PAYLOAD - v4.0: Removed duplicate summary fields
+    // v1.11: Added handicap fix
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1376,6 +1757,33 @@ var UtilValidate = (function() {
             updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
         }
         
+        // ============================================================
+        // v1.11: HANDICAP FIX - Recalculate and update adjustedHandicaps
+        // ============================================================
+        var handicapValidation = validateHandicapAdjustment(recordData);
+        if (handicapValidation.needsFix || handicapValidation.valid === false) {
+            // Recalculate if we don't have a valid recalculation
+            var recalcResult;
+            if (handicapValidation.recalculated) {
+                recalcResult = handicapValidation.recalculated;
+            } else {
+                var newRecalc = recalculateHandicapsFromRecord(recordData);
+                if (newRecalc.success) {
+                    recalcResult = newRecalc.result;
+                }
+            }
+            
+            if (recalcResult) {
+                var handicapFix = buildHandicapFixPayload(recordData, recalcResult);
+                if (handicapFix.hasChanges) {
+                    // Merge the handicap update into the payload
+                    for (var key in handicapFix.updatePayload) {
+                        updatePayload[key] = handicapFix.updatePayload[key];
+                    }
+                }
+            }
+        }
+        
         return {
             updatePayload: updatePayload,
             hasChanges: Object.keys(updatePayload).length > 0,
@@ -1407,7 +1815,12 @@ var UtilValidate = (function() {
         buildFieldDiff: buildFieldDiff,
         validateRecord: validateRecord,
         buildFixPreview: buildFixPreview,
-        buildFixPayload: buildFixPayload
+        buildFixPayload: buildFixPayload,
+        // v1.11: New handicap validation functions
+        validateHandicapAdjustment: validateHandicapAdjustment,
+        recalculateHandicapsFromRecord: recalculateHandicapsFromRecord,
+        compareHandicapFields: compareHandicapFields,
+        buildHandicapFixPayload: buildHandicapFixPayload
     };
     
 })();
@@ -1416,19 +1829,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - REMOVED: Validation checks for duplicated summary fields
-     - results.game1.pointsA (derived from matchResults)
-     - results.game1.pointsB (derived from matchResults)
-     - results.game2.pointsA (not used)
-     - results.game2.pointsB (not used)
-     - results.game3.pointsA (not used)
-     - results.game3.pointsB (not used)
-   - These fields were removed from the schema in v4.0
-   - VALIDATE now skips these fields entirely
-   - PRESERVED: All other validation logic unchanged
-   - PRESERVED: AS = 0.5, game1/game2/game3 field names
-DEPENDS ON: Firebase Firestore
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - ADDED: validateHandicapAdjustment() function
+   - ADDED: recalculateHandicapsFromRecord() function
+   - ADDED: buildHandicapFixPayload() function
+   - ADDED: compareHandicapFields() helper
+   - These functions use GameLoader.buildCacheFromDoc() and HandicapAdjustment.calculateAllAdjustments()
+   - No duplicate logic - reuses existing hcp-adjust.js calculation engine
+   - PRESERVED: All existing validation logic from v1.10
+DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
