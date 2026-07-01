@@ -1,21 +1,19 @@
 /*
 FILE: js/util-photo.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - REMOVED: Image resizing to 1200px max dimension
-   - REMOVED: JPEG compression at 85% quality
-   - CHANGED: Now uploads original image without any modification
-   - CHANGED: Uses canvas to preserve image but at FULL quality (1.0)
-   - This ensures uploaded photos retain original quality and file size
-   - PRESERVED: All existing functionality from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: Automatic cache-busting to image URLs
+   - CHANGED: loadPhotoFromUrl() now appends timestamp to URL to bypass browser cache
+   - This ensures the latest image is loaded from GitHub/Cloudflare Pages
+   - PRESERVED: All existing functionality from v1.14
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.PHOTO_UTIL_VERSION = "1.14";
+window.PHOTO_UTIL_VERSION = "1.15";
 
-console.log('[PHOTO] Loading util-photo.js v1.14 - No resizing, full quality');
+console.log('[PHOTO] Loading util-photo.js v1.15 - Cache busting added');
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -58,6 +56,18 @@ function photoLog(message, type) {
     if (typeof window.log === 'function') {
         try { window.log(message, type); } catch(e) { /* ignore */ }
     }
+}
+
+// ============================================================
+// v1.15: CACHE-BUSTING HELPER
+// ============================================================
+
+function addCacheBuster(url) {
+    if (!url) return url;
+    // If URL already has a query parameter, append &t=timestamp
+    // Otherwise, append ?t=timestamp
+    var separator = url.indexOf('?') !== -1 ? '&' : '?';
+    return url + separator + 't=' + Date.now();
 }
 
 // ============================================================
@@ -185,7 +195,7 @@ function displayPhotoInViewer(img) {
 }
 
 // ============================================================
-// LOAD PHOTO FROM URL
+// v1.15: LOAD PHOTO FROM URL - with cache busting
 // ============================================================
 
 function loadPhotoFromUrl() {
@@ -199,8 +209,12 @@ function loadPhotoFromUrl() {
         return;
     }
     
-    console.log('[PHOTO] Loading from:', url);
-    photoLog('Loading image from: ' + url, 'info');
+    // v1.15: Add cache-busting timestamp to force fresh load
+    var cacheBustedUrl = addCacheBuster(url);
+    console.log('[PHOTO] Original URL:', url);
+    console.log('[PHOTO] Cache-busted URL:', cacheBustedUrl);
+    
+    photoLog('Loading image from: ' + cacheBustedUrl, 'info');
     
     var viewer = document.getElementById('photoViewer');
     if (viewer) {
@@ -209,7 +223,7 @@ function loadPhotoFromUrl() {
     
     var statusDiv = document.getElementById('photoStatus');
     if (statusDiv) {
-        statusDiv.innerHTML = '<span class="log-info">⏳ Loading from: ' + url + '</span>';
+        statusDiv.innerHTML = '<span class="log-info">⏳ Loading from: ' + cacheBustedUrl + '</span>';
     }
     
     var img = new Image();
@@ -218,10 +232,10 @@ function loadPhotoFromUrl() {
     img.onload = function() {
         console.log('[PHOTO] ✅ Image loaded:', img.width, 'x', img.height);
         currentPhotoData = img;
-        currentPhotoUrl = url;
+        currentPhotoUrl = cacheBustedUrl;
         displayPhotoInViewer(img);
         if (statusDiv) {
-            statusDiv.innerHTML = '<span class="log-success">✅ Loaded: ' + url + ' (' + img.width + 'x' + img.height + ')</span>';
+            statusDiv.innerHTML = '<span class="log-success">✅ Loaded: ' + cacheBustedUrl + ' (' + img.width + 'x' + img.height + ')</span>';
         }
         photoLog('✅ Image loaded: ' + img.width + 'x' + img.height, 'success');
         
@@ -236,19 +250,19 @@ function loadPhotoFromUrl() {
     };
     
     img.onerror = function() {
-        console.error('[PHOTO] ❌ Failed to load image from:', url);
+        console.error('[PHOTO] ❌ Failed to load image from:', cacheBustedUrl);
         if (viewer) {
             viewer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ff6b6b;font-size:1rem;">❌ Failed to load image<br><span style="font-size:0.7rem;color:#888;">Check URL and CORS settings</span></div>';
         }
         if (statusDiv) {
-            statusDiv.innerHTML = '<span class="log-error">❌ Failed to load: ' + url + '</span>';
+            statusDiv.innerHTML = '<span class="log-error">❌ Failed to load: ' + cacheBustedUrl + '</span>';
         }
-        photoLog('❌ Failed to load image: ' + url, 'error');
+        photoLog('❌ Failed to load image: ' + cacheBustedUrl, 'error');
         currentPhotoData = null;
         currentPhotoUrl = null;
     };
     
-    img.src = url;
+    img.src = cacheBustedUrl;
 }
 
 // ============================================================
@@ -302,7 +316,6 @@ function uploadPhotoToStorage() {
     photoLog('Uploading to: ' + fullPath, 'info');
     console.log('[PHOTO] Uploading to:', fullPath);
     
-    // v1.14: Use canvas to preserve original dimensions and FULL quality
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     
@@ -1147,6 +1160,7 @@ function showPhotoInfoGuide() {
                     <li><strong>Original Quality:</strong> Images are uploaded at full quality, no resizing or compression</li>
                     <li><strong>File Format:</strong> Images are uploaded as JPEG</li>
                     <li><strong>Environment:</strong> PROD and DEV have separate Storage buckets</li>
+                    <li><strong>Cache Busting:</strong> A timestamp is automatically added to URLs to bypass browser cache</li>
                 </ul>
             </div>
             
@@ -1341,18 +1355,16 @@ function autoInit() {
 
 autoInit();
 
-console.log('[PHOTO-UTIL] v1.14 loaded (no resizing, full quality)');
+console.log('[PHOTO-UTIL] v1.15 loaded (cache busting added)');
 
 /*
 FILE: js/util-photo.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - REMOVED: Image resizing to 1200px max dimension
-   - REMOVED: JPEG compression at 85% quality
-   - CHANGED: Now uploads original image without any modification
-   - CHANGED: Uses canvas to preserve image but at FULL quality (1.0)
-   - This ensures uploaded photos retain original quality and file size
-   - PRESERVED: All existing functionality from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: Automatic cache-busting to image URLs
+   - CHANGED: loadPhotoFromUrl() now appends timestamp to URL to bypass browser cache
+   - This ensures the latest image is loaded from GitHub/Cloudflare Pages
+   - PRESERVED: All existing functionality from v1.14
 DEPENDS ON: Firebase Storage, Firestore, util-core.js
 STATUS: Ready for integration
 */
