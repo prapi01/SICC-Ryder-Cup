@@ -1,19 +1,19 @@
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
-   - CHANGED: Now uses window.log, window.logStep, window.escapeHtml from util-core.js
-   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
-   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: initCopyTabEvents() function with event bindings for all COPY tab buttons
+   - ADDED: Auto-initialization when file loads
+   - ADDED: window.initCopyTabEvents exposure for debugging
+   - FIXED: COPY tab buttons now have working event listeners
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_COPY_VERSION = "1.04";
-console.log("[UTIL-COPY] Initializing v1.04");
+window.UTIL_COPY_VERSION = "1.05";
+console.log("[UTIL-COPY] Initializing v1.05");
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -641,6 +641,133 @@ function onDestExistingSelect() {
 }
 
 // ============================================================
+// COPY TAB: EVENT BINDINGS (NEW in v1.05)
+// ============================================================
+
+function initCopyTabEvents() {
+    copyLog('Initializing COPY tab event bindings...', 'info');
+    
+    // Source environment buttons
+    var sourceProdBtn = document.getElementById('copySourceProdBtn');
+    var sourceDevBtn = document.getElementById('copySourceDevBtn');
+    
+    if (sourceProdBtn) {
+        sourceProdBtn.addEventListener('click', function() {
+            setCopySourceEnvironment('PROD');
+        });
+    }
+    if (sourceDevBtn) {
+        sourceDevBtn.addEventListener('click', function() {
+            setCopySourceEnvironment('DEV');
+        });
+    }
+    
+    // Destination environment buttons
+    var destProdBtn = document.getElementById('copyDestProdBtn');
+    var destDevBtn = document.getElementById('copyDestDevBtn');
+    
+    if (destProdBtn) {
+        destProdBtn.addEventListener('click', function() {
+            setCopyDestEnvironment('PROD');
+        });
+    }
+    if (destDevBtn) {
+        destDevBtn.addEventListener('click', function() {
+            setCopyDestEnvironment('DEV');
+        });
+    }
+    
+    // Load buttons
+    var loadSourceBtn = document.getElementById('loadSourceBtn');
+    var loadDestBtn = document.getElementById('loadDestBtn');
+    
+    if (loadSourceBtn) {
+        loadSourceBtn.addEventListener('click', function() {
+            loadSourceRecords();
+        });
+    }
+    if (loadDestBtn) {
+        loadDestBtn.addEventListener('click', function() {
+            loadDestinationRecords();
+        });
+    }
+    
+    // Game select (source record dropdown)
+    var gameSelect = document.getElementById('gameSelect');
+    if (gameSelect) {
+        gameSelect.addEventListener('change', function() {
+            var gameId = this.value;
+            if (gameId) {
+                loadGameData(gameId);
+            } else {
+                currentGameData = null;
+                currentGameId = null;
+                var infoDiv = document.getElementById('gameInfo');
+                if (infoDiv) infoDiv.style.display = 'none';
+            }
+        });
+    }
+    
+    // Copy button
+    var copyBtn = document.getElementById('copyBtn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function() {
+            copyRecord();
+        });
+    }
+    
+    // Check destination button
+    var checkBtn = document.getElementById('checkBtn');
+    if (checkBtn) {
+        checkBtn.addEventListener('click', function() {
+            checkDestination();
+        });
+    }
+    
+    // Delete destination button
+    var deleteCopyDestBtn = document.getElementById('deleteCopyDestBtn');
+    if (deleteCopyDestBtn) {
+        deleteCopyDestBtn.addEventListener('click', function() {
+            deleteDestination();
+        });
+    }
+    
+    // Date option radio buttons - show/hide custom date input
+    var dateOptions = document.querySelectorAll('input[name="dateOption"]');
+    var customDateInput = document.getElementById('customDate');
+    
+    dateOptions.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            if (customDateInput) {
+                if (this.value === 'custom') {
+                    customDateInput.style.display = 'block';
+                } else {
+                    customDateInput.style.display = 'none';
+                }
+            }
+        });
+    });
+    
+    // If custom date is initially hidden, ensure it's hidden
+    if (customDateInput) {
+        var checkedOption = document.querySelector('input[name="dateOption"]:checked');
+        if (checkedOption && checkedOption.value !== 'custom') {
+            customDateInput.style.display = 'none';
+        }
+    }
+    
+    // Destination existing select - populate destDocId
+    var destExistingSelect = document.getElementById('destExistingSelect');
+    if (destExistingSelect) {
+        destExistingSelect.addEventListener('change', function() {
+            onDestExistingSelect();
+        });
+    }
+    
+    copyLog('✅ COPY tab event bindings initialized', 'success');
+}
+
+// ============================================================
 // COPY TAB: INFORMATION GUIDE
 // ============================================================
 
@@ -735,23 +862,41 @@ window.checkDestination = checkDestination;
 window.deleteDestination = deleteDestination;
 window.onDestExistingSelect = onDestExistingSelect;
 window.showCopyInfoGuide = showCopyInfoGuide;
+window.initCopyTabEvents = initCopyTabEvents;
+
+// ============================================================
+// AUTO-INIT: Initialize COPY tab event bindings
+// ============================================================
+
+// Wait for DOM to be ready before initializing
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+            initCopyTabEvents();
+        }, 100);
+    });
+} else {
+    setTimeout(function() {
+        initCopyTabEvents();
+    }, 100);
+}
 
 // ============================================================
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COPY_UTIL_VERSION = "1.04";
-console.log("[COPY-UTIL] v1.04 loaded");
+window.COPY_UTIL_VERSION = "1.05";
+console.log("[COPY-UTIL] v1.05 loaded - Event bindings added");
 
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
-   - CHANGED: Now uses window.log, window.logStep, window.escapeHtml from util-core.js
-   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
-   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: initCopyTabEvents() function with event bindings for all COPY tab buttons
+   - ADDED: Auto-initialization when file loads
+   - ADDED: window.initCopyTabEvents exposure for debugging
+   - FIXED: COPY tab buttons now have working event listeners
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
