@@ -1,19 +1,20 @@
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: initCopyTabEvents() function with event bindings for all COPY tab buttons
-   - ADDED: Auto-initialization when file loads
-   - ADDED: window.initCopyTabEvents exposure for debugging
-   - FIXED: COPY tab buttons now have working event listeners
-   - PRESERVED: All existing functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: loadSourceRecords() now fetches ALL records without orderBy('date')
+   - FIXED: Records with missing top-level 'date' field are now included (checks gameInfo.date)
+   - FIXED: Manual sorting by date with fallback for missing dates
+   - FIXED: loadDestinationRecords() now fetches ALL records without orderBy('date')
+   - FIXED: Destination records with missing date field are now included
+   - PRESERVED: All existing functionality from v1.05
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_COPY_VERSION = "1.05";
-console.log("[UTIL-COPY] Initializing v1.05");
+window.UTIL_COPY_VERSION = "1.06";
+console.log("[UTIL-COPY] Initializing v1.06");
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -46,6 +47,34 @@ function copyEscapeHtml(str) {
         if (m === '>') return '&gt;';
         return m;
     });
+}
+
+// ============================================================
+// HELPERS: Get date from record (supports multiple locations)
+// ============================================================
+
+function getRecordDate(data) {
+    // Check top-level date first
+    if (data.date && data.date !== '') {
+        return data.date;
+    }
+    // Check gameInfo.date
+    if (data.gameInfo && data.gameInfo.date && data.gameInfo.date !== '') {
+        return data.gameInfo.date;
+    }
+    // Check createdAt as last resort
+    if (data.createdAt) {
+        if (typeof data.createdAt === 'string') {
+            return data.createdAt.split('T')[0];
+        }
+        if (data.createdAt.toDate && typeof data.createdAt.toDate === 'function') {
+            return data.createdAt.toDate().toISOString().split('T')[0];
+        }
+        if (data.createdAt.seconds) {
+            return new Date(data.createdAt.seconds * 1000).toISOString().split('T')[0];
+        }
+    }
+    return null;
 }
 
 // ============================================================
@@ -191,7 +220,7 @@ function updateCopyDestUI(env) {
 }
 
 // ============================================================
-// COPY TAB: LOAD SOURCE RECORDS
+// COPY TAB: LOAD SOURCE RECORDS (FIXED - v1.06)
 // ============================================================
 
 function loadSourceRecords() {
@@ -210,9 +239,8 @@ function loadSourceRecords() {
     var envLabel = copySourceEnv || 'Unknown';
     copyLogStep(2, 'Loading from: ' + sourceCollection + ' (' + envLabel + ')', 'info');
     
+    // v1.06: Remove orderBy('date') - fetch ALL records, sort manually
     copySourceDb.collection(sourceCollection)
-        .orderBy('date', 'desc')
-        .limit(100)
         .get()
         .then(function(snapshot) {
             select.innerHTML = '<option value="">-- Select a record --</option>';
@@ -224,19 +252,51 @@ function loadSourceRecords() {
                 return;
             }
             
+            // Collect all docs with their dates
+            var docs = [];
             snapshot.forEach(function(doc) {
                 var data = doc.data();
-                var option = document.createElement('option');
-                option.value = doc.id;
-                var displayDate = data.date || 'No date';
-                var courseName = data.course ? data.course.name : 'Unknown';
-                option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                option.dataset.date = displayDate;
-                option.dataset.course = courseName;
-                select.appendChild(option);
+                var date = getRecordDate(data) || 'No date';
+                docs.push({
+                    id: doc.id,
+                    data: data,
+                    date: date,
+                    courseName: data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown')
+                });
             });
             
-            copyLogStep(2, 'Loaded ' + snapshot.size + ' records from ' + sourceCollection + ' (' + envLabel + ')', 'success');
+            // Sort manually by date (most recent first)
+            docs.sort(function(a, b) {
+                if (a.date === 'No date' && b.date === 'No date') {
+                    return a.id.localeCompare(b.id);
+                }
+                if (a.date === 'No date') return 1;
+                if (b.date === 'No date') return -1;
+                return b.date.localeCompare(a.date);
+            });
+            
+            var loadedCount = 0;
+            docs.forEach(function(doc) {
+                var option = document.createElement('option');
+                option.value = doc.id;
+                var displayDate = doc.date;
+                option.textContent = doc.id + ' | ' + displayDate + ' | ' + doc.courseName;
+                option.dataset.date = displayDate;
+                option.dataset.course = doc.courseName;
+                select.appendChild(option);
+                loadedCount++;
+            });
+            
+            copyLogStep(2, 'Loaded ' + loadedCount + ' records from ' + sourceCollection + ' (' + envLabel + ')', 'success');
+            
+            // Log any records with missing dates
+            var missingDate = docs.filter(function(d) { return d.date === 'No date'; });
+            if (missingDate.length > 0) {
+                copyLogStep(2, '⚠️ ' + missingDate.length + ' record(s) with missing date field found', 'warning');
+                missingDate.forEach(function(d) {
+                    copyLogStep(2, '  - ' + d.id, 'info');
+                });
+            }
         })
         .catch(function(err) {
             copyLogStep(2, 'Error loading records: ' + err.message, 'error');
@@ -247,7 +307,7 @@ function loadSourceRecords() {
 }
 
 // ============================================================
-// COPY TAB: LOAD DESTINATION RECORDS
+// COPY TAB: LOAD DESTINATION RECORDS (FIXED - v1.06)
 // ============================================================
 
 function loadDestinationRecords() {
@@ -269,9 +329,8 @@ function loadDestinationRecords() {
     var envLabel = copyDestEnv || 'Unknown';
     copyLogStep(2, 'Loading destination records from: ' + destCollection + ' (' + envLabel + ')', 'info');
     
+    // v1.06: Remove orderBy('date') - fetch ALL records, sort manually
     copyDestDb.collection(destCollection)
-        .orderBy('date', 'desc')
-        .limit(100)
         .get()
         .then(function(snapshot) {
             select.innerHTML = '<option value="">-- Select existing to REPLACE --</option>';
@@ -284,11 +343,32 @@ function loadDestinationRecords() {
                 return;
             }
             
+            // Collect all docs with their dates
+            var docs = [];
             snapshot.forEach(function(doc) {
                 var data = doc.data();
-                var displayDate = data.date || 'No date';
-                var courseName = data.course ? data.course.name : 'Unknown';
-                var label = doc.id + ' | ' + displayDate + ' | ' + courseName;
+                var date = getRecordDate(data) || 'No date';
+                var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
+                docs.push({
+                    id: doc.id,
+                    date: date,
+                    courseName: courseName
+                });
+            });
+            
+            // Sort manually by date (most recent first)
+            docs.sort(function(a, b) {
+                if (a.date === 'No date' && b.date === 'No date') {
+                    return a.id.localeCompare(b.id);
+                }
+                if (a.date === 'No date') return 1;
+                if (b.date === 'No date') return -1;
+                return b.date.localeCompare(a.date);
+            });
+            
+            var loadedCount = 0;
+            docs.forEach(function(doc) {
+                var label = doc.id + ' | ' + doc.date + ' | ' + doc.courseName;
                 
                 var option = document.createElement('option');
                 option.value = doc.id;
@@ -299,10 +379,17 @@ function loadDestinationRecords() {
                 dOption.value = doc.id;
                 datalist.appendChild(dOption);
                 
-                destRecords.push({ id: doc.id, date: displayDate, course: courseName });
+                destRecords.push({ id: doc.id, date: doc.date, course: doc.courseName });
+                loadedCount++;
             });
             
-            copyLogStep(2, 'Loaded ' + snapshot.size + ' destination records from ' + destCollection + ' (' + envLabel + ')', 'success');
+            copyLogStep(2, 'Loaded ' + loadedCount + ' destination records from ' + destCollection + ' (' + envLabel + ')', 'success');
+            
+            // Log any records with missing dates
+            var missingDate = docs.filter(function(d) { return d.date === 'No date'; });
+            if (missingDate.length > 0) {
+                copyLogStep(2, '⚠️ ' + missingDate.length + ' destination record(s) with missing date field found', 'warning');
+            }
         })
         .catch(function(err) {
             copyLogStep(2, 'Error loading destination records: ' + err.message, 'error');
@@ -355,12 +442,15 @@ function loadGameData(gameId) {
 
 function displayGameInfo(data) {
     var infoDiv = document.getElementById('gameInfo');
-    var courseName = data.course ? data.course.name : 'Unknown';
+    var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
     var playerCount = data.players ? data.players.length : 0;
     var startingHole = data.startingHole || 1;
     var teamGameFormat = data.teamGameFormat || 'tournament';
     var status = data.status || 'unknown';
     var gameStarted = data.gameStarted ? '✅ Yes' : '❌ No';
+    
+    // Get date from multiple locations
+    var displayDate = getRecordDate(data) || 'Unknown';
     
     var sourceCollection = document.getElementById('sourceCollection').value;
     var badgeClass = sourceCollection === 'scheduledGames' ? 'badge-sched' : 
@@ -381,7 +471,7 @@ function displayGameInfo(data) {
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Date:</span>
-                <span class="game-info-value">${copyEscapeHtml(data.date || 'Unknown')}</span>
+                <span class="game-info-value">${copyEscapeHtml(displayDate)}</span>
             </div>
             <div class="game-info-row">
                 <span class="game-info-label">Course:</span>
@@ -506,13 +596,23 @@ function copyRecord() {
             if (dateOverride.type === 'custom') {
                 var newDate = dateOverride.value;
                 copyData.date = newDate;
+                // Also update gameInfo.date if it exists
+                if (copyData.gameInfo) {
+                    copyData.gameInfo.date = newDate;
+                }
                 copyLogStep(7, 'Date changed to: ' + newDate, 'info');
             } else {
-                copyLogStep(7, 'Date kept: ' + copyData.date, 'info');
+                // Keep original date - ensure it's set from gameInfo if top-level missing
+                if (!copyData.date && copyData.gameInfo && copyData.gameInfo.date) {
+                    copyData.date = copyData.gameInfo.date;
+                    copyLogStep(7, 'Date copied from gameInfo.date: ' + copyData.date, 'info');
+                } else {
+                    copyLogStep(7, 'Date kept: ' + (copyData.date || 'Not set'), 'info');
+                }
             }
             
             var playerCount = copyData.players ? copyData.players.length : 0;
-            var courseName = copyData.course ? copyData.course.name : 'Unknown';
+            var courseName = copyData.course ? copyData.course.name : (copyData.gameInfo?.course?.name || 'Unknown');
             copyLogStep(7, 'Copying: ' + playerCount + ' players, Course: ' + courseName, 'info');
             copyLogStep(7, 'gameStarted: ' + (copyData.gameStarted ? 'true' : 'false'), 'info');
             copyLogStep(7, 'status: ' + copyData.status, 'info');
@@ -531,8 +631,9 @@ function copyRecord() {
         .then(function(doc) {
             if (doc.exists) {
                 var verifyData = doc.data();
+                var verifyDate = getRecordDate(verifyData) || 'Not set';
                 copyLogStep(7, '✅ Verification: Document exists in destination (' + destEnv + ')', 'success');
-                copyLogStep(7, '   Date: ' + verifyData.date, 'info');
+                copyLogStep(7, '   Date: ' + verifyDate, 'info');
                 copyLogStep(7, '   gameStarted: ' + (verifyData.gameStarted ? 'true' : 'false'), 'info');
                 copyLogStep(7, '   Status: ' + verifyData.status, 'info');
             } else {
@@ -577,9 +678,10 @@ function checkDestination() {
         .then(function(doc) {
             if (doc.exists) {
                 var data = doc.data();
+                var date = getRecordDate(data) || 'Not set';
                 copyLogStep(7, '✅ EXISTS in ' + destCollection + ' (' + destEnv + ')', 'success');
-                copyLogStep(7, '   Date: ' + data.date, 'info');
-                copyLogStep(7, '   Course: ' + (data.course ? data.course.name : 'Unknown'), 'info');
+                copyLogStep(7, '   Date: ' + date, 'info');
+                copyLogStep(7, '   Course: ' + (data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown')), 'info');
                 copyLogStep(7, '   Status: ' + data.status, 'info');
                 copyLogStep(7, '   Players: ' + (data.players ? data.players.length : 0), 'info');
                 copyLogStep(7, '   gameStarted: ' + (data.gameStarted ? 'true' : 'false'), 'info');
@@ -641,7 +743,7 @@ function onDestExistingSelect() {
 }
 
 // ============================================================
-// COPY TAB: EVENT BINDINGS (NEW in v1.05)
+// COPY TAB: EVENT BINDINGS
 // ============================================================
 
 function initCopyTabEvents() {
@@ -885,18 +987,19 @@ if (document.readyState === 'loading') {
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COPY_UTIL_VERSION = "1.05";
-console.log("[COPY-UTIL] v1.05 loaded - Event bindings added");
+window.COPY_UTIL_VERSION = "1.06";
+console.log("[COPY-UTIL] v1.06 loaded - Fixed date handling, all records now load");
 
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: initCopyTabEvents() function with event bindings for all COPY tab buttons
-   - ADDED: Auto-initialization when file loads
-   - ADDED: window.initCopyTabEvents exposure for debugging
-   - FIXED: COPY tab buttons now have working event listeners
-   - PRESERVED: All existing functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: loadSourceRecords() now fetches ALL records without orderBy('date')
+   - FIXED: Records with missing top-level 'date' field are now included (checks gameInfo.date)
+   - FIXED: Manual sorting by date with fallback for missing dates
+   - FIXED: loadDestinationRecords() now fetches ALL records without orderBy('date')
+   - FIXED: Destination records with missing date field are now included
+   - PRESERVED: All existing functionality from v1.05
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
