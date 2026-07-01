@@ -1,11 +1,10 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: lastSyncedHole now returns null instead of 0 when no holes are synced
-   - This ensures proper handling of "no data" state in UI rendering
-   - Cross-flight bubbles now correctly show grey AS at game start (H1)
-   - All existing functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - EXPOSED: buildCacheFromDoc() in public API
+   - This allows VALIDATE tab to build cache from record data
+   - All existing functionality preserved from v1.12
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -172,6 +171,7 @@ var GameLoader = (function() {
     // Helper: Build cache from Firestore document
     // v1.10: Converts sparse Firestore objects to arrays
     // v1.12: FIXED - lastSyncedHole now null when no holes synced
+    // v1.13: EXPOSED via public API
     // ============================================================
     function buildCacheFromDoc(docData) {
         var course = docData.course || {};
@@ -517,7 +517,8 @@ var GameLoader = (function() {
         addDataCallback: addDataCallback,
         removeDataCallback: removeDataCallback,
         getTRForHole: getTRForHole,
-        unload: unload
+        unload: unload,
+        buildCacheFromDoc: buildCacheFromDoc  // v1.13: EXPOSED for VALIDATE tab
     };
     
 })();
@@ -527,12 +528,11 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: lastSyncedHole now returns null instead of 0 when no holes are synced
-   - This ensures proper handling of "no data" state in UI rendering
-   - Cross-flight bubbles now correctly show grey AS at game start (H1)
-   - All existing functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - EXPOSED: buildCacheFromDoc() in public API
+   - This allows VALIDATE tab to build cache from record data
+   - All existing functionality preserved from v1.12
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
