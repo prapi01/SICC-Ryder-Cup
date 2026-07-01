@@ -1,13 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.04
-KEY CHANGES from v3.03:
-   - CHANGED: upsertPendingRecord() now uses WRV.write() and WRV.update() for reliability
-   - CHANGED: updateWithHandicap() now uses WRV.update() for reliability
-   - ADDED: Fallback to direct write/update if WRV not available
-   - PRESERVED: deleteArchiveRecord() unchanged (WRV doesn't support delete)
-   - PRESERVED: ALL v3.03 functions and API unchanged
-   - PRESERVED: ALL existing functionality
+VERSION: 3.05
+KEY CHANGES from v3.04:
+   - ADDED: Support for MULTIPLE_NEW_ANCHOR = "*multiple*" from hcp-adjust.js
+   - CHANGED: updateWithHandicap() now preserves "*multiple*" value as-is
+   - CHANGED: newAnchor field now uses MULTIPLE_NEW_ANCHOR constant if available
+   - PRESERVED: All v3.04 functions and API unchanged
+   - PRESERVED: All existing functionality
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
@@ -15,6 +14,16 @@ STATUS: Ready for integration
 var HistoryRecord = (function() {
     
     var COLLECTION = "historyGames";
+    
+    // ============================================================
+    // v3.05: Get MULTIPLE_NEW_ANCHOR constant from HandicapAdjustment
+    // ============================================================
+    function getMultipleNewAnchor() {
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.MULTIPLE_NEW_ANCHOR) {
+            return HandicapAdjustment.MULTIPLE_NEW_ANCHOR;
+        }
+        return "*multiple*";
+    }
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -294,9 +303,8 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Update with handicap adjustment (mark as completed)
-    // v3.03: Now preserves anchorRaw and perfRaw values
-    // v3.04: Uses WRV for reliability
+    // v3.05: Update with handicap adjustment (mark as completed)
+    // Now preserves "*multiple*" value for newAnchor
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -306,13 +314,25 @@ var HistoryRecord = (function() {
             return;
         }
         
+        var multipleNewAnchor = getMultipleNewAnchor();
+        
+        // v3.05: Preserve "*multiple*" value or use fallback
+        var newAnchorValue = handicapData.newAnchor;
+        
+        // If newAnchor is null or undefined, use anchor as fallback
+        if (newAnchorValue === null || newAnchorValue === undefined) {
+            newAnchorValue = handicapData.anchor;
+        }
+        // If newAnchor is "*multiple*", keep it as-is (don't convert)
+        // Otherwise, use the provided value
+        
         // Build complete adjustedHandicaps record
         var adjustedHandicaps = {
             calculatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             anchor: handicapData.anchor,
             needsZeroRise: handicapData.needsZeroRise || false,
             zeroRiseAmount: handicapData.zeroRiseAmount || 0,
-            newAnchor: handicapData.newAnchor || handicapData.anchor,
+            newAnchor: newAnchorValue,  // v3.05: Preserves "*multiple*" value
             players: []
         };
         
@@ -508,7 +528,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Public API - UNCHANGED
+    // Public API
     // ============================================================
     
     return {
@@ -522,21 +542,21 @@ var HistoryRecord = (function() {
         recordExists: recordExists,
         deleteArchiveRecord: deleteArchiveRecord,
         getAdjustedHandicaps: getAdjustedHandicaps,
-        getHistoryDocId: getHistoryDocId
+        getHistoryDocId: getHistoryDocId,
+        getMultipleNewAnchor: getMultipleNewAnchor  // v3.05: Exposed for other files
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 3.04
-KEY CHANGES from v3.03:
-   - CHANGED: upsertPendingRecord() now uses WRV.write() and WRV.update() for reliability
-   - CHANGED: updateWithHandicap() now uses WRV.update() for reliability
-   - ADDED: Fallback to direct write/update if WRV not available
-   - PRESERVED: deleteArchiveRecord() unchanged (WRV doesn't support delete)
-   - PRESERVED: ALL v3.03 functions and API unchanged
-   - PRESERVED: ALL existing functionality
+VERSION: 3.05
+KEY CHANGES from v3.04:
+   - ADDED: Support for MULTIPLE_NEW_ANCHOR = "*multiple*" from hcp-adjust.js
+   - CHANGED: updateWithHandicap() now preserves "*multiple*" value as-is
+   - CHANGED: newAnchor field now uses MULTIPLE_NEW_ANCHOR constant if available
+   - PRESERVED: All v3.04 functions and API unchanged
+   - PRESERVED: All existing functionality
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
