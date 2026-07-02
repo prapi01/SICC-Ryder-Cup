@@ -1511,4 +1511,11 @@ VERSION: 2.56
 KEY CHANGES from v2.55:
    - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
    - CHANGED: updatePlayerRecordsInBackground() now writes usedLabels to playerInformation/players.usedLabels
-   - CHANGED
+   - CHANGED: Instead of WRV.write('usedLabels', 'all', ...), now reads current playerInformation,
+              merges usedLabels, and writes back to the same document
+   - PRESERVED: ALL v2.55 functions and API unchanged
+   - PRESERVED: ALL existing functionality
+   - PRESERVED: WRV integration for reliable Firestore writes
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
+STATUS: Ready for integration
+*/
