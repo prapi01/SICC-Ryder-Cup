@@ -1,23 +1,20 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
-   - CHANGED: loadUsedLabelsStatus() now reads from playerInformation/players.usedLabels
-   - CHANGED: viewUsedLabels() now reads from playerInformation/players.usedLabels
-   - CHANGED: rebuildUsedLabels() now writes to playerInformation/players.usedLabels
-   - CHANGED: executeRebuildUsedLabels() now writes to playerInformation/players.usedLabels
-   - CHANGED: cancelUsedLabels() now reloads from playerInformation
-   - PRESERVED: All existing functionality from v1.02
-   - PRESERVED: Player Editor functionality unchanged
-   - PRESERVED: labelHistory functionality unchanged (already in playerInformation)
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: WRV.write() calls now use correct signature: (collection, docId, data, callback, options)
+   - FIXED: executeRebuildUsedLabels() now uses WRV.write() with proper callback
+   - FIXED: savePlayerEdit() now uses WRV.write() with proper callback
+   - FIXED: executeSyncLabelHistory() now uses WRV.update() with proper callback
+   - REMOVED: Merge parameter passed as callback (was causing "callback is not a function" error)
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.03";
-console.log("[UTIL-PLAYERS] Initializing v1.03 - usedLabels in playerInformation");
+window.UTIL_PLAYERS_VERSION = "1.04";
+console.log("[UTIL-PLAYERS] Initializing v1.04 - Fixed WRV signature");
 
 // ============================================================
 // STATE
@@ -130,7 +127,7 @@ function updatePlayersUI(env) {
 }
 
 // ============================================================
-// v1.03: LOAD STATUS (updated for playerInformation)
+// LOAD STATUS
 // ============================================================
 
 function loadPlayersStatus() {
@@ -148,7 +145,6 @@ function loadPlayersStatus() {
     loadLabelHistoryStatus();
 }
 
-// v1.03: loadUsedLabelsStatus - reads from playerInformation
 function loadUsedLabelsStatus() {
     if (!playersDb) return;
     
@@ -282,10 +278,9 @@ function loadLabelHistoryStatus() {
 }
 
 // ============================================================
-// v1.03: VIEW FUNCTIONS (updated for playerInformation)
+// VIEW FUNCTIONS (Modal)
 // ============================================================
 
-// v1.03: viewUsedLabels - reads from playerInformation
 function viewUsedLabels() {
     if (!playersDb) {
         playersLog("Select environment first", "error");
@@ -395,7 +390,7 @@ function viewLabelHistory() {
 }
 
 // ============================================================
-// v1.03: REBUILD usedLabels (writes to playerInformation)
+// REBUILD usedLabels (v1.04: Fixed WRV signature)
 // ============================================================
 
 function rebuildUsedLabels() {
@@ -506,7 +501,7 @@ function rebuildUsedLabels() {
         });
 }
 
-// v1.03: executeRebuildUsedLabels - writes to playerInformation
+// v1.04: executeRebuildUsedLabels - Fixed WRV signature
 function executeRebuildUsedLabels() {
     if (!playersDb || !stagedUsedLabels) {
         playersLog("No staged data to write", "error");
@@ -541,7 +536,7 @@ function executeRebuildUsedLabels() {
     if (cancelBtn) cancelBtn.disabled = true;
     if (rebuildBtn) rebuildBtn.disabled = true;
     
-    // v1.03: Write to playerInformation document
+    // v1.04: WRV.write signature: (collection, docId, data, callback, options)
     var payload = {
         usedLabels: labelSet,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -549,7 +544,7 @@ function executeRebuildUsedLabels() {
     
     if (typeof WRV !== 'undefined' && WRV.write) {
         playersLogStep(3, 'Using WRV for write', 'info');
-        WRV.write('playerInformation', 'players', payload, true, function(err, result) {
+        WRV.write('playerInformation', 'players', payload, function(err, result) {
             if (err) {
                 playersLogStep(3, '❌ WRV write failed: ' + err.message, 'error');
                 if (badge) {
@@ -612,7 +607,7 @@ function handleRebuildSuccess(count) {
 }
 
 // ============================================================
-// SYNC labelHistory (unchanged - already in playerInformation)
+// SYNC labelHistory (v1.04: Fixed WRV signature)
 // ============================================================
 
 function syncLabelHistory() {
@@ -783,6 +778,7 @@ function syncLabelHistory() {
         });
 }
 
+// v1.04: executeSyncLabelHistory - Fixed WRV signature
 function executeSyncLabelHistory() {
     if (!playersDb || !stagedLabelHistory) {
         playersLog("No staged data to write", "error");
@@ -816,6 +812,7 @@ function executeSyncLabelHistory() {
     if (cancelBtn) cancelBtn.disabled = true;
     if (syncBtn) syncBtn.disabled = true;
     
+    // v1.04: WRV.update signature: (collection, docId, data, callback, options)
     var updateObj = {};
     for (var oldLabel in mappings) {
         var newLabel = mappings[oldLabel];
@@ -890,7 +887,7 @@ function handleSyncSuccess(count) {
 }
 
 // ============================================================
-// v1.03: CANCEL FUNCTIONS (updated for playerInformation)
+// CANCEL FUNCTIONS
 // ============================================================
 
 function cancelUsedLabels() {
@@ -944,7 +941,7 @@ function cancelLabelHistory() {
 }
 
 // ============================================================
-// PLAYER EDITOR FUNCTIONS (unchanged from v1.02)
+// PLAYER EDITOR FUNCTIONS
 // ============================================================
 
 function loadPlayerEditorDropdown() {
@@ -1206,6 +1203,7 @@ function buildUpdateObject(original, updated) {
     };
 }
 
+// v1.04: savePlayerEdit - Fixed WRV signature
 function savePlayerEdit() {
     var saveBtn = document.getElementById('editorSaveBtn');
     var resetBtn = document.getElementById('editorResetBtn');
@@ -1257,8 +1255,8 @@ function savePlayerEdit() {
         updatedPlayer[key] = updateResult.changes[key];
     }
     
+    // v1.04: WRV.write signature: (collection, docId, data, callback, options)
     var fullPayload = {
-        players: null,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     fullPayload['players.' + editorCurrentIndex] = updatedPlayer;
@@ -1266,7 +1264,7 @@ function savePlayerEdit() {
     playersLogStep(2, 'Writing to Firestore using WRV.write() with merge...', 'info');
     
     if (typeof WRV !== 'undefined' && WRV.write) {
-        WRV.write('playerInformation', 'players', fullPayload, true, function(err, result) {
+        WRV.write('playerInformation', 'players', fullPayload, function(err, result) {
             if (err) {
                 playersLogStep(2, '❌ WRV write failed: ' + err.message, 'error');
                 showEditorStatus('❌ Save failed: ' + err.message, 'error');
@@ -1363,7 +1361,7 @@ function hideEditorStatus() {
 }
 
 // ============================================================
-// INFO GUIDE (unchanged)
+// INFO GUIDE
 // ============================================================
 
 function showPlayersInfoGuide() {
@@ -1589,23 +1587,20 @@ window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
 
-window.UTIL_PLAYERS_VERSION = "1.03";
+window.UTIL_PLAYERS_VERSION = "1.04";
 
-console.log("[UTIL-PLAYERS] v1.03 loaded - usedLabels in playerInformation");
+console.log("[UTIL-PLAYERS] v1.04 loaded - Fixed WRV signature");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
-   - CHANGED: loadUsedLabelsStatus() now reads from playerInformation/players.usedLabels
-   - CHANGED: viewUsedLabels() now reads from playerInformation/players.usedLabels
-   - CHANGED: rebuildUsedLabels() now writes to playerInformation/players.usedLabels
-   - CHANGED: executeRebuildUsedLabels() now writes to playerInformation/players.usedLabels
-   - CHANGED: cancelUsedLabels() now reloads from playerInformation
-   - PRESERVED: All existing functionality from v1.02
-   - PRESERVED: Player Editor functionality unchanged
-   - PRESERVED: labelHistory functionality unchanged (already in playerInformation)
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: WRV.write() calls now use correct signature: (collection, docId, data, callback, options)
+   - FIXED: executeRebuildUsedLabels() now uses WRV.write() with proper callback
+   - FIXED: savePlayerEdit() now uses WRV.write() with proper callback
+   - FIXED: executeSyncLabelHistory() now uses WRV.update() with proper callback
+   - REMOVED: Merge parameter passed as callback (was causing "callback is not a function" error)
+   - PRESERVED: All existing functionality from v1.03
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
