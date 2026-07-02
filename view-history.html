@@ -1,13 +1,16 @@
 <!--
 FILE: view-history.html
-VERSION: 8.40
-KEY CHANGES from v8.39:
-   - FIXED: view-history now reads celebration photo directly from the record's celebration field
-   - REMOVED: Dependency on getCelebrationPhoto() for thumbnail loading
-   - CHANGED: Game object now includes celebration data when loaded from Firestore
-   - CHANGED: renderGameList() now uses game.celebration.imageUrl directly
-   - FIXED: No longer shows fallback image when record has a valid photo pointer
-   - PRESERVED: All existing functionality from v8.39
+VERSION: 8.41
+KEY CHANGES from v8.40:
+   - ADDED: Label Resolution Card at bottom of game list
+   - ADDED: loadLabelHistory() - loads labelHistory from playerInformation
+   - ADDED: renderLabelResolutionCard() - displays old→new label mappings
+   - ADDED: getLabelHistory() - fetches labelHistory from Firestore
+   - RULE: Card only appears if there are actual label changes
+   - RULE: Shows "Player Name: OLD → NEW" for each changed label
+   - RULE: Unchanged labels are NOT displayed
+   - PRESERVED: All existing functionality from v8.40
+   - PRESERVED: All UI styling and layout from v8.40
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -353,6 +356,86 @@ STATUS: Ready for integration
             font-size: 0.85rem;
         }
         
+        /* v8.41: Label Resolution Card */
+        .label-resolution-card {
+            width: 100%;
+            max-width: 380px;
+            background: #0a1a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 16px;
+            padding: 16px 18px;
+            margin: 8px auto 16px auto;
+        }
+        
+        .label-resolution-title {
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #4caf50;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .label-resolution-title .icon {
+            font-size: 0.9rem;
+        }
+        
+        .label-resolution-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0;
+            font-size: 0.75rem;
+            color: #cccccc;
+            border-bottom: 1px solid #1a2a1a;
+        }
+        
+        .label-resolution-item:last-child {
+            border-bottom: none;
+        }
+        
+        .label-resolution-old {
+            color: #888888;
+            font-family: monospace;
+            background: #1a1a1a;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+        
+        .label-resolution-arrow {
+            color: #4caf50;
+            font-size: 0.7rem;
+        }
+        
+        .label-resolution-new {
+            color: #4caf50;
+            font-family: monospace;
+            background: #1a3a1a;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        
+        .label-resolution-player {
+            color: #aaaaaa;
+            font-size: 0.7rem;
+            margin-left: auto;
+        }
+        
+        .label-resolution-footer {
+            font-size: 0.55rem;
+            color: #444444;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #1a2a1a;
+            text-align: center;
+        }
+        
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -392,6 +475,8 @@ STATUS: Ready for integration
             <div class="grey-icon-loading">⛳</div>
         </div>
     </div>
+    <!-- v8.41: Label Resolution Card - will be populated if there are changes -->
+    <div id="labelResolutionContainer"></div>
     <div class="back-buttons">
         <button class="back-btn" id="backToMenuBtn">← Back to Main Menu</button>
     </div>
@@ -404,7 +489,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.40</div>
+<div class="version-tag">v8.41</div>
 
 <script>
 // ============================================================
@@ -417,10 +502,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.40: Direct celebration photo loading
+// VERSION CACHE-BUSTING - v8.41: Label Resolution Card
 // ============================================================
-var APP_VERSION = "8.40";
-var CACHE_KEY = "view_history_version_v840";
+var APP_VERSION = "8.41";
+var CACHE_KEY = "view_history_version_v841";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -438,8 +523,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.40";
-console.log("[VIEW-HISTORY] Initializing v8.40 - Direct celebration photo loading");
+window.VIEW_HISTORY_VERSION = "8.41";
+console.log("[VIEW-HISTORY] Initializing v8.41 - Label Resolution Card");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1166,6 +1251,87 @@ function checkBothReady() {
     }
 }
 
+// ============================================================
+// v8.41: Label Resolution Functions
+// ============================================================
+
+function loadLabelHistory() {
+    console.log("[VIEW-HISTORY] Loading labelHistory from playerInformation...");
+    
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            if (doc.exists && doc.data().labelHistory) {
+                var labelHistory = doc.data().labelHistory;
+                var players = doc.data().players || [];
+                console.log("[VIEW-HISTORY] labelHistory found:", Object.keys(labelHistory).length, "entries");
+                renderLabelResolutionCard(labelHistory, players);
+            } else {
+                console.log("[VIEW-HISTORY] No labelHistory found");
+                // No card to render
+            }
+        })
+        .catch(function(err) {
+            console.warn("[VIEW-HISTORY] Could not load labelHistory:", err);
+            // No card to render
+        });
+}
+
+function renderLabelResolutionCard(labelHistory, players) {
+    var container = document.getElementById('labelResolutionContainer');
+    if (!container) return;
+    
+    // Build player name lookup
+    var playerMap = {};
+    for (var i = 0; i < players.length; i++) {
+        playerMap[players[i].label] = players[i].name;
+        // Also map by name
+        playerMap[players[i].name] = players[i].name;
+    }
+    
+    // Build list of resolutions
+    var entries = [];
+    for (var oldLabel in labelHistory) {
+        var newLabel = labelHistory[oldLabel];
+        if (oldLabel !== newLabel) {
+            var playerName = playerMap[oldLabel] || playerMap[newLabel] || oldLabel;
+            entries.push({
+                oldLabel: oldLabel,
+                newLabel: newLabel,
+                playerName: playerName
+            });
+        }
+    }
+    
+    // If no entries, hide the card
+    if (entries.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        console.log("[VIEW-HISTORY] No label resolutions to display");
+        return;
+    }
+    
+    // Build the card HTML
+    var html = '<div class="label-resolution-card">';
+    html += '<div class="label-resolution-title"><span class="icon">🔄</span> Label History Resolution</div>';
+    
+    for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i];
+        html += '<div class="label-resolution-item">';
+        html += '<span class="label-resolution-old">' + escapeHtml(entry.oldLabel) + '</span>';
+        html += '<span class="label-resolution-arrow">→</span>';
+        html += '<span class="label-resolution-new">' + escapeHtml(entry.newLabel) + '</span>';
+        html += '<span class="label-resolution-player">' + escapeHtml(entry.playerName) + '</span>';
+        html += '</div>';
+    }
+    
+    html += '<div class="label-resolution-footer">Showing current labels for historical references</div>';
+    html += '</div>';
+    
+    container.innerHTML = html;
+    container.style.display = 'block';
+    console.log("[VIEW-HISTORY] Label Resolution Card rendered with", entries.length, "entries");
+}
+
 // v8.40: renderGameList - UPDATED to use direct photo loading
 function renderGameList(games) {
     allGames = games;
@@ -1175,6 +1341,8 @@ function renderGameList(games) {
         container.innerHTML = '<div class="empty-message">No history games found.</div>';
         dataLoaded = true;
         checkBothReady();
+        // Still try to load labelHistory
+        loadLabelHistory();
         return;
     }
     
@@ -1266,6 +1434,9 @@ function renderGameList(games) {
     
     dataLoaded = true;
     checkBothReady();
+    
+    // v8.41: Load labelHistory and render the card
+    loadLabelHistory();
 }
 
 function loadGameListAndModules() {
@@ -1316,6 +1487,8 @@ function loadGameListAndModules() {
             container.innerHTML = '<div class="error-message">Unable to load games. Please check your connection and refresh.</div>';
             dataLoaded = true;
             checkBothReady();
+            // Still try to load labelHistory
+            loadLabelHistory();
         });
     
     // v8.36: Re-added game-match.js, game-team.js, game-stroke.js
@@ -1399,14 +1572,16 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.40
-KEY CHANGES from v8.39:
-   - FIXED: view-history now reads celebration photo directly from the record's celebration field
-   - REMOVED: Dependency on getCelebrationPhoto() for thumbnail loading
-   - CHANGED: Game object now includes celebration data when loaded from Firestore
-   - CHANGED: renderGameList() now uses game.celebration.imageUrl directly
-   - FIXED: No longer shows fallback image when record has a valid photo pointer
-   - PRESERVED: All existing functionality from v8.39
+VERSION: 8.41
+KEY CHANGES from v8.40:
+   - ADDED: Label Resolution Card at bottom of game list
+   - ADDED: loadLabelHistory() - loads labelHistory from playerInformation
+   - ADDED: renderLabelResolutionCard() - displays old→new label mappings
+   - RULE: Card only appears if there are actual label changes
+   - RULE: Shows "OLD → NEW (Player Name)" for each changed label
+   - RULE: Unchanged labels are NOT displayed
+   - PRESERVED: All existing functionality from v8.40
+   - PRESERVED: All UI styling and layout from v8.40
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
