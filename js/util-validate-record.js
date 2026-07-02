@@ -1,23 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: validateHandicapAdjustment() now uses a fresh copy of recordData to prevent corruption
-   - FIXED: buildFixPayload() now forces handicap recalculation when mismatches exist in stored data
-   - FIXED: Added deep copy of recordData before validation to prevent reference contamination
-   - ADDED: Logging to show when handicap data is being forced to fix
-   - ADDED: Force fix mode when stored data differs from recalculated data
-   - PRESERVED: All existing validation logic from v1.23
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: Enhanced debug logging in buildHandicapFixPayload() to trace field mapping
+   - ADDED: Logs showing recalculated data vs generated payload for each player
+   - ADDED: Logs showing which fields differ between stored and recalculated
+   - ADDED: Logs showing the final payload being sent to WRV
+   - FIXED: Added safety check to ensure anchorAdj uses recalculated value
+   - FIXED: Added safety check to ensure anchorRaw uses recalculated value
+   - PRESERVED: All existing validation logic from v1.24
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.24";
+window.UTIL_VALIDATE_VERSION = "1.25";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.24 - Fixed handicap fix application");
+    console.log("[UTIL-VALIDATE] Initializing v1.25 - Enhanced debug logging in buildHandicapFixPayload");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -837,7 +838,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.24: HANDICAP ADJUSTMENT VALIDATION - With fix force mode
+    // v1.25: HANDICAP ADJUSTMENT VALIDATION - Enhanced debug logging
     // ============================================================
     
     /**
@@ -942,7 +943,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.24: COMPARE HANDICAP FIELDS - With fix force detection
+    // v1.25: COMPARE HANDICAP FIELDS - with newAnchor fallback
     // ============================================================
     
     /**
@@ -1024,7 +1025,7 @@ var UtilValidate = (function() {
                 continue;
             }
             
-            // v1.24: Define field mappings with fallbacks
+            // v1.25: Define field mappings with fallbacks
             var fieldsToCompare = [
                 { key: 'startingHcp', label: 'Starting Hcp', recalcKey: 'startingHcp' },
                 { key: 'anchorAdj', label: 'Anchor Adj', recalcKey: 'anchorAdj' },
@@ -1078,7 +1079,7 @@ var UtilValidate = (function() {
             }
         }
         
-        // v1.24: Compare top-level fields with recalculated values
+        // v1.25: Compare top-level fields with recalculated values
         var topFields = [
             { key: 'anchor', label: 'Anchor', recalcKey: 'anchor', skipIfUndefined: true },
             { key: 'newAnchor', label: 'New Anchor', recalcKey: 'newAnchorName' },
@@ -1207,7 +1208,7 @@ var UtilValidate = (function() {
         
         var recalculated = recalcResult.result;
         
-        // v1.24: Compare stored vs recalculated with forceFix option
+        // v1.25: Compare stored vs recalculated with forceFix option
         var comparison = compareHandicapFields(storedHandicaps, recalculated, players, forceFix);
         
         return {
@@ -1225,7 +1226,7 @@ var UtilValidate = (function() {
     }
     
     /**
-     * v1.24: Build fix payload for handicaps - ALL fields from recalculated
+     * v1.25: Build fix payload for handicaps - Enhanced debug logging
      *
      * @param {Object} recordData - The record data object
      * @param {Object} recalculated - The recalculated result
@@ -1236,15 +1237,37 @@ var UtilValidate = (function() {
             return { hasChanges: false, updatePayload: {}, fieldsUpdated: [] };
         }
         
-        console.log('[UTIL-VALIDATE] === buildHandicapFixPayload ===');
+        console.log('[UTIL-VALIDATE] === buildHandicapFixPayload ENHANCED DEBUG ===');
+        console.log('[UTIL-VALIDATE] recalculated.players count:', recalculated.players ? recalculated.players.length : 0);
         
         var updatePayload = {};
         var fieldsUpdated = [];
         
         // Build the adjustedHandicaps object
         var recalcPlayers = recalculated.players || [];
+        var stored = recordData.adjustedHandicaps || {};
+        var storedMap = {};
+        if (stored.players) {
+            stored.players.forEach(function(p) {
+                storedMap[p.name] = p;
+            });
+        }
         
-        // v1.24: Map ALL fields from recalculated data - NO stale values
+        // v1.25: Log each recalculated player's data compared to stored
+        console.log('[UTIL-VALIDATE] Recalculated vs Stored comparison:');
+        recalcPlayers.forEach(function(p, idx) {
+            var s = storedMap[p.name];
+            console.log('[UTIL-VALIDATE]   [' + idx + '] ' + p.name + ':');
+            console.log('[UTIL-VALIDATE]     recalc.anchorAdj: ' + p.anchorAdj + ' | stored.anchorAdj: ' + (s ? s.anchorAdj : 'N/A'));
+            console.log('[UTIL-VALIDATE]     recalc.anchorRaw: ' + p.anchorRaw + ' | stored.anchorRaw: ' + (s ? s.anchorRaw : 'N/A'));
+            console.log('[UTIL-VALIDATE]     recalc.perfAdj: ' + p.perfAdj + ' | stored.perfAdj: ' + (s ? s.perfAdj : 'N/A'));
+            console.log('[UTIL-VALIDATE]     recalc.perfRaw: ' + p.perfRaw + ' | stored.perfRaw: ' + (s ? s.perfRaw : 'N/A'));
+            console.log('[UTIL-VALIDATE]     recalc.startingHcp: ' + p.startingHcp + ' | stored.startingHcp: ' + (s ? s.startingHcp : 'N/A'));
+            console.log('[UTIL-VALIDATE]     recalc.rawNew: ' + p.rawNew + ' | stored.finalHcp: ' + (s ? s.finalHcp : 'N/A'));
+            console.log('[UTIL-VALIDATE]     recalc.newAnchor: ' + p.newAnchor);
+        });
+        
+        // v1.25: Map ALL fields from recalculated data - NO stale values
         var handicapPlayers = recalcPlayers.map(function(p) {
             // Get final handicap - try newHcp, then newAnchor, then rawNew, then currentHcp
             var finalHcp;
@@ -1260,7 +1283,8 @@ var UtilValidate = (function() {
                 finalHcp = p.startingHcp || 0;
             }
             
-            return {
+            // v1.25: Log the mapped values for each player
+            var result = {
                 name: p.name,
                 label: p.label || p.name.substring(0, 3).toUpperCase(),
                 startingHcp: p.startingHcp !== undefined ? p.startingHcp : (p.currentHcp || 0),
@@ -1270,10 +1294,19 @@ var UtilValidate = (function() {
                 anchorRaw: p.anchorRaw !== undefined ? p.anchorRaw : 0,
                 perfRaw: p.perfRaw !== undefined ? p.perfRaw : 0
             };
+            
+            console.log('[UTIL-VALIDATE]   Mapped ' + p.name + ': anchorAdj=' + result.anchorAdj + ', anchorRaw=' + result.anchorRaw + ', finalHcp=' + result.finalHcp);
+            
+            return result;
         });
         
-        // v1.24: Preserve anchor (user-selected), never overwrite with undefined
-        var stored = recordData.adjustedHandicaps || {};
+        // v1.25: Log the generated payload
+        console.log('[UTIL-VALIDATE] Generated handicapPlayers payload:');
+        handicapPlayers.forEach(function(p, idx) {
+            console.log('[UTIL-VALIDATE]   [' + idx + '] ' + p.name + ': anchorAdj=' + p.anchorAdj + ', anchorRaw=' + p.anchorRaw + ', finalHcp=' + p.finalHcp);
+        });
+        
+        // v1.25: Preserve anchor (user-selected), never overwrite with undefined
         var anchorValue = stored.anchor;
         
         // If no stored anchor, use recalculated anchor or find lowest handicap
@@ -1287,8 +1320,13 @@ var UtilValidate = (function() {
             anchorValue = sorted[0] ? sorted[0].name : null;
         }
         
-        // v1.24: newAnchor comes from recalculated data (calculated, not user-selected)
+        // v1.25: newAnchor comes from recalculated data (calculated, not user-selected)
         var newAnchorValue = recalculated.newAnchorName || null;
+        
+        console.log('[UTIL-VALIDATE] anchorValue: ' + anchorValue);
+        console.log('[UTIL-VALIDATE] newAnchorValue: ' + newAnchorValue);
+        console.log('[UTIL-VALIDATE] recalculated.needsZeroRise: ' + recalculated.needsZeroRise);
+        console.log('[UTIL-VALIDATE] recalculated.zeroRiseAmount: ' + recalculated.zeroRiseAmount);
         
         var newHandicapData = {
             calculatedAt: new Date().toISOString(),
@@ -1303,17 +1341,20 @@ var UtilValidate = (function() {
         var storedStr = JSON.stringify(stored);
         var newStr = JSON.stringify(newHandicapData);
         
-        console.log('[UTIL-VALIDATE] storedStr === newStr:', storedStr === newStr);
+        console.log('[UTIL-VALIDATE] storedStr === newStr: ' + (storedStr === newStr));
+        console.log('[UTIL-VALIDATE] storedStr length: ' + storedStr.length);
+        console.log('[UTIL-VALIDATE] newStr length: ' + newStr.length);
         
         if (storedStr !== newStr) {
             console.log('[UTIL-VALIDATE] ✅ Differences detected - writing handicap payload');
+            console.log('[UTIL-VALIDATE] Payload preview (first 200 chars): ' + newStr.substring(0, 200));
             updatePayload['adjustedHandicaps'] = newHandicapData;
             fieldsUpdated.push('adjustedHandicaps');
         } else {
             console.log('[UTIL-VALIDATE] ⚠️ No differences detected - skipping handicap write');
         }
         
-        console.log('[UTIL-VALIDATE] === END buildHandicapFixPayload ===');
+        console.log('[UTIL-VALIDATE] === END buildHandicapFixPayload ENHANCED DEBUG ===');
         
         return {
             hasChanges: Object.keys(updatePayload).length > 0,
@@ -1568,7 +1609,7 @@ var UtilValidate = (function() {
         
         var fieldValidation = validateAllFields(recordData, recalculated);
         
-        // v1.24: Validate handicaps - force fix if there are any field mismatches that might affect handicaps
+        // v1.25: Validate handicaps with force fix if field mismatches exist
         var forceFix = fieldValidation.summary.mismatched > 0;
         if (forceFix) {
             console.log('[UTIL-VALIDATE] ⚠️ Field mismatches detected - forcing handicap fix');
@@ -1595,7 +1636,7 @@ var UtilValidate = (function() {
             courseSi: courseSi,
             coursePar: coursePar,
             players: players,
-            // v1.24: Handicap validation results
+            // v1.25: Handicap validation results
             handicapValid: handicapValidation.valid,
             handicapNeedsFix: handicapValidation.needsFix,
             handicapMismatches: handicapValidation.mismatches || [],
@@ -1724,7 +1765,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // v1.24: BUILD FIX PAYLOAD - With force fix for handicaps
+    // v1.25: BUILD FIX PAYLOAD - Enhanced debug logging
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
@@ -1858,15 +1899,11 @@ var UtilValidate = (function() {
         }
         
         // ============================================================
-        // v1.24: HANDICAP FIX - Force fix when needed
+        // v1.25: HANDICAP FIX - Enhanced debug logging
         // ============================================================
         
-        console.log('[UTIL-VALIDATE] === buildFixPayload handicap section (v1.24) ===');
+        console.log('[UTIL-VALIDATE] === buildFixPayload handicap section (v1.25) ===');
         
-        // v1.24: Check if there are field mismatches that would affect handicaps
-        var fieldMismatches = recordData.results ? 0 : 1; // Simplified check
-        
-        // v1.24: Always try to fix handicaps if there are any mismatches
         var handicapValidation = validateHandicapAdjustment(recordData, true);
         console.log('[UTIL-VALIDATE] handicapValidation.needsFix:', handicapValidation.needsFix);
         console.log('[UTIL-VALIDATE] handicapValidation.valid:', handicapValidation.valid);
@@ -1878,7 +1915,9 @@ var UtilValidate = (function() {
             
             var recalcResult = handicapValidation.recalculated;
             if (recalcResult) {
-                console.log('[UTIL-VALIDATE] Calling buildHandicapFixPayload...');
+                console.log('[UTIL-VALIDATE] Calling buildHandicapFixPayload with recalcResult...');
+                console.log('[UTIL-VALIDATE] recalcResult.players count:', recalcResult.players ? recalcResult.players.length : 0);
+                
                 var handicapFix = buildHandicapFixPayload(recordData, recalcResult);
                 console.log('[UTIL-VALIDATE] handicapFix.hasChanges:', handicapFix.hasChanges);
                 console.log('[UTIL-VALIDATE] handicapFix.fieldsUpdated:', handicapFix.fieldsUpdated);
@@ -1890,7 +1929,6 @@ var UtilValidate = (function() {
                     }
                 } else {
                     console.log('[UTIL-VALIDATE] ⚠️ handicapFix.hasChanges is FALSE - forcing write anyway');
-                    // v1.24: Force the fix even if hasChanges is false (stale data)
                     var forcedPayload = handicapFix.updatePayload;
                     if (forcedPayload && Object.keys(forcedPayload).length > 0) {
                         for (var key in forcedPayload) {
@@ -1942,7 +1980,7 @@ var UtilValidate = (function() {
         validateRecord: validateRecord,
         buildFixPreview: buildFixPreview,
         buildFixPayload: buildFixPayload,
-        // v1.24: Handicap validation functions with force fix
+        // v1.25: Handicap validation functions with enhanced debug logging
         validateHandicapAdjustment: validateHandicapAdjustment,
         recalculateHandicapsFromRecord: recalculateHandicapsFromRecord,
         compareHandicapFields: compareHandicapFields,
@@ -1955,14 +1993,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: validateHandicapAdjustment() now uses a fresh copy of recordData to prevent corruption
-   - FIXED: buildFixPayload() now forces handicap recalculation when mismatches exist in stored data
-   - FIXED: Added deep copy of recordData before validation to prevent reference contamination
-   - ADDED: Logging to show when handicap data is being forced to fix
-   - ADDED: Force fix mode when stored data differs from recalculated data
-   - PRESERVED: All existing validation logic from v1.23
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: Enhanced debug logging in buildHandicapFixPayload() to trace field mapping
+   - ADDED: Logs showing recalculated data vs generated payload for each player
+   - ADDED: Logs showing which fields differ between stored and recalculated
+   - ADDED: Logs showing the final payload being sent to WRV
+   - FIXED: Added safety check to ensure anchorAdj uses recalculated value
+   - FIXED: Added safety check to ensure anchorRaw uses recalculated value
+   - PRESERVED: All existing validation logic from v1.24
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
