@@ -1,18 +1,23 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: savePlayerEdit() now uses WRV.write() with merge instead of WRV.update()
-   - FIXED: WRV verification now works correctly with nested path writes
-   - CHANGED: Updated player object is written as a full object at the nested path
-   - PRESERVED: All existing functionality from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
+   - CHANGED: loadUsedLabelsStatus() now reads from playerInformation/players.usedLabels
+   - CHANGED: viewUsedLabels() now reads from playerInformation/players.usedLabels
+   - CHANGED: rebuildUsedLabels() now writes to playerInformation/players.usedLabels
+   - CHANGED: executeRebuildUsedLabels() now writes to playerInformation/players.usedLabels
+   - CHANGED: cancelUsedLabels() now reloads from playerInformation
+   - PRESERVED: All existing functionality from v1.02
+   - PRESERVED: Player Editor functionality unchanged
+   - PRESERVED: labelHistory functionality unchanged (already in playerInformation)
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.02";
-console.log("[UTIL-PLAYERS] Initializing v1.02");
+window.UTIL_PLAYERS_VERSION = "1.03";
+console.log("[UTIL-PLAYERS] Initializing v1.03 - usedLabels in playerInformation");
 
 // ============================================================
 // STATE
@@ -125,7 +130,7 @@ function updatePlayersUI(env) {
 }
 
 // ============================================================
-// LOAD STATUS (existing functions)
+// v1.03: LOAD STATUS (updated for playerInformation)
 // ============================================================
 
 function loadPlayersStatus() {
@@ -143,6 +148,7 @@ function loadPlayersStatus() {
     loadLabelHistoryStatus();
 }
 
+// v1.03: loadUsedLabelsStatus - reads from playerInformation
 function loadUsedLabelsStatus() {
     if (!playersDb) return;
     
@@ -151,14 +157,25 @@ function loadUsedLabelsStatus() {
     var viewBtn = document.getElementById('usedLabelsViewBtn');
     
     if (badge) badge.textContent = '⏳ Loading...';
-    if (info) info.textContent = 'Loading usedLabels from Firestore...';
+    if (info) info.textContent = 'Loading usedLabels from playerInformation...';
     if (viewBtn) viewBtn.disabled = true;
     
-    playersDb.collection('usedLabels').doc('all').get()
+    playersDb.collection('playerInformation').doc('players').get()
         .then(function(doc) {
-            var exists = doc.exists;
-            var labels = doc.exists ? doc.data().labels || {} : {};
-            var count = Object.keys(labels).length;
+            if (!doc.exists) {
+                if (badge) {
+                    badge.textContent = '❌ No document';
+                    badge.className = 'status-badge-large missing';
+                }
+                if (info) info.textContent = '⚠️ playerInformation document does not exist.';
+                playersLog('playerInformation document not found', 'warning');
+                return;
+            }
+            
+            var data = doc.data();
+            var usedLabels = data.usedLabels || {};
+            var count = Object.keys(usedLabels).length;
+            var exists = count > 0;
             
             if (badge) {
                 badge.textContent = exists ? '✅ Exists (' + count + ' labels)' : '❌ Does not exist';
@@ -167,9 +184,9 @@ function loadUsedLabelsStatus() {
             
             if (info) {
                 if (exists) {
-                    info.innerHTML = '📋 <strong>' + count + '</strong> labels in usedLabels index.';
+                    info.innerHTML = '📋 <strong>' + count + '</strong> labels in usedLabels (stored in playerInformation).';
                 } else {
-                    info.innerHTML = '⚠️ usedLabels document does not exist. Click <strong>"Rebuild from History"</strong> to create it.';
+                    info.innerHTML = '⚠️ usedLabels does not exist. Click <strong>"Rebuild from History"</strong> to create it.';
                 }
             }
             
@@ -265,25 +282,33 @@ function loadLabelHistoryStatus() {
 }
 
 // ============================================================
-// VIEW FUNCTIONS (Modal) - existing
+// v1.03: VIEW FUNCTIONS (updated for playerInformation)
 // ============================================================
 
+// v1.03: viewUsedLabels - reads from playerInformation
 function viewUsedLabels() {
     if (!playersDb) {
         playersLog("Select environment first", "error");
         return;
     }
     
-    playersDb.collection('usedLabels').doc('all').get()
+    playersDb.collection('playerInformation').doc('players').get()
         .then(function(doc) {
             if (!doc.exists) {
-                playersLog('usedLabels does not exist', 'warning');
-                Modal.alert('usedLabels document does not exist.');
+                playersLog('playerInformation does not exist', 'warning');
+                Modal.alert('playerInformation document does not exist.');
                 return;
             }
             
-            var labels = doc.data().labels || {};
-            var labelArray = Object.keys(labels).sort();
+            var data = doc.data();
+            var usedLabels = data.usedLabels || {};
+            var labelArray = Object.keys(usedLabels).sort();
+            
+            if (labelArray.length === 0) {
+                Modal.alert('No labels found in usedLabels.');
+                playersLog('No labels in usedLabels', 'info');
+                return;
+            }
             
             var html = '<div style="max-height:400px; overflow-y:auto; padding:8px;">';
             html += '<div style="font-size:0.8rem; color:#888; margin-bottom:12px;">Total: <strong>' + labelArray.length + '</strong> labels</div>';
@@ -293,7 +318,7 @@ function viewUsedLabels() {
             }
             html += '</div></div>';
             
-            Modal.showCustomModal('🏷️ usedLabels', html);
+            Modal.showCustomModal('🏷️ usedLabels (from playerInformation)', html);
             playersLog('Viewed usedLabels: ' + labelArray.length + ' labels', 'info');
         })
         .catch(function(err) {
@@ -370,7 +395,7 @@ function viewLabelHistory() {
 }
 
 // ============================================================
-// REBUILD usedLabels (existing)
+// v1.03: REBUILD usedLabels (writes to playerInformation)
 // ============================================================
 
 function rebuildUsedLabels() {
@@ -455,7 +480,7 @@ function rebuildUsedLabels() {
                 badge.className = 'status-badge-large warning';
             }
             if (info) {
-                info.innerHTML = '📋 <strong>' + labelArray.length + '</strong> labels found. Review below and confirm to write.';
+                info.innerHTML = '📋 <strong>' + labelArray.length + '</strong> labels found. Review below and confirm to write to playerInformation.usedLabels.';
             }
             
             if (confirmSection) {
@@ -468,7 +493,7 @@ function rebuildUsedLabels() {
             
             if (rebuildBtn) rebuildBtn.disabled = false;
             
-            playersLogStep(2, 'Ready to write ' + labelArray.length + ' labels', 'success');
+            playersLogStep(2, 'Ready to write ' + labelArray.length + ' labels to playerInformation', 'success');
         })
         .catch(function(err) {
             playersLogStep(2, 'Error scanning historyGames: ' + err.message, 'error');
@@ -481,6 +506,7 @@ function rebuildUsedLabels() {
         });
 }
 
+// v1.03: executeRebuildUsedLabels - writes to playerInformation
 function executeRebuildUsedLabels() {
     if (!playersDb || !stagedUsedLabels) {
         playersLog("No staged data to write", "error");
@@ -497,7 +523,7 @@ function executeRebuildUsedLabels() {
     }
     
     playersLogStep(3, '=== EXECUTING REBUILD usedLabels ===', 'info');
-    playersLogStep(3, 'Writing ' + count + ' labels to usedLabels/all', 'info');
+    playersLogStep(3, 'Writing ' + count + ' labels to playerInformation.usedLabels', 'info');
     
     var badge = document.getElementById('usedLabelsStatusBadge');
     var info = document.getElementById('usedLabelsStatusInfo');
@@ -510,19 +536,20 @@ function executeRebuildUsedLabels() {
         badge.textContent = '⏳ Writing...';
         badge.className = 'status-badge-large warning';
     }
-    if (info) info.textContent = 'Writing to Firestore...';
+    if (info) info.textContent = 'Writing to playerInformation...';
     if (confirmBtn) confirmBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
     if (rebuildBtn) rebuildBtn.disabled = true;
     
-    var data = {
-        labels: labelSet,
+    // v1.03: Write to playerInformation document
+    var payload = {
+        usedLabels: labelSet,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     if (typeof WRV !== 'undefined' && WRV.write) {
         playersLogStep(3, 'Using WRV for write', 'info');
-        WRV.write('usedLabels', 'all', data, function(err, result) {
+        WRV.write('playerInformation', 'players', payload, true, function(err, result) {
             if (err) {
                 playersLogStep(3, '❌ WRV write failed: ' + err.message, 'error');
                 if (badge) {
@@ -542,7 +569,7 @@ function executeRebuildUsedLabels() {
         });
     } else {
         playersLogStep(3, 'WRV not available, using direct write', 'warning');
-        playersDb.collection('usedLabels').doc('all').set(data)
+        playersDb.collection('playerInformation').doc('players').set(payload, { merge: true })
             .then(function() {
                 playersLogStep(3, '✅ usedLabels write successful', 'success');
                 handleRebuildSuccess(count);
@@ -573,7 +600,7 @@ function handleRebuildSuccess(count) {
         badge.textContent = '✅ Exists (' + count + ' labels)';
         badge.className = 'status-badge-large exists';
     }
-    if (info) info.innerHTML = '📋 <strong>' + count + '</strong> labels written successfully.';
+    if (info) info.innerHTML = '📋 <strong>' + count + '</strong> labels written to playerInformation successfully.';
     if (viewBtn) viewBtn.disabled = false;
     if (rebuildBtn) rebuildBtn.disabled = false;
     if (confirmSection) confirmSection.style.display = 'none';
@@ -585,7 +612,7 @@ function handleRebuildSuccess(count) {
 }
 
 // ============================================================
-// SYNC labelHistory (existing)
+// SYNC labelHistory (unchanged - already in playerInformation)
 // ============================================================
 
 function syncLabelHistory() {
@@ -664,7 +691,6 @@ function syncLabelHistory() {
                         var name = p.name;
                         
                         if (label && name) {
-                            var key = name + '||' + label;
                             if (!playerLabelMap[name]) {
                                 playerLabelMap[name] = {};
                             }
@@ -864,7 +890,7 @@ function handleSyncSuccess(count) {
 }
 
 // ============================================================
-// CANCEL FUNCTIONS (existing)
+// v1.03: CANCEL FUNCTIONS (updated for playerInformation)
 // ============================================================
 
 function cancelUsedLabels() {
@@ -884,7 +910,7 @@ function cancelUsedLabels() {
         badge.textContent = '⏳ Loading...';
         badge.className = 'status-badge-large missing';
     }
-    if (info) info.textContent = 'Loading usedLabels from Firestore...';
+    if (info) info.textContent = 'Loading usedLabels from playerInformation...';
     if (rebuildBtn) rebuildBtn.disabled = false;
     
     loadUsedLabelsStatus();
@@ -918,7 +944,7 @@ function cancelLabelHistory() {
 }
 
 // ============================================================
-// v1.02: PLAYER EDITOR FUNCTIONS (FIXED WRV)
+// PLAYER EDITOR FUNCTIONS (unchanged from v1.02)
 // ============================================================
 
 function loadPlayerEditorDropdown() {
@@ -930,7 +956,6 @@ function loadPlayerEditorDropdown() {
     var select = document.getElementById('playerEditorSelect');
     if (!select) return;
     
-    // Preserve selected value if any
     var currentValue = select.value;
     
     select.innerHTML = '<option value="">Loading...</option>';
@@ -957,12 +982,10 @@ function loadPlayerEditorDropdown() {
                 return;
             }
             
-            // Sort players by name
             players.sort(function(a, b) {
                 return a.name.localeCompare(b.name);
             });
             
-            // Build dropdown
             var html = '<option value="">-- Select a player --</option>';
             for (var i = 0; i < players.length; i++) {
                 var p = players[i];
@@ -977,7 +1000,6 @@ function loadPlayerEditorDropdown() {
             
             playersLog('Loaded ' + players.length + ' players for editor', 'success');
             
-            // If there was a selected value, load it
             if (currentValue && currentValue !== '') {
                 loadPlayerForEdit();
             }
@@ -1016,7 +1038,6 @@ function loadPlayerForEdit() {
         return;
     }
     
-    // Load the player data
     playersDb.collection('playerInformation').doc('players').get()
         .then(function(doc) {
             if (!doc.exists) {
@@ -1042,12 +1063,10 @@ function loadPlayerForEdit() {
                 return;
             }
             
-            // Store current player
             editorCurrentPlayer = player;
             editorCurrentIndex = playerIndex;
             editorOriginalData = JSON.parse(JSON.stringify(player));
             
-            // Populate form
             document.getElementById('editorName').value = player.name || '';
             document.getElementById('editorLabel').value = player.label || '';
             document.getElementById('editorHandicap').value = player.handicap || 0;
@@ -1056,7 +1075,6 @@ function loadPlayerForEdit() {
             document.getElementById('editorIsDefault').value = player.isDefault === true ? 'true' : 'false';
             document.getElementById('editorLastLabelChange').value = player.lastLabelChange || '';
             
-            // Show form
             form.style.display = 'block';
             emptyState.style.display = 'none';
             
@@ -1068,7 +1086,6 @@ function loadPlayerForEdit() {
             if (saveBtn) saveBtn.disabled = false;
             if (resetBtn) resetBtn.disabled = false;
             
-            // Clear status
             hideEditorStatus();
             
             playersLog('Loaded player for editing: ' + player.name, 'success');
@@ -1094,7 +1111,6 @@ function validatePlayerForm() {
     var errors = [];
     var warnings = [];
     
-    // Validate name
     if (!name || name === '') {
         errors.push('Name is required');
         document.getElementById('editorName').classList.add('editor-error');
@@ -1102,7 +1118,6 @@ function validatePlayerForm() {
         document.getElementById('editorName').classList.remove('editor-error');
     }
     
-    // Validate label
     if (!label || label === '') {
         errors.push('Label is required');
         document.getElementById('editorLabel').classList.add('editor-error');
@@ -1113,7 +1128,6 @@ function validatePlayerForm() {
         document.getElementById('editorLabel').classList.remove('editor-error');
     }
     
-    // Validate handicap
     if (isNaN(handicap) || handicap < 0 || handicap > 54) {
         errors.push('Handicap must be between 0 and 54');
         document.getElementById('editorHandicap').classList.add('editor-error');
@@ -1121,17 +1135,14 @@ function validatePlayerForm() {
         document.getElementById('editorHandicap').classList.remove('editor-error');
     }
     
-    // Validate team
     if (team !== 'A' && team !== 'B') {
         errors.push('Team must be A or B');
     }
     
-    // Validate flight (optional)
     if (flight !== '' && flight !== '1' && flight !== '2') {
         errors.push('Flight must be 1, 2, or empty');
     }
     
-    // Validate lastLabelChange format (if provided)
     if (lastLabelChange && lastLabelChange !== '') {
         var date = new Date(lastLabelChange);
         if (isNaN(date.getTime())) {
@@ -1159,7 +1170,6 @@ function buildUpdateObject(original, updated) {
     var changes = {};
     var changeLog = [];
     
-    // Compare each field
     if (original.name !== updated.name) {
         changes.name = updated.name;
         changeLog.push('name: "' + original.name + '" → "' + updated.name + '"');
@@ -1196,10 +1206,6 @@ function buildUpdateObject(original, updated) {
     };
 }
 
-// ============================================================
-// v1.02: savePlayerEdit - FIXED using WRV.write() with merge
-// ============================================================
-
 function savePlayerEdit() {
     var saveBtn = document.getElementById('editorSaveBtn');
     var resetBtn = document.getElementById('editorResetBtn');
@@ -1210,7 +1216,6 @@ function savePlayerEdit() {
         return;
     }
     
-    // Validate form
     var validation = validatePlayerForm();
     
     if (!validation.valid) {
@@ -1218,13 +1223,10 @@ function savePlayerEdit() {
         return;
     }
     
-    // Show warnings if any
     if (validation.warnings.length > 0) {
         showEditorStatus('⚠️ Warnings:\n• ' + validation.warnings.join('\n• '), 'info');
-        // Continue with save - warnings don't block
     }
     
-    // Build update object
     var updateResult = buildUpdateObject(editorOriginalData, validation.data);
     
     if (!updateResult.hasChanges) {
@@ -1232,7 +1234,6 @@ function savePlayerEdit() {
         return;
     }
     
-    // Show changes and confirm
     var confirmMsg = 'The following changes will be saved:\n\n';
     for (var i = 0; i < updateResult.changeLog.length; i++) {
         confirmMsg += '• ' + updateResult.changeLog[i] + '\n';
@@ -1244,7 +1245,6 @@ function savePlayerEdit() {
         return;
     }
     
-    // Disable buttons during save
     if (saveBtn) saveBtn.disabled = true;
     if (resetBtn) resetBtn.disabled = true;
     
@@ -1252,26 +1252,19 @@ function savePlayerEdit() {
     playersLogStep(1, 'Player: ' + editorCurrentPlayer.name, 'info');
     playersLogStep(1, 'Changes: ' + updateResult.changeLog.length + ' field(s)', 'info');
     
-    // v1.02: Build the updated player object
     var updatedPlayer = JSON.parse(JSON.stringify(editorOriginalData));
     for (var key in updateResult.changes) {
         updatedPlayer[key] = updateResult.changes[key];
     }
     
-    // v1.02: Use nested path with WRV.write() and merge
-    var payload = {};
-    payload['players.' + editorCurrentIndex] = updatedPlayer;
-    
-    // Also update document-level updatedAt
     var fullPayload = {
-        players: null, // This will be merged
+        players: null,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     fullPayload['players.' + editorCurrentIndex] = updatedPlayer;
     
     playersLogStep(2, 'Writing to Firestore using WRV.write() with merge...', 'info');
     
-    // v1.02: Use WRV.write() with merge instead of WRV.update()
     if (typeof WRV !== 'undefined' && WRV.write) {
         WRV.write('playerInformation', 'players', fullPayload, true, function(err, result) {
             if (err) {
@@ -1284,24 +1277,20 @@ function savePlayerEdit() {
             
             playersLogStep(2, '✅ Player updated successfully', 'success');
             
-            // Log each change
             for (var i = 0; i < updateResult.changeLog.length; i++) {
                 playersLogStep(2, '  • ' + updateResult.changeLog[i], 'info');
             }
             
-            // Update original data to reflect saved state
             editorOriginalData = JSON.parse(JSON.stringify(updatedPlayer));
             showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
             
             if (saveBtn) saveBtn.disabled = false;
             if (resetBtn) resetBtn.disabled = false;
             
-            // Reload status for other cards
             loadPlayersStatus();
             playersLogStep(2, '=== SAVE COMPLETE ===', 'success');
         });
     } else {
-        // Fallback: direct update
         playersLogStep(2, 'WRV not available, using direct update', 'warning');
         playersDb.collection('playerInformation').doc('players').update(fullPayload)
             .then(function() {
@@ -1335,12 +1324,10 @@ function resetPlayerEdit() {
         return;
     }
     
-    // Confirm reset
     if (!confirm('Reset all fields to the original saved values?')) {
         return;
     }
     
-    // Reset form fields
     document.getElementById('editorName').value = editorOriginalData.name || '';
     document.getElementById('editorLabel').value = editorOriginalData.label || '';
     document.getElementById('editorHandicap').value = editorOriginalData.handicap || 0;
@@ -1349,7 +1336,6 @@ function resetPlayerEdit() {
     document.getElementById('editorIsDefault').value = editorOriginalData.isDefault === true ? 'true' : 'false';
     document.getElementById('editorLastLabelChange').value = editorOriginalData.lastLabelChange || '';
     
-    // Clear any error states
     document.querySelectorAll('.editor-error').forEach(function(el) {
         el.classList.remove('editor-error');
     });
@@ -1377,7 +1363,7 @@ function hideEditorStatus() {
 }
 
 // ============================================================
-// INFO GUIDE (existing)
+// INFO GUIDE (unchanged)
 // ============================================================
 
 function showPlayersInfoGuide() {
@@ -1427,7 +1413,7 @@ function showPlayersInfoGuide() {
             <div class="info-section">
                 <div class="info-section-title">🏷️ usedLabels - What It Is</div>
                 <div class="info-text">
-                    <strong>usedLabels</strong> is an index that tracks which labels have EVER appeared in a completed game.
+                    <strong>usedLabels</strong> is an index stored in <code>playerInformation.usedLabels</code> that tracks which labels have EVER appeared in a completed game.
                     <br><br>
                     <strong>Why it matters:</strong> This prevents label reuse. Once a label appears in a completed game, it's locked forever.
                     <br><br>
@@ -1464,7 +1450,7 @@ function showPlayersInfoGuide() {
                 <div class="info-section-title">⚠️ Important Notes</div>
                 <ul class="info-warnings">
                     <li><strong>Player Editor:</strong> Changes are immediate. Always double-check before saving.</li>
-                    <li><strong>usedLabels Rebuild:</strong> This REPLACES the entire usedLabels document.</li>
+                    <li><strong>usedLabels Rebuild:</strong> This REPLACES the entire usedLabels field in playerInformation.</li>
                     <li><strong>labelHistory Sync:</strong> This MERGES mappings. Existing mappings are preserved, new ones are added.</li>
                     <li><strong>WRV Protection:</strong> All writes use WRV for verification and retry.</li>
                     <li><strong>PROD/DEV:</strong> Always double-check which environment you're working on before confirming.</li>
@@ -1487,7 +1473,6 @@ function showPlayersInfoGuide() {
 function initPlayersTab() {
     playersLog('Initializing PLAYERS tab...', 'info');
     
-    // Environment buttons
     var prodBtn = document.getElementById('playersProdBtn');
     var devBtn = document.getElementById('playersDevBtn');
     
@@ -1502,7 +1487,6 @@ function initPlayersTab() {
         });
     }
     
-    // Player Editor - Dropdown change
     var editorSelect = document.getElementById('playerEditorSelect');
     if (editorSelect) {
         editorSelect.addEventListener('change', function() {
@@ -1510,7 +1494,6 @@ function initPlayersTab() {
         });
     }
     
-    // Player Editor - Save button
     var saveBtn = document.getElementById('editorSaveBtn');
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
@@ -1518,7 +1501,6 @@ function initPlayersTab() {
         });
     }
     
-    // Player Editor - Reset button
     var resetBtn = document.getElementById('editorResetBtn');
     if (resetBtn) {
         resetBtn.addEventListener('click', function() {
@@ -1526,7 +1508,6 @@ function initPlayersTab() {
         });
     }
     
-    // usedLabels buttons
     var viewUsedBtn = document.getElementById('usedLabelsViewBtn');
     var rebuildBtn = document.getElementById('usedLabelsRebuildBtn');
     var confirmBtn = document.getElementById('usedLabelsConfirmBtn');
@@ -1553,7 +1534,6 @@ function initPlayersTab() {
         });
     }
     
-    // labelHistory buttons
     var viewHistoryBtn = document.getElementById('labelHistoryViewBtn');
     var syncBtn = document.getElementById('labelHistorySyncBtn');
     var confirmHistoryBtn = document.getElementById('labelHistoryConfirmBtn');
@@ -1602,7 +1582,6 @@ window.cancelLabelHistory = cancelLabelHistory;
 window.showPlayersInfoGuide = showPlayersInfoGuide;
 window.initPlayersTab = initPlayersTab;
 
-// v1.01: Player Editor exports
 window.loadPlayerEditorDropdown = loadPlayerEditorDropdown;
 window.loadPlayerForEdit = loadPlayerForEdit;
 window.savePlayerEdit = savePlayerEdit;
@@ -1610,19 +1589,23 @@ window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
 
-// v1.02: Updated version
-window.UTIL_PLAYERS_VERSION = "1.02";
+window.UTIL_PLAYERS_VERSION = "1.03";
 
-console.log("[UTIL-PLAYERS] v1.02 loaded - Fixed WRV write with merge");
+console.log("[UTIL-PLAYERS] v1.03 loaded - usedLabels in playerInformation");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: savePlayerEdit() now uses WRV.write() with merge instead of WRV.update()
-   - FIXED: WRV verification now works correctly with nested path writes
-   - CHANGED: Updated player object is written as a full object at the nested path
-   - PRESERVED: All existing functionality from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
+   - CHANGED: loadUsedLabelsStatus() now reads from playerInformation/players.usedLabels
+   - CHANGED: viewUsedLabels() now reads from playerInformation/players.usedLabels
+   - CHANGED: rebuildUsedLabels() now writes to playerInformation/players.usedLabels
+   - CHANGED: executeRebuildUsedLabels() now writes to playerInformation/players.usedLabels
+   - CHANGED: cancelUsedLabels() now reloads from playerInformation
+   - PRESERVED: All existing functionality from v1.02
+   - PRESERVED: Player Editor functionality unchanged
+   - PRESERVED: labelHistory functionality unchanged (already in playerInformation)
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
