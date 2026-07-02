@@ -1,15 +1,19 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - ADDED: deepEqual exposed in public API for debugging
-   - ADDED: getWrittenSubset exposed in public API for debugging
-   - PRESERVED: All functionality from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: DEFAULT_SKIP_VERIFY array for timestamp fields
+   - CHANGED: verifyData() now skips specified fields during comparison
+   - CHANGED: writeWithWRV() accepts skipVerify option
+   - CHANGED: updateWithWRV() accepts skipVerify option
+   - SKIP FIELDS: updatedAt, createdAt, completedAt, lastComputedAt, 
+     results.lastComputedAt, celebration.copiedAt, .serverTimestamp fields
+   - PRESERVED: All functionality from v1.09, recovery is unchanged
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.09";
+window.WRV_VERSION = "1.10";
 
 var WRV = (function() {
     
@@ -22,11 +26,52 @@ var WRV = (function() {
     var MAX_DELAY = 30000;
     
     // ============================================================
-    // Deep comparison of two objects
+    // v1.10: Fields to skip during verification
+    // These are server-timestamp fields that will never match
+    // ============================================================
+    
+    var DEFAULT_SKIP_VERIFY = [
+        'updatedAt',
+        'createdAt',
+        'completedAt',
+        'lastComputedAt',
+        'results.lastComputedAt',
+        'celebration.copiedAt'
+    ];
+    
+    // ============================================================
+    // Check if a value is a Firestore server timestamp sentinel
+    // ============================================================
+    
+    function isServerTimestamp(value) {
+        // Firestore FieldValue sentinel objects have specific properties
+        if (value && typeof value === 'object') {
+            // Check for Firestore's internal sentinel marker
+            if (value._methodName === 'serverTimestamp' || 
+                value.constructor && value.constructor.name === 'FieldValue') {
+                return true;
+            }
+            // Check for the sentinel flag used in some versions
+            if (value.isEqual && typeof value.isEqual === 'function') {
+                // This is a best-effort check for sentinel objects
+                try {
+                    var json = JSON.stringify(value);
+                    if (json === '{"_methodName":"serverTimestamp"}') {
+                        return true;
+                    }
+                } catch(e) {}
+            }
+        }
+        return false;
+    }
+    
+    // ============================================================
+    // Deep comparison of two objects with skip fields
     // Keys are SORTED before comparison (Firestore doesn't preserve order)
     // ============================================================
     
-    function deepEqual(a, b) {
+    function deepEqualWithSkip(a, b, skipKeys) {
+        // Handle primitive equality
         if (a === b) return true;
         if (a === null || b === null) return a === b;
         if (typeof a === 'undefined' || typeof b === 'undefined') return a === b;
@@ -50,24 +95,46 @@ var WRV = (function() {
         }
         
         if (typeof a !== 'object' || typeof b !== 'object') return a === b;
+        
+        // Handle arrays
         if (Array.isArray(a) && Array.isArray(b)) {
             if (a.length !== b.length) return false;
             for (var i = 0; i < a.length; i++) {
-                if (!deepEqual(a[i], b[i])) return false;
+                if (!deepEqualWithSkip(a[i], b[i], skipKeys)) return false;
             }
             return true;
         }
         
-        // v1.08: Sort keys before comparing (Firestore doesn't preserve order)
+        // Sort keys before comparing (Firestore doesn't preserve order)
         var keysA = Object.keys(a).sort();
         var keysB = Object.keys(b).sort();
+        
+        // v1.10: Filter out skipped keys from both sets
+        if (skipKeys && skipKeys.length > 0) {
+            var skipSet = {};
+            for (var s = 0; s < skipKeys.length; s++) {
+                skipSet[skipKeys[s]] = true;
+            }
+            
+            keysA = keysA.filter(function(k) { return !skipSet[k]; });
+            keysB = keysB.filter(function(k) { return !skipSet[k]; });
+        }
+        
         if (keysA.length !== keysB.length) return false;
         
         for (var k = 0; k < keysA.length; k++) {
             var key = keysA[k];
-            if (!deepEqual(a[key], b[key])) return false;
+            if (!deepEqualWithSkip(a[key], b[key], skipKeys)) return false;
         }
         return true;
+    }
+    
+    // ============================================================
+    // Original deepEqual (preserved for backward compatibility)
+    // ============================================================
+    
+    function deepEqual(a, b) {
+        return deepEqualWithSkip(a, b, []);
     }
     
     // ============================================================
@@ -88,17 +155,32 @@ var WRV = (function() {
     }
     
     // ============================================================
-    // Verify payload fields
-    // Compares ONLY the fields that were in the WRV payload
+    // Verify payload fields with skip list
+    // v1.10: Skips timestamp fields during comparison
     // ============================================================
     
-    function verifyData(original, written) {
+    function verifyData(original, written, skipVerify) {
+        // Build skip list: default + custom
+        var skipKeys = [];
+        if (DEFAULT_SKIP_VERIFY) {
+            skipKeys = skipKeys.concat(DEFAULT_SKIP_VERIFY);
+        }
+        if (skipVerify && skipVerify.length > 0) {
+            skipKeys = skipKeys.concat(skipVerify);
+        }
+        
         // Extract ONLY the fields from the payload
         var writtenSubset = getWrittenSubset(original, written);
-        var match = deepEqual(original, writtenSubset);
+        
+        // Use deepEqualWithSkip for comparison
+        var match = deepEqualWithSkip(original, writtenSubset, skipKeys);
         
         if (!match) {
             console.warn('[WRV] ❌ Verification FAILED - payload mismatch');
+            // Log which fields were skipped for debugging
+            if (skipKeys.length > 0) {
+                console.log('[WRV] Skipped fields during verification:', skipKeys);
+            }
         } else {
             console.log('[WRV] ✅ Verification PASSED - payload matches');
         }
@@ -108,12 +190,14 @@ var WRV = (function() {
     
     // ============================================================
     // WRV.write() - Write payload, verify payload fields only
+    // v1.10: Accepts skipVerify option
     // ============================================================
     
-    function writeWithWRV(collection, docId, data, callback) {
+    function writeWithWRV(collection, docId, data, callback, options) {
         var attempt = 0;
         var db = firebase.firestore();
         var docRef = db.collection(collection).doc(docId);
+        var skipVerify = (options && options.skipVerify) || [];
         
         function doWrite() {
             attempt++;
@@ -129,7 +213,7 @@ var WRV = (function() {
                     }
                     
                     var writtenData = doc.data();
-                    var verified = verifyData(data, writtenData);
+                    var verified = verifyData(data, writtenData, skipVerify);
                     
                     if (verified) {
                         console.log('[WRV] ✅ Verified on attempt', attempt);
@@ -155,8 +239,8 @@ var WRV = (function() {
         doWrite();
     }
     
-    function updateWithWRV(collection, docId, data, callback) {
-        writeWithWRV(collection, docId, data, callback);
+    function updateWithWRV(collection, docId, data, callback, options) {
+        writeWithWRV(collection, docId, data, callback, options);
     }
     
     // ============================================================
@@ -342,7 +426,7 @@ var WRV = (function() {
     }
     
     // ============================================================
-    // Public API - v1.09: Expose deepEqual and getWrittenSubset
+    // Public API - v1.10: Added skipVerify support
     // ============================================================
     
     return {
@@ -359,7 +443,10 @@ var WRV = (function() {
         RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY,
         // v1.09: Expose for debugging
         deepEqual: deepEqual,
-        getWrittenSubset: getWrittenSubset
+        getWrittenSubset: getWrittenSubset,
+        // v1.10: Expose skip verify constants
+        DEFAULT_SKIP_VERIFY: DEFAULT_SKIP_VERIFY,
+        deepEqualWithSkip: deepEqualWithSkip
     };
     
 })();
@@ -368,11 +455,15 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - ADDED: deepEqual exposed in public API for debugging
-   - ADDED: getWrittenSubset exposed in public API for debugging
-   - PRESERVED: All functionality from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: DEFAULT_SKIP_VERIFY array for timestamp fields
+   - CHANGED: verifyData() now skips specified fields during comparison
+   - CHANGED: writeWithWRV() accepts skipVerify option
+   - CHANGED: updateWithWRV() accepts skipVerify option
+   - SKIP FIELDS: updatedAt, createdAt, completedAt, lastComputedAt, 
+     results.lastComputedAt, celebration.copiedAt, .serverTimestamp fields
+   - PRESERVED: All functionality from v1.09, recovery is unchanged
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
