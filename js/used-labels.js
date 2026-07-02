@@ -1,15 +1,14 @@
 /*
 FILE: js/used-labels.js
-VERSION: 1.00
-KEY CHANGES:
-   - CREATED: New file for usedLabels index management
-   - ADDED: loadUsedLabels() - loads usedLabels from Firestore
-   - ADDED: isLabelUsed(label) - checks if label exists in usedLabels
-   - ADDED: addLabelsToUsed(labels) - adds labels to usedLabels via WRV
-   - ADDED: getUsedLabels() - returns cached usedLabels object
-   - ADDED: refreshUsedLabels() - forces reload from Firestore
-   - DESIGN: Singleton pattern with cached data for performance
-   - DESIGN: WRV integration for reliable Firestore writes
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
+   - CHANGED: loadUsedLabels() now reads from playerInformation/players.usedLabels
+   - CHANGED: addLabelsToUsed() now merges usedLabels into playerInformation document
+   - CHANGED: refreshUsedLabels() now reloads from playerInformation
+   - PRESERVED: All existing API functions and signatures unchanged
+   - PRESERVED: Singleton pattern with cached data for performance
+   - PRESERVED: WRV integration for reliable Firestore writes
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
@@ -19,7 +18,7 @@ var UsedLabels = (function() {
     // ============================================================
     // Private state
     // ============================================================
-    var VERSION = "1.00";
+    var VERSION = "1.01";
     var usedLabelsCache = null;
     var isLoading = false;
     var loadPromise = null;
@@ -81,7 +80,7 @@ var UsedLabels = (function() {
     }
     
     // ============================================================
-    // PUBLIC: loadUsedLabels - Loads usedLabels from Firestore
+    // v1.01: PUBLIC: loadUsedLabels - Loads usedLabels from playerInformation
     // Returns a Promise that resolves with the usedLabels object
     // ============================================================
     function loadUsedLabels() {
@@ -98,19 +97,20 @@ var UsedLabels = (function() {
         isLoading = true;
         loadPromise = new Promise(function(resolve, reject) {
             var db = getDb();
-            db.collection('usedLabels').doc('all').get()
+            // v1.01: Read from playerInformation/players.usedLabels
+            db.collection('playerInformation').doc('defaultPlayers').get()
                 .then(function(doc) {
                     if (doc.exists) {
                         var data = doc.data();
-                        usedLabelsCache = data.labels || {};
+                        usedLabelsCache = data.usedLabels || {};
                         lastLoadedAt = new Date();
-                        console.log('[USED-LABELS] Loaded', Object.keys(usedLabelsCache).length, 'labels');
+                        console.log('[USED-LABELS] Loaded', Object.keys(usedLabelsCache).length, 'labels from playerInformation');
                         resolve(usedLabelsCache);
                     } else {
                         // Document doesn't exist - initialize empty
                         usedLabelsCache = {};
                         lastLoadedAt = new Date();
-                        console.log('[USED-LABELS] No usedLabels document found, initialized empty');
+                        console.log('[USED-LABELS] No playerInformation document found, initialized empty');
                         resolve(usedLabelsCache);
                     }
                     isLoading = false;
@@ -146,7 +146,8 @@ var UsedLabels = (function() {
     }
     
     // ============================================================
-    // PUBLIC: addLabelsToUsed - Adds labels to usedLabels
+    // v1.01: PUBLIC: addLabelsToUsed - Adds labels to usedLabels
+    // Now merges into playerInformation document
     // Returns a Promise
     // ============================================================
     function addLabelsToUsed(labels) {
@@ -167,10 +168,10 @@ var UsedLabels = (function() {
         
         console.log('[USED-LABELS] Adding', validLabels.length, 'labels to usedLabels');
         
-        // Build the update object
-        var updateData = {};
+        // Build the update object for usedLabels
+        var usedLabelsData = {};
         for (var i = 0; i < validLabels.length; i++) {
-            updateData['labels.' + validLabels[i]] = true;
+            usedLabelsData[validLabels[i]] = true;
         }
         
         // Update the cache immediately (optimistic)
@@ -180,8 +181,32 @@ var UsedLabels = (function() {
             }
         }
         
-        // Write to Firestore using WRV
-        return wrw('usedLabels', 'all', updateData, true)
+        // v1.01: Read current document, merge usedLabels, write back
+        var db = getDb();
+        return db.collection('playerInformation').doc('defaultPlayers').get()
+            .then(function(doc) {
+                var existingUsedLabels = {};
+                if (doc.exists && doc.data().usedLabels) {
+                    existingUsedLabels = doc.data().usedLabels;
+                }
+                
+                // Merge new labels with existing
+                var mergedLabels = {};
+                for (var key in existingUsedLabels) {
+                    mergedLabels[key] = existingUsedLabels[key];
+                }
+                for (var key in usedLabelsData) {
+                    mergedLabels[key] = usedLabelsData[key];
+                }
+                
+                // Write back using WRV
+                var payload = {
+                    usedLabels: mergedLabels,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                return wrw('playerInformation', 'defaultPlayers', payload, true);
+            })
             .then(function() {
                 console.log('[USED-LABELS] Successfully added labels:', validLabels.join(', '));
                 return usedLabelsCache;
@@ -200,7 +225,7 @@ var UsedLabels = (function() {
     }
     
     // ============================================================
-    // PUBLIC: refreshUsedLabels - Forces reload from Firestore
+    // v1.01: PUBLIC: refreshUsedLabels - Forces reload from Firestore
     // ============================================================
     function refreshUsedLabels() {
         usedLabelsCache = null;
@@ -274,20 +299,15 @@ window.UsedLabels = UsedLabels;
 
 /*
 FILE: js/used-labels.js
-VERSION: 1.00
-KEY CHANGES:
-   - CREATED: New file for usedLabels index management
-   - ADDED: loadUsedLabels() - loads usedLabels from Firestore
-   - ADDED: isLabelUsed(label) - checks if label exists in usedLabels
-   - ADDED: addLabelsToUsed(labels) - adds labels to usedLabels via WRV
-   - ADDED: getUsedLabels() - returns cached usedLabels object
-   - ADDED: refreshUsedLabels() - forces reload from Firestore
-   - ADDED: getLabelCount() - returns number of used labels
-   - ADDED: getAllLabelsArray() - returns array of all used labels
-   - ADDED: ensureInitialized() - ensures usedLabels is loaded
-   - DESIGN: Singleton pattern with cached data for performance
-   - DESIGN: WRV integration for reliable Firestore writes
-   - DESIGN: Auto-initializes in background on load
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
+   - CHANGED: loadUsedLabels() now reads from playerInformation/players.usedLabels
+   - CHANGED: addLabelsToUsed() now merges usedLabels into playerInformation document
+   - CHANGED: refreshUsedLabels() now reloads from playerInformation
+   - PRESERVED: All existing API functions and signatures unchanged
+   - PRESERVED: Singleton pattern with cached data for performance
+   - PRESERVED: WRV integration for reliable Firestore writes
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
