@@ -1,11 +1,11 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: firebase-config.js to script dependencies (before wrv.js)
-   - This ensures DEFAULT Firebase app exists for WRV to use
-   - FIXED: WRV now works correctly with default Firebase app
-   - PRESERVED: All existing functionality from v1.30
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - ADDED: Cleanup button to DELETE tab (calls runCleanup())
+   - FIXED: Photo folder default changed from "celebrations/" to "celebration/"
+   - FIXED: Photo folder placeholder text updated
+   - PRESERVED: All existing functionality from v1.31
 DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
@@ -202,6 +202,8 @@ STATUS: Ready for integration
         .btn-photo-apply:hover:not(:disabled) {
             background: rgba(139, 92, 246, 0.2);
         }
+        .btn-cleanup { background: #2a2a0a; border: 1px solid #ffaa44; color: #ffaa44; }
+        .btn-cleanup:hover { background: #3a3a0a; }
         .button-group { display: flex; gap: 12px; margin-top: 12px; }
         .button-group .btn { flex: 1; margin-top: 0; }
         
@@ -859,6 +861,8 @@ STATUS: Ready for integration
                     <option value="scheduledGames">scheduledGames</option>
                     <option value="historyGames">historyGames</option>
                     <option value="backupFolder">backupFolder</option>
+                    <option value="deviceMapping">deviceMapping</option>
+                    <option value="deviceSessions">deviceSessions</option>
                 </select>
             </div>
             <button id="deleteRefreshBtn" class="btn btn-secondary" style="margin-top:8px;">↻ Refresh Records</button>
@@ -887,6 +891,21 @@ STATUS: Ready for integration
             </button>
         </div>
         
+        <!-- v1.32: Cleanup Button -->
+        <div class="card" style="border-color:#ffaa44; margin-top:16px;">
+            <div class="card-title photo">🧹 CLEANUP OLD RECORDS</div>
+            <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
+                Remove old device records and sessions that are no longer needed.
+                <br><strong style="color:#ffaa44;">deviceMapping:</strong> Removes devices not seen in 90 days (preserves the counter document)
+                <br><strong style="color:#4a8af4;">deviceSessions:</strong> Removes sessions older than 30 days
+                <br><strong style="color:#ff6b6b;">⚠️ This action is permanent and cannot be undone.</strong>
+            </div>
+            <button id="deleteCleanupBtn" class="btn btn-cleanup" style="width:100%;">
+                🧹 Cleanup Old Records
+            </button>
+            <div id="cleanupProgress" class="delete-progress"></div>
+        </div>
+        
         <!-- DELETE TAB: PHOTOS SECTION -->
         <div class="card" style="border-color:#ffaa44; margin-top:16px;">
             <div class="card-title photo">🖼️ PHOTOS IN STORAGE</div>
@@ -895,7 +914,7 @@ STATUS: Ready for integration
                 <br><strong style="color:#ffaa44;">Note:</strong> This deletes the photo file. To also remove Firestore references, use the PHOTO tab's "Show Info" to see where the photo is referenced.
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-                <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebrations/)" value="celebrations/" style="flex:2; min-width:150px;">
+                <input type="text" id="photoListFolder" placeholder="Folder (e.g., celebration/)" value="celebration/" style="flex:2; min-width:150px;">
                 <button id="photoListRefreshBtn" class="btn btn-secondary" style="flex:0 0 auto; width:auto; padding:12px 24px;">🔄 List Photos</button>
             </div>
             <div class="delete-toolbar">
@@ -930,15 +949,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.31</div>
+<div class="version-tag">v1.32</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.31
+// VERSION: 1.32
 // ============================================================
 
-var APP_VERSION = "1.31";
+var APP_VERSION = "1.32";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -1046,7 +1065,7 @@ setInterval(updateLogCountBadge, 2000);
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.31...');
+console.log('[REC-MGMT] Initializing v1.32...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1134,7 +1153,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.31 ready', 'success');
+    log('Record Management v1.32 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1142,11 +1161,12 @@ if (typeof log === 'function') {
     log('🏌️ HANDICAP - Handicap adjustment validation now active', 'info');
     log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
+    log('🧹 CLEANUP - Remove old device records and sessions', 'info');
     log('🛡️ WRV     - Write & Verify protection for all database writes', 'info');
     log('📋 LOG     - Copy, download, or clear logs', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.31 ready');
+    console.log('[REC-MGMT] Record Management v1.32 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1156,12 +1176,12 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: firebase-config.js to script dependencies (before wrv.js)
-   - This ensures DEFAULT Firebase app exists for WRV to use
-   - FIXED: WRV now works correctly with default Firebase app
-   - PRESERVED: All existing functionality from v1.30
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - ADDED: Cleanup button to DELETE tab (calls runCleanup())
+   - FIXED: Photo folder default changed from "celebrations/" to "celebration/"
+   - FIXED: Photo folder placeholder text updated
+   - PRESERVED: All existing functionality from v1.31
 DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
