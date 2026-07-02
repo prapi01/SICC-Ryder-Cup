@@ -1,13 +1,15 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - ADDED: New "PLAYERS" tab between VALIDATE and PHOTO
-   - ADDED: usedLabels card - view status, view labels, rebuild from history
-   - ADDED: labelHistory card - view status, view mappings, sync from players
-   - ADDED: PROD/DEV environment selection for Players tab
-   - ADDED: util-players.js dependency
-   - PRESERVED: All existing functionality from v1.32
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - ADDED: Player Editor card as first card in PLAYERS tab
+   - ADDED: Player dropdown to select any player from playerInformation
+   - ADDED: Editable fields: name, label, handicap, defaultTeam, flight, isDefault, lastLabelChange
+   - ADDED: Save Changes button with WRV integration
+   - ADDED: Reset button to revert form
+   - ADDED: Status display for save operations
+   - ADDED: Full logging to LOG for all actions
+   - PRESERVED: All existing functionality from v1.33
 DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js, util-players.js
 STATUS: Ready for integration
 -->
@@ -63,6 +65,7 @@ STATUS: Ready for integration
         .card-title.danger { border-left-color: #c0392b; color: #c0392b; }
         .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
         .card-title.players { border-left-color: #8b5cf6; color: #8b5cf6; }
+        .card-title.editor { border-left-color: #4a8af4; color: #4a8af4; }
         .card-title .title-left { display: flex; align-items: center; gap: 8px; }
         .card-title .title-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         
@@ -206,6 +209,9 @@ STATUS: Ready for integration
         .btn-players { background: #1a1a2a; border: 1px solid #8b5cf6; color: #8b5cf6; }
         .btn-players:hover { background: #2a2a3a; }
         .btn-players:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-editor { background: #1a2a3a; border: 1px solid #4a8af4; color: #4a8af4; }
+        .btn-editor:hover { background: #2a3a4a; }
+        .btn-editor:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-photo-apply {
             border-color: #8b5cf6;
             color: #8b5cf6;
@@ -219,6 +225,12 @@ STATUS: Ready for integration
         .btn-confirm { background: #1a3a1a; border: 2px solid #ffaa44; color: #ffaa44; }
         .btn-confirm:hover:not(:disabled) { background: #2a4a2a; }
         .btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-save-editor { background: #1a3a1a; border: 2px solid #4a8af4; color: #4a8af4; }
+        .btn-save-editor:hover:not(:disabled) { background: #2a4a4a; }
+        .btn-save-editor:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-reset-editor { background: #1a1a1a; border: 1px solid #333; color: #666; }
+        .btn-reset-editor:hover:not(:disabled) { background: #2a2a2a; color: #888; }
+        .btn-reset-editor:disabled { opacity: 0.4; cursor: not-allowed; }
         .button-group { display: flex; gap: 12px; margin-top: 12px; }
         .button-group .btn { flex: 1; margin-top: 0; }
         
@@ -233,6 +245,7 @@ STATUS: Ready for integration
         .status-badge-large.exists { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
         .status-badge-large.missing { background: #2a0a0a; color: #c0392b; border: 1px solid #5a2a2a; }
         .status-badge-large.warning { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
+        .status-badge-large.success { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
         .players-preview-box {
             background: #0a0a0a;
             border-radius: 12px;
@@ -256,6 +269,97 @@ STATUS: Ready for integration
         .players-preview-box .entry .arrow { color: #4caf50; }
         .players-preview-box .entry .new { color: #4caf50; font-weight: 600; }
         .players-preview-box .entry .player { color: #ffaa44; }
+        
+        /* v1.34: Player Editor styles */
+        .editor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        @media (max-width: 600px) {
+            .editor-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        @media (max-width: 400px) {
+            .editor-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .editor-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .editor-field label {
+            font-size: 0.65rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        .editor-field input,
+        .editor-field select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: #fff;
+            font-size: 0.85rem;
+            transition: border-color 0.2s;
+        }
+        .editor-field input:focus,
+        .editor-field select:focus {
+            outline: none;
+            border-color: #4a8af4;
+        }
+        .editor-field input.editor-error {
+            border-color: #c0392b;
+        }
+        .editor-field .field-hint {
+            font-size: 0.55rem;
+            color: #555;
+            margin-top: 2px;
+        }
+        .editor-field .field-hint.error {
+            color: #c0392b;
+        }
+        .editor-field .field-hint.success {
+            color: #4caf50;
+        }
+        .editor-status {
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            margin-top: 8px;
+            display: none;
+        }
+        .editor-status.success {
+            display: block;
+            background: #0a2a0a;
+            border: 1px solid #2a5a2a;
+            color: #4caf50;
+        }
+        .editor-status.error {
+            display: block;
+            background: #2a0a0a;
+            border: 1px solid #5a2a2a;
+            color: #c0392b;
+        }
+        .editor-status.info {
+            display: block;
+            background: #0a1a2a;
+            border: 1px solid #2a3a5a;
+            color: #4a8af4;
+        }
+        .editor-status .field-changes {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 4px;
+            font-family: monospace;
+        }
         
         /* Date Row */
         .date-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -804,7 +908,7 @@ STATUS: Ready for integration
     </div>
     
     <!-- ============================================================ -->
-    <!-- TAB: PLAYERS (NEW - v1.33) -->
+    <!-- TAB: PLAYERS (v1.34) -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabPlayers">
         <div class="tab-header-with-info">
@@ -825,7 +929,92 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- Card 1: usedLabels -->
+        <!-- v1.34: Card 1 - Player Editor (Admin) -->
+        <div class="card" style="border-color: #4a8af4;">
+            <div class="card-title editor" style="border-left-color: #4a8af4; color: #4a8af4;">
+                <span class="title-left">✏️ Player Editor (Admin)</span>
+                <span class="title-right">
+                    <span id="editorStatusBadge" class="status-badge-large warning">⏳ Loading...</span>
+                </span>
+            </div>
+            
+            <!-- Player Selector -->
+            <div style="margin-bottom:12px;">
+                <label style="font-size:0.65rem; color:#888; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; display:block; margin-bottom:4px;">Select Player</label>
+                <div class="select-wrapper">
+                    <select id="playerEditorSelect" class="collection-select" style="border-color:#4a8af4;" onchange="loadPlayerForEdit()">
+                        <option value="">-- Select a player --</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Editor Form -->
+            <div id="editorForm" style="display:none;">
+                <div class="editor-grid">
+                    <div class="editor-field">
+                        <label for="editorName">Name *</label>
+                        <input type="text" id="editorName" placeholder="Player name">
+                    </div>
+                    <div class="editor-field">
+                        <label for="editorLabel">Label *</label>
+                        <input type="text" id="editorLabel" placeholder="3 chars max" maxlength="3" style="text-transform:uppercase;">
+                        <span class="field-hint" id="editorLabelHint">1-3 uppercase characters</span>
+                    </div>
+                    <div class="editor-field">
+                        <label for="editorHandicap">Handicap *</label>
+                        <input type="number" id="editorHandicap" min="0" max="54" placeholder="0-54">
+                    </div>
+                </div>
+                
+                <div class="editor-grid">
+                    <div class="editor-field">
+                        <label for="editorTeam">Team *</label>
+                        <select id="editorTeam">
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                        </select>
+                    </div>
+                    <div class="editor-field">
+                        <label for="editorFlight">Flight</label>
+                        <select id="editorFlight">
+                            <option value="">— None —</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                        </select>
+                        <span class="field-hint">Optional</span>
+                    </div>
+                    <div class="editor-field">
+                        <label for="editorIsDefault">Default</label>
+                        <select id="editorIsDefault">
+                            <option value="true">✅ Yes</option>
+                            <option value="false">❌ No</option>
+                        </select>
+                        <span class="field-hint">Auto-populates in Setup Game</span>
+                    </div>
+                </div>
+                
+                <div class="editor-field" style="margin-bottom:12px;">
+                    <label for="editorLastLabelChange">lastLabelChange (ISO timestamp)</label>
+                    <input type="text" id="editorLastLabelChange" placeholder="2026-07-02T06:45:07.220Z">
+                    <span class="field-hint">Format: YYYY-MM-DDTHH:mm:ss.sssZ (e.g., 2026-07-02T06:45:07.220Z)</span>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="button-group">
+                    <button class="btn btn-reset-editor" id="editorResetBtn" disabled>↻ Reset</button>
+                    <button class="btn btn-save-editor" id="editorSaveBtn" disabled>💾 Save Changes</button>
+                </div>
+                
+                <!-- Status -->
+                <div id="editorStatus" class="editor-status"></div>
+            </div>
+            
+            <div id="editorEmptyState" style="display:block; text-align:center; padding:20px; color:#555; font-size:0.85rem;">
+                Select a player from the dropdown above to edit.
+            </div>
+        </div>
+        
+        <!-- Card 2: usedLabels -->
         <div class="card" style="border-color: #4caf50;">
             <div class="card-title" style="border-left-color: #4caf50; color: #4caf50;">
                 <span class="title-left">🏷️ usedLabels</span>
@@ -864,7 +1053,7 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- Card 2: labelHistory -->
+        <!-- Card 3: labelHistory -->
         <div class="card" style="border-color: #8b5cf6;">
             <div class="card-title" style="border-left-color: #8b5cf6; color: #8b5cf6;">
                 <span class="title-left">📜 labelHistory</span>
@@ -1101,15 +1290,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.33</div>
+<div class="version-tag">v1.34</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.33
+// VERSION: 1.34
 // ============================================================
 
-var APP_VERSION = "1.33";
+var APP_VERSION = "1.34";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -1225,7 +1414,7 @@ setInterval(updateLogCountBadge, 2000);
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.33...');
+console.log('[REC-MGMT] Initializing v1.34...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1323,17 +1512,18 @@ setTimeout(function() {
     if (typeof loadValidateRecords === 'function') loadValidateRecords();
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
     if (typeof loadPlayersStatus === 'function') loadPlayersStatus();
+    if (typeof loadPlayerEditorDropdown === 'function') loadPlayerEditorDropdown();
 }, 500);
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.33 ready', 'success');
+    log('Record Management v1.34 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
     log('🔬 VALIDATE - Load, validate, and fix corrupted records', 'info');
     log('🏌️ HANDICAP - Handicap adjustment validation now active', 'info');
-    log('👤 PLAYERS - Manage usedLabels and labelHistory', 'info');
+    log('👤 PLAYERS - Edit players, manage usedLabels and labelHistory', 'info');
     log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('🧹 CLEANUP - Remove old device records and sessions', 'info');
@@ -1341,7 +1531,7 @@ if (typeof log === 'function') {
     log('📋 LOG     - Copy, download, or clear logs', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.33 ready');
+    console.log('[REC-MGMT] Record Management v1.34 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1351,14 +1541,16 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - ADDED: New "PLAYERS" tab between VALIDATE and PHOTO
-   - ADDED: usedLabels card - view status, view labels, rebuild from history
-   - ADDED: labelHistory card - view status, view mappings, sync from players
-   - ADDED: PROD/DEV environment selection for Players tab
-   - ADDED: util-players.js dependency
-   - PRESERVED: All existing functionality from v1.32
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - ADDED: Player Editor card as first card in PLAYERS tab
+   - ADDED: Player dropdown to select any player from playerInformation
+   - ADDED: Editable fields: name, label, handicap, defaultTeam, flight, isDefault, lastLabelChange
+   - ADDED: Save Changes button with WRV integration
+   - ADDED: Reset button to revert form
+   - ADDED: Status display for save operations
+   - ADDED: Full logging to LOG for all actions
+   - PRESERVED: All existing functionality from v1.33
 DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js, util-players.js
 STATUS: Ready for integration
 -->
