@@ -1,18 +1,19 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: Backup document name now uses format: BK-YYMMDD-HHMM_originalRecordId
-   - Example: BK-260702-1030_TEST_FIX_RECORD
-   - This makes backups easily identifiable and searchable
-   - PRESERVED: All existing functionality from v1.20
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: loadAndValidate() now re-fetches record from Firestore after fix
+   - Previously it used stale cached rawData, showing incorrect mismatches
+   - Now after fix, it reads fresh data from Firestore before validation
+   - This ensures validation shows the correct state after fix
+   - PRESERVED: All existing functionality from v1.21
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.21";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.21 - Fixed backup naming");
+window.UTIL_VALIDATE_APP_VERSION = "1.22";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.22 - Fixed post-fix validation refresh");
 
 // ============================================================
 // STATE VARIABLES
@@ -49,6 +50,34 @@ function generateBackupId(originalRecordId) {
     var min = String(now.getMinutes()).padStart(2, '0');
     var timestamp = y + m + d + '-' + h + min;
     return 'BK-' + timestamp + '_' + originalRecordId;
+}
+
+// ============================================================
+// v1.22: HELPER - Fetch fresh record from Firestore
+// ============================================================
+
+function fetchFreshRecord(recordId, collection, envText) {
+    return new Promise(function(resolve, reject) {
+        var db = envText === 'PROD' ? window.prodDb : window.devDb;
+        if (!db) {
+            reject(new Error('Database not available'));
+            return;
+        }
+        
+        db.collection(collection).doc(recordId).get()
+            .then(function(doc) {
+                if (!doc.exists) {
+                    reject(new Error('Record not found: ' + recordId));
+                    return;
+                }
+                var data = doc.data();
+                data.id = doc.id;
+                resolve(data);
+            })
+            .catch(function(err) {
+                reject(err);
+            });
+    });
 }
 
 // ============================================================
@@ -133,10 +162,10 @@ function loadValidateRecords() {
 }
 
 // ============================================================
-// VALIDATE TAB: LOAD AND VALIDATE
+// v1.22: VALIDATE TAB: LOAD AND VALIDATE (with fresh data option)
 // ============================================================
 
-function loadAndValidate() {
+function loadAndValidate(useFreshData) {
     var select = document.getElementById('validateRecordSelect');
     if (!select) return;
     
@@ -148,11 +177,42 @@ function loadAndValidate() {
     }
     
     var record = validateRecords[index];
-    var data = record.rawData;
+    var collection = document.getElementById('validateCollection').value;
+    var indicator = document.getElementById('validateIndicator');
+    var envText = indicator ? indicator.textContent : 'PROD';
+    
+    // v1.22: If useFreshData is true, fetch from Firestore
+    if (useFreshData) {
+        appLog('🔄 Fetching fresh record data from Firestore...', 'info');
+        fetchFreshRecord(record.id, collection, envText)
+            .then(function(freshData) {
+                appLog('✅ Fresh data loaded from Firestore', 'success');
+                // Update the cached rawData
+                record.rawData = freshData;
+                performValidation(record, freshData);
+            })
+            .catch(function(err) {
+                appLog('❌ Failed to fetch fresh data: ' + err.message, 'error');
+                // Fallback to cached data
+                appLog('⚠️ Using cached data as fallback', 'warning');
+                performValidation(record, record.rawData);
+            });
+    } else {
+        // Normal flow - use cached data
+        performValidation(record, record.rawData);
+    }
+}
+
+// ============================================================
+// v1.22: PERFORM VALIDATION (extracted from loadAndValidate)
+// ============================================================
+
+function performValidation(record, data) {
+    // Ensure data has the record ID
     data.id = record.id;
     
     validateGameData = data;
-    validateCurrentIndex = index;
+    validateCurrentIndex = record.id;
     
     appLog('Validating: ' + record.id, 'info');
     
@@ -458,7 +518,7 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
 }
 
 // ============================================================
-// v1.21: VALIDATE TAB: APPLY FIX TO RECORD (with WRV & backup naming)
+// v1.22: VALIDATE TAB: APPLY FIX TO RECORD (with fresh data reload)
 // ============================================================
 
 function applyFixToRecord(recordId, collection, db, recalculated) {
@@ -505,8 +565,6 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
             return new Promise(function(resolve, reject) {
                 if (useWrv) {
                     appLog('📝 Using WRV.write() for fix (verified with retry)', 'info');
-                    // v1.21: WRV v1.10 automatically skips timestamp fields
-                    // Pass empty skipVerify since WRV has defaults
                     WRV.write(collection, recordId, fixResult.updatePayload, function(err, writtenData) {
                         if (err) {
                             appLog('❌ WRV fix write failed after ' + WRV.MAX_RETRIES + ' retries: ' + err.message, 'error');
@@ -537,16 +595,17 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
         })
         .then(function() {
             appLog('✅ Photo applied successfully!', 'success');
-            appLog('🔄 Reloading validation...', 'info');
+            appLog('🔄 Reloading validation with fresh data from Firestore...', 'info');
             
+            // v1.22: Use loadAndValidate with useFreshData = true
+            // This will fetch the record from Firestore and re-validate
             setTimeout(function() {
-                loadAndValidate();
-                appLog('✅ Validation reload complete', 'success');
+                loadAndValidate(true);
+                appLog('✅ Validation reload complete with fresh data', 'success');
             }, 1000);
         })
         .catch(function(err) {
             appLog('❌ Fix failed: ' + err.message, 'error');
-            // If WRV was used, log the error details
             if (err.message && err.message.indexOf('WRV') !== -1) {
                 appLog('💡 WRV error - check Firestore permissions and network', 'info');
             }
@@ -597,9 +656,10 @@ function validateApplyPhotoOnly() {
                 applyPhotoBtn.textContent = '📸 APPLY STAGED PHOTO';
             }
             
+            // v1.22: Use loadAndValidate with useFreshData = true
             if (typeof loadAndValidate === 'function') {
                 setTimeout(function() {
-                    loadAndValidate();
+                    loadAndValidate(true);
                 }, 500);
             }
             
@@ -680,7 +740,7 @@ function initValidateTabEvents() {
     var loadBtn = document.getElementById('validateLoadBtn');
     if (loadBtn) {
         loadBtn.onclick = function() {
-            loadAndValidate();
+            loadAndValidate(false);
         };
     }
     
@@ -728,7 +788,7 @@ function initValidateTabEvents() {
                 validateGameData = validateRecords[index].rawData;
                 validateGameData.id = validateRecords[index].id;
                 clearValidateResults();
-                loadAndValidate();
+                loadAndValidate(false);
             } else {
                 validateCurrentIndex = -1;
                 validateGameData = null;
@@ -845,6 +905,7 @@ function showValidateInfoGuide() {
                     <li><strong>Read-only:</strong> Validation does not modify data unless you click "Fix Record"</li>
                     <li><strong>Backup:</strong> A backup is created in <code>backupFolder</code> before fixing</li>
                     <li><strong>Backup Naming:</strong> Format: <code>BK-YYMMDD-HHMM_originalRecordId</code> for easy identification</li>
+                    <li><strong>Fresh Data:</strong> After fix, validation reloads fresh data from Firestore</li>
                     <li><strong>Preserved:</strong> Raw scores, players, and course data are never modified</li>
                     <li><strong>AS = 0.5:</strong> All "All Square" results correctly give 0.5 TR points each</li>
                     <li><strong>Field Names:</strong> Uses documented schema (game1, game2, game3) with fallbacks</li>
@@ -903,17 +964,20 @@ window.showValidateInfoGuide = showValidateInfoGuide;
 window.isWrvAvailable = isWrvAvailable;
 window.logWrvStatus = logWrvStatus;
 window.generateBackupId = generateBackupId;
+window.fetchFreshRecord = fetchFreshRecord;
+window.performValidation = performValidation;
 
-console.log('[UTIL-VALIDATE-APP] v1.21 loaded - Fixed backup naming (BK-YYMMDD-HHMM_originalRecordId)');
+console.log('[UTIL-VALIDATE-APP] v1.22 loaded - Post-fix validation now uses fresh Firestore data');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: Backup document name now uses format: BK-YYMMDD-HHMM_originalRecordId
-   - Example: BK-260702-1030_TEST_FIX_RECORD
-   - This makes backups easily identifiable and searchable
-   - PRESERVED: All existing functionality from v1.20
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: loadAndValidate() now re-fetches record from Firestore after fix
+   - Previously it used stale cached rawData, showing incorrect mismatches
+   - Now after fix, it reads fresh data from Firestore before validation
+   - This ensures validation shows the correct state after fix
+   - PRESERVED: All existing functionality from v1.21
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
