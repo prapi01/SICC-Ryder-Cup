@@ -1,12 +1,14 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - ADDED: Cleanup button to DELETE tab (calls runCleanup())
-   - FIXED: Photo folder default changed from "celebrations/" to "celebration/"
-   - FIXED: Photo folder placeholder text updated
-   - PRESERVED: All existing functionality from v1.31
-DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - ADDED: New "PLAYERS" tab between VALIDATE and PHOTO
+   - ADDED: usedLabels card - view status, view labels, rebuild from history
+   - ADDED: labelHistory card - view status, view mappings, sync from players
+   - ADDED: PROD/DEV environment selection for Players tab
+   - ADDED: util-players.js dependency
+   - PRESERVED: All existing functionality from v1.32
+DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js, util-players.js
 STATUS: Ready for integration
 -->
 
@@ -46,6 +48,7 @@ STATUS: Ready for integration
     <script src="js/util-compare-record.js"></script>
     <script src="js/util-delete-record.js"></script>
     <script src="js/util-photo.js"></script>
+    <script src="js/util-players.js"></script>
     
     <style>
         /* ===== ALL CSS STYLES ===== */
@@ -59,6 +62,7 @@ STATUS: Ready for integration
         .card-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; margin-bottom: 12px; border-left: 2px solid #4caf50; padding-left: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
         .card-title.danger { border-left-color: #c0392b; color: #c0392b; }
         .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
+        .card-title.players { border-left-color: #8b5cf6; color: #8b5cf6; }
         .card-title .title-left { display: flex; align-items: center; gap: 8px; }
         .card-title .title-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         
@@ -128,6 +132,7 @@ STATUS: Ready for integration
         .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
         .tab-btn.active.danger-active { background: #2a1a1a; color: #c0392b; box-shadow: inset 0 -2px 0 #c0392b; }
         .tab-btn.active.photo-active { background: #2a2a0a; color: #ffaa44; box-shadow: inset 0 -2px 0 #ffaa44; }
+        .tab-btn.active.players-active { background: #1a1a2a; color: #8b5cf6; box-shadow: inset 0 -2px 0 #8b5cf6; }
         .tab-btn .tab-icon { margin-right: 6px; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
@@ -137,9 +142,11 @@ STATUS: Ready for integration
         .tab-header-with-info .tab-title { font-size: 1rem; font-weight: 700; color: #4caf50; }
         .tab-header-with-info .tab-title.danger { color: #c0392b; }
         .tab-header-with-info .tab-title.photo { color: #ffaa44; }
+        .tab-header-with-info .tab-title.players { color: #8b5cf6; }
         .tab-header-with-info .version-badge { font-size: 0.55rem; font-weight: 400; color: #4caf50; background: rgba(76, 175, 80, 0.15); padding: 2px 8px; border-radius: 10px; font-family: monospace; margin-left: 6px; }
         .tab-header-with-info .version-badge.danger { color: #c0392b; background: rgba(192, 57, 43, 0.15); }
         .tab-header-with-info .version-badge.photo { color: #ffaa44; background: rgba(255, 170, 68, 0.15); }
+        .tab-header-with-info .version-badge.players { color: #8b5cf6; background: rgba(139, 92, 246, 0.15); }
         .btn-info-guide { padding: 6px 16px; border-radius: 30px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid #4a8af4; background: rgba(74, 138, 244, 0.1); color: #4a8af4; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; }
         .btn-info-guide:hover { background: rgba(74, 138, 244, 0.2); border-color: #4a8af4; }
         .btn-info-guide:active { transform: scale(0.95); }
@@ -162,6 +169,7 @@ STATUS: Ready for integration
         .env-row .env-side-label.right { color: #4a8af4; }
         .env-row .env-side-label.delete { color: #c0392b; }
         .env-row .env-side-label.photo { color: #ffaa44; }
+        .env-row .env-side-label.players { color: #8b5cf6; }
         
         /* Form Elements */
         .collection-select { width: 100%; background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.9rem; margin-bottom: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; }
@@ -173,6 +181,7 @@ STATUS: Ready for integration
         .game-info-label { color: #888; flex-shrink: 0; }
         .game-info-value { color: #4caf50; font-weight: 600; word-break: break-all; text-align: right; flex: 1; min-width: 80px; }
         .game-info-value.gold { color: #ffaa44; }
+        .game-info-value.purple { color: #8b5cf6; }
         input, textarea { background: #0a0a0a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 0.9rem; width: 100%; margin-bottom: 8px; }
         input:focus, textarea:focus { outline: none; border-color: #ffaa44; }
         .input-with-datalist { position: relative; width: 100%; }
@@ -194,6 +203,9 @@ STATUS: Ready for integration
         .btn-load { background: #1a2a1a; border: 1px solid #4caf50; color: #4caf50; }
         .btn-photo { background: #2a2a0a; border: 1px solid #ffaa44; color: #ffaa44; }
         .btn-photo:hover { background: #3a3a0a; }
+        .btn-players { background: #1a1a2a; border: 1px solid #8b5cf6; color: #8b5cf6; }
+        .btn-players:hover { background: #2a2a3a; }
+        .btn-players:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-photo-apply {
             border-color: #8b5cf6;
             color: #8b5cf6;
@@ -204,8 +216,46 @@ STATUS: Ready for integration
         }
         .btn-cleanup { background: #2a2a0a; border: 1px solid #ffaa44; color: #ffaa44; }
         .btn-cleanup:hover { background: #3a3a0a; }
+        .btn-confirm { background: #1a3a1a; border: 2px solid #ffaa44; color: #ffaa44; }
+        .btn-confirm:hover:not(:disabled) { background: #2a4a2a; }
+        .btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
         .button-group { display: flex; gap: 12px; margin-top: 12px; }
         .button-group .btn { flex: 1; margin-top: 0; }
+        
+        /* v1.33: Players tab specific styles */
+        .status-badge-large {
+            display: inline-block;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-badge-large.exists { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .status-badge-large.missing { background: #2a0a0a; color: #c0392b; border: 1px solid #5a2a2a; }
+        .status-badge-large.warning { background: #2a2a0a; color: #ffaa44; border: 1px solid #5a5a2a; }
+        .players-preview-box {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 12px;
+            margin: 8px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.75rem;
+            border: 1px solid #2a2a2a;
+        }
+        .players-preview-box .entry {
+            padding: 2px 4px;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .players-preview-box .entry:last-child { border-bottom: none; }
+        .players-preview-box .entry .old { color: #888; }
+        .players-preview-box .entry .arrow { color: #4caf50; }
+        .players-preview-box .entry .new { color: #4caf50; font-weight: 600; }
+        .players-preview-box .entry .player { color: #ffaa44; }
         
         /* Date Row */
         .date-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -421,6 +471,9 @@ STATUS: Ready for integration
         </button>
         <button class="tab-btn" data-tab="tabValidate">
             <span class="tab-icon">🔬</span> VALIDATE
+        </button>
+        <button class="tab-btn" data-tab="tabPlayers">
+            <span class="tab-icon">👤</span> PLAYERS
         </button>
         <button class="tab-btn" data-tab="tabPhoto">
             <span class="tab-icon">🖼️</span> PHOTO
@@ -731,8 +784,6 @@ STATUS: Ready for integration
                 <div id="validateSummary"></div>
             </div>
             
-            <!-- v1.27: Detailed Validation removed - now integrated into Validation Summary -->
-            
             <!-- v1.28: Fix Record Card - validateProgress div REMOVED, messages go to LOG card -->
             <div class="card" style="border-color: #ffaa44; display:none;" id="validateFixCard">
                 <div class="card-title">🔧 Fix Record</div>
@@ -747,6 +798,107 @@ STATUS: Ready for integration
                 <div class="validate-fix-btn-container">
                     <button class="validate-fix-btn validate-fix-btn-backup" id="validateBackupBtn">💾 Backup Only</button>
                     <button class="validate-fix-btn validate-fix-btn-fix" id="validateFixBtn">🔧 Fix Record</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ============================================================ -->
+    <!-- TAB: PLAYERS (NEW - v1.33) -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabPlayers">
+        <div class="tab-header-with-info">
+            <span class="tab-title players">👤 PLAYERS <span class="version-badge players" id="playersVersionBadge">v?</span></span>
+            <button class="btn-info-guide" onclick="showPlayersInfoGuide()">ℹ️ Information</button>
+        </div>
+        
+        <!-- Environment -->
+        <div class="card">
+            <div class="card-title players">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label players">👤 PLAYERS</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="playersProdBtn">PROD</button>
+                    <button class="env-btn-small" id="playersDevBtn">DEV</button>
+                </div>
+                <span id="playersIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+        </div>
+        
+        <!-- Card 1: usedLabels -->
+        <div class="card" style="border-color: #4caf50;">
+            <div class="card-title" style="border-left-color: #4caf50; color: #4caf50;">
+                <span class="title-left">🏷️ usedLabels</span>
+                <span class="title-right">
+                    <span id="usedLabelsStatusBadge" class="status-badge-large missing">⏳ Loading...</span>
+                </span>
+            </div>
+            
+            <!-- Status Info -->
+            <div id="usedLabelsStatusInfo" style="font-size:0.8rem; color:#888; margin-bottom:12px;">
+                Loading status...
+            </div>
+            
+            <!-- Preview (what will be written) -->
+            <div id="usedLabelsPreview" style="display:none;">
+                <div style="font-size:0.7rem; color:#888; margin-bottom:4px;">📋 Labels that will be written:</div>
+                <div class="players-preview-box" id="usedLabelsList"></div>
+            </div>
+            
+            <!-- Buttons -->
+            <div class="button-group">
+                <button id="usedLabelsViewBtn" class="btn btn-secondary" disabled>🔍 View Labels</button>
+                <button id="usedLabelsRebuildBtn" class="btn btn-players">🔄 Rebuild from History</button>
+            </div>
+            
+            <!-- Confirm & Update (hidden until Rebuild is clicked) -->
+            <div id="usedLabelsConfirmSection" style="display:none; margin-top:12px; padding:12px; background: #0a0a0a; border-radius:12px; border:1px solid #ffaa44;">
+                <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">
+                    ⚠️ This will REPLACE the entire usedLabels document with the labels extracted from all historyGames.
+                    <br><strong>This action cannot be undone.</strong>
+                </div>
+                <div style="display:flex; gap:12px;">
+                    <button id="usedLabelsCancelBtn" class="btn btn-secondary" style="flex:1;">Cancel</button>
+                    <button id="usedLabelsConfirmBtn" class="btn btn-confirm" style="flex:1;">✅ CONFIRM & UPDATE</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Card 2: labelHistory -->
+        <div class="card" style="border-color: #8b5cf6;">
+            <div class="card-title" style="border-left-color: #8b5cf6; color: #8b5cf6;">
+                <span class="title-left">📜 labelHistory</span>
+                <span class="title-right">
+                    <span id="labelHistoryStatusBadge" class="status-badge-large missing">⏳ Loading...</span>
+                </span>
+            </div>
+            
+            <!-- Status Info -->
+            <div id="labelHistoryStatusInfo" style="font-size:0.8rem; color:#888; margin-bottom:12px;">
+                Loading status...
+            </div>
+            
+            <!-- Preview (what will be written) -->
+            <div id="labelHistoryPreview" style="display:none;">
+                <div style="font-size:0.7rem; color:#888; margin-bottom:4px;">📋 Mappings that will be written:</div>
+                <div class="players-preview-box" id="labelHistoryList"></div>
+            </div>
+            
+            <!-- Buttons -->
+            <div class="button-group">
+                <button id="labelHistoryViewBtn" class="btn btn-secondary" disabled>🔍 View Mappings</button>
+                <button id="labelHistorySyncBtn" class="btn btn-players">🔄 Sync from Players</button>
+            </div>
+            
+            <!-- Confirm & Update (hidden until Sync is clicked) -->
+            <div id="labelHistoryConfirmSection" style="display:none; margin-top:12px; padding:12px; background: #0a0a0a; border-radius:12px; border:1px solid #ffaa44;">
+                <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">
+                    ⚠️ This will MERGE label mappings into the labelHistory field in playerInformation.
+                    <br><strong>Existing mappings will be preserved. New mappings will be added.</strong>
+                </div>
+                <div style="display:flex; gap:12px;">
+                    <button id="labelHistoryCancelBtn" class="btn btn-secondary" style="flex:1;">Cancel</button>
+                    <button id="labelHistoryConfirmBtn" class="btn btn-confirm" style="flex:1;">✅ CONFIRM & UPDATE</button>
                 </div>
             </div>
         </div>
@@ -949,15 +1101,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.32</div>
+<div class="version-tag">v1.33</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.32
+// VERSION: 1.33
 // ============================================================
 
-var APP_VERSION = "1.32";
+var APP_VERSION = "1.33";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -1001,6 +1153,13 @@ function renderVersionBadges() {
         deleteBadge.textContent = 'v' + v;
     }
     
+    // Players tab
+    var playersBadge = document.getElementById('playersVersionBadge');
+    if (playersBadge) {
+        var v = window.UTIL_PLAYERS_VERSION || '?';
+        playersBadge.textContent = 'v' + v;
+    }
+    
     // WRV badge
     var wrvBadge = document.getElementById('wrvVersionBadge');
     if (wrvBadge) {
@@ -1016,6 +1175,7 @@ function renderVersionBadges() {
     console.log('  Compare: v' + (window.UTIL_COMPARE_VERSION || '?'));
     console.log('  Photo: v' + (window.PHOTO_UTIL_VERSION || '?'));
     console.log('  Delete: v' + (window.UTIL_DELETE_VERSION || '?'));
+    console.log('  Players: v' + (window.UTIL_PLAYERS_VERSION || '?'));
     console.log('  Firebase: ' + (window.FIREBASE_CONFIG_VERSION || '?'));
 }
 
@@ -1065,7 +1225,7 @@ setInterval(updateLogCountBadge, 2000);
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.32...');
+console.log('[REC-MGMT] Initializing v1.33...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1073,6 +1233,7 @@ document.getElementById('copyDestProdBtn').className = 'env-btn-small active-pro
 document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('playersProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('photoProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('deleteProdBtn').className = 'env-btn-small active-prod';
 
@@ -1086,6 +1247,8 @@ document.getElementById('compareRightIndicator').textContent = 'PROD';
 document.getElementById('compareRightIndicator').className = 'env-indicator-small prod';
 document.getElementById('validateIndicator').textContent = 'PROD';
 document.getElementById('validateIndicator').className = 'env-indicator-small prod';
+document.getElementById('playersIndicator').textContent = 'PROD';
+document.getElementById('playersIndicator').className = 'env-indicator-small prod';
 document.getElementById('photoIndicator').textContent = 'PROD';
 document.getElementById('photoIndicator').className = 'env-indicator-small prod';
 document.getElementById('deleteIndicator').textContent = 'PROD';
@@ -1117,9 +1280,19 @@ if (typeof setPhotoEnvironment === 'function') {
     setPhotoEnvironment('PROD');
 }
 
+// Set up PLAYERS tab environment
+if (typeof setPlayersEnvironment === 'function') {
+    setPlayersEnvironment('PROD');
+}
+
 // Initialize Photo tab (from util-photo.js)
 if (typeof initPhotoTab === 'function') {
     initPhotoTab();
+}
+
+// Initialize Players tab (from util-players.js)
+if (typeof initPlayersTab === 'function') {
+    initPlayersTab();
 }
 
 // v1.25: Enable the Apply Photo button when a photo is staged
@@ -1149,16 +1322,18 @@ setTimeout(function() {
     if (typeof loadCompareRecords === 'function') loadCompareRecords();
     if (typeof loadValidateRecords === 'function') loadValidateRecords();
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
+    if (typeof loadPlayersStatus === 'function') loadPlayersStatus();
 }, 500);
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.32 ready', 'success');
+    log('Record Management v1.33 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
     log('🔬 VALIDATE - Load, validate, and fix corrupted records', 'info');
     log('🏌️ HANDICAP - Handicap adjustment validation now active', 'info');
+    log('👤 PLAYERS - Manage usedLabels and labelHistory', 'info');
     log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('🧹 CLEANUP - Remove old device records and sessions', 'info');
@@ -1166,7 +1341,7 @@ if (typeof log === 'function') {
     log('📋 LOG     - Copy, download, or clear logs', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.32 ready');
+    console.log('[REC-MGMT] Record Management v1.33 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1176,12 +1351,14 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - ADDED: Cleanup button to DELETE tab (calls runCleanup())
-   - FIXED: Photo folder default changed from "celebrations/" to "celebration/"
-   - FIXED: Photo folder placeholder text updated
-   - PRESERVED: All existing functionality from v1.31
-DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - ADDED: New "PLAYERS" tab between VALIDATE and PHOTO
+   - ADDED: usedLabels card - view status, view labels, rebuild from history
+   - ADDED: labelHistory card - view status, view mappings, sync from players
+   - ADDED: PROD/DEV environment selection for Players tab
+   - ADDED: util-players.js dependency
+   - PRESERVED: All existing functionality from v1.32
+DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js, util-players.js
 STATUS: Ready for integration
 -->
