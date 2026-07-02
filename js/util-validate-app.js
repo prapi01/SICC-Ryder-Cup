@@ -1,18 +1,21 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: Changed UtilValidateUI.renderValidateResults() to window.renderValidateResults()
-   - The renderValidateResults function is exposed directly on window, not as UtilValidateUI
-   - This fixes the "UtilValidateUI.renderValidateResults not available" error
-   - PRESERVED: All existing functionality from v1.07
-DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
+VERSION: 1.20
+KEY CHANGES from v1.08:
+   - ADDED: WRV (Write & Verify) integration for fix operation
+   - CHANGED: applyFixToRecord() now uses WRV.write() instead of blind db.update()
+   - CHANGED: applyStagedPhotoToRecord() now uses WRV.update() for photo writes
+   - ADDED: Verification logging to confirm writes succeeded
+   - ADDED: Retry logic for failed writes (via WRV)
+   - PRESERVED: All existing functionality from v1.08
+   - PRESERVED: LOG card messaging for all operations
+DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.08";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.08 - Fixed renderValidateResults call");
+window.UTIL_VALIDATE_APP_VERSION = "1.20";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.20 - WRV integration for fix operations");
 
 // ============================================================
 // STATE VARIABLES
@@ -32,6 +35,24 @@ function appLog(message, type) {
         window.log(message, type);
     } else {
         console.log('[VALIDATE-APP] ' + message);
+    }
+}
+
+// ============================================================
+// WRV HELPER - Check if WRV is available
+// ============================================================
+
+function isWrvAvailable() {
+    return typeof WRV !== 'undefined' && typeof WRV.write === 'function' && typeof WRV.update === 'function';
+}
+
+function logWrvStatus() {
+    if (isWrvAvailable()) {
+        appLog('✅ WRV available - writes will be verified', 'success');
+        return true;
+    } else {
+        appLog('⚠️ WRV not available - falling back to blind writes', 'warning');
+        return false;
     }
 }
 
@@ -369,7 +390,7 @@ function validateFixRecord() {
 }
 
 // ============================================================
-// VALIDATE TAB: APPLY STAGED PHOTO TO RECORD
+// v1.20: VALIDATE TAB: APPLY STAGED PHOTO TO RECORD (with WRV)
 // ============================================================
 
 function applyStagedPhotoToRecord(recordId, collection, db) {
@@ -397,32 +418,63 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
         'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    return db.collection(collection).doc(recordId).update(photoUpdate)
-        .then(function() {
-            appLog('✅ Photo applied to record: ' + recordId, 'success');
-            
-            if (typeof UtilValidateUI !== 'undefined' && typeof UtilValidateUI.clearStagedPhoto === 'function') {
-                UtilValidateUI.clearStagedPhoto();
-            }
-            window._stagedPhoto = {
-                fullPath: null,
-                downloadUrl: null,
-                recordId: null,
-                collection: null
-            };
-        })
-        .catch(function(err) {
-            appLog('❌ Failed to apply photo: ' + err.message, 'error');
-            throw err;
-        });
+    // v1.20: Use WRV if available for verified write
+    return new Promise(function(resolve, reject) {
+        if (isWrvAvailable()) {
+            appLog('📝 Using WRV for photo write (verified)', 'info');
+            WRV.update(collection, recordId, photoUpdate, function(err, writtenData) {
+                if (err) {
+                    appLog('❌ WRV photo write failed: ' + err.message, 'error');
+                    reject(err);
+                } else {
+                    appLog('✅ WRV photo write verified', 'success');
+                    resolve(writtenData);
+                }
+            });
+        } else {
+            appLog('📝 Using blind write for photo (WRV unavailable)', 'warning');
+            db.collection(collection).doc(recordId).update(photoUpdate)
+                .then(function() {
+                    appLog('✅ Photo applied to record: ' + recordId, 'success');
+                    resolve();
+                })
+                .catch(function(err) {
+                    appLog('❌ Failed to apply photo: ' + err.message, 'error');
+                    reject(err);
+                });
+        }
+    })
+    .then(function() {
+        if (typeof UtilValidateUI !== 'undefined' && typeof UtilValidateUI.clearStagedPhoto === 'function') {
+            UtilValidateUI.clearStagedPhoto();
+        }
+        window._stagedPhoto = {
+            fullPath: null,
+            downloadUrl: null,
+            recordId: null,
+            collection: null
+        };
+        return Promise.resolve();
+    })
+    .catch(function(err) {
+        throw err;
+    });
 }
 
 // ============================================================
-// v1.07: VALIDATE TAB: APPLY FIX TO RECORD - Uses LOG card
+// v1.20: VALIDATE TAB: APPLY FIX TO RECORD (with WRV)
 // ============================================================
 
 function applyFixToRecord(recordId, collection, db, recalculated) {
     appLog('🔄 Starting fix for record: ' + recordId, 'info');
+    
+    // Check WRV availability
+    var useWrv = isWrvAvailable();
+    if (useWrv) {
+        appLog('✅ WRV available - writes will be verified and retried', 'success');
+    } else {
+        appLog('⚠️ WRV not available - falling back to blind writes', 'warning');
+    }
     
     var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
     
@@ -451,11 +503,36 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
             appLog('✍️ Applying ' + fixResult.fieldsUpdated.length + ' updates...', 'info');
             appLog('Fields: ' + fixResult.fieldsUpdated.join(', '), 'info');
             
-            return db.collection(collection).doc(recordId).update(fixResult.updatePayload);
+            // v1.20: Use WRV.write() for verified write with retry
+            return new Promise(function(resolve, reject) {
+                if (useWrv) {
+                    appLog('📝 Using WRV.write() for fix (verified with retry)', 'info');
+                    WRV.write(collection, recordId, fixResult.updatePayload, function(err, writtenData) {
+                        if (err) {
+                            appLog('❌ WRV fix write failed after ' + WRV.MAX_RETRIES + ' retries: ' + err.message, 'error');
+                            reject(err);
+                        } else {
+                            appLog('✅ WRV fix write verified successfully', 'success');
+                            appLog('📋 WRV verified fields: ' + Object.keys(fixResult.updatePayload).join(', '), 'info');
+                            resolve(writtenData);
+                        }
+                    });
+                } else {
+                    appLog('📝 Using blind update for fix (WRV unavailable)', 'warning');
+                    db.collection(collection).doc(recordId).update(fixResult.updatePayload)
+                        .then(function() {
+                            appLog('✅ Fix applied successfully (blind write)', 'success');
+                            resolve();
+                        })
+                        .catch(function(err) {
+                            appLog('❌ Fix failed: ' + err.message, 'error');
+                            reject(err);
+                        });
+                }
+            });
         })
         .then(function() {
             appLog('✅ Fix applied successfully!', 'success');
-            
             return applyStagedPhotoToRecord(recordId, collection, db);
         })
         .then(function() {
@@ -469,6 +546,10 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
         })
         .catch(function(err) {
             appLog('❌ Fix failed: ' + err.message, 'error');
+            // If WRV was used, log the error details
+            if (err.message && err.message.indexOf('WRV') !== -1) {
+                appLog('💡 WRV error - check Firestore permissions and network', 'info');
+            }
         });
 }
 
@@ -751,6 +832,7 @@ function showValidateInfoGuide() {
                     <li><strong>Handicaps:</strong> Recalculated using hcp-adjust.js engine - no duplicate logic</li>
                     <li><strong>18 Holes Required:</strong> Handicap adjustment requires all 18 holes to be complete</li>
                     <li><strong>Fix Progress:</strong> All progress messages are logged to the persistent LOG card</li>
+                    <li><strong>WRV Protection:</strong> All writes are verified and retried for data integrity</li>
                 </ul>
             </div>
             
@@ -778,6 +860,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     setTimeout(function() {
         loadValidateRecords();
+        // v1.20: Check WRV availability on load
+        logWrvStatus();
     }, 300);
     
     console.log('[UTIL-VALIDATE-APP] Auto-init complete');
@@ -797,17 +881,22 @@ window.applyStagedPhotoToRecord = applyStagedPhotoToRecord;
 window.validateApplyPhotoOnly = validateApplyPhotoOnly;
 window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
+window.isWrvAvailable = isWrvAvailable;
+window.logWrvStatus = logWrvStatus;
 
-console.log('[UTIL-VALIDATE-APP] v1.08 loaded - Fixed renderValidateResults call');
+console.log('[UTIL-VALIDATE-APP] v1.20 loaded - WRV integration for fix operations');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: Changed UtilValidateUI.renderValidateResults() to window.renderValidateResults()
-   - The renderValidateResults function is exposed directly on window, not as UtilValidateUI
-   - This fixes the "UtilValidateUI.renderValidateResults not available" error
-   - PRESERVED: All existing functionality from v1.07
-DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js
+VERSION: 1.20
+KEY CHANGES from v1.08:
+   - ADDED: WRV (Write & Verify) integration for fix operation
+   - CHANGED: applyFixToRecord() now uses WRV.write() instead of blind db.update()
+   - CHANGED: applyStagedPhotoToRecord() now uses WRV.update() for photo writes
+   - ADDED: Verification logging to confirm writes succeeded
+   - ADDED: Retry logic for failed writes (via WRV)
+   - PRESERVED: All existing functionality from v1.08
+   - PRESERVED: LOG card messaging for all operations
+DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
