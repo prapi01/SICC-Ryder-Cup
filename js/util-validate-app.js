@@ -1,21 +1,18 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.20
-KEY CHANGES from v1.08:
-   - ADDED: WRV (Write & Verify) integration for fix operation
-   - CHANGED: applyFixToRecord() now uses WRV.write() instead of blind db.update()
-   - CHANGED: applyStagedPhotoToRecord() now uses WRV.update() for photo writes
-   - ADDED: Verification logging to confirm writes succeeded
-   - ADDED: Retry logic for failed writes (via WRV)
-   - PRESERVED: All existing functionality from v1.08
-   - PRESERVED: LOG card messaging for all operations
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: Backup document name now uses format: BK-YYMMDD-HHMM_originalRecordId
+   - Example: BK-260702-1030_TEST_FIX_RECORD
+   - This makes backups easily identifiable and searchable
+   - PRESERVED: All existing functionality from v1.20
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.20";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.20 - WRV integration for fix operations");
+window.UTIL_VALIDATE_APP_VERSION = "1.21";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.21 - Fixed backup naming");
 
 // ============================================================
 // STATE VARIABLES
@@ -39,21 +36,19 @@ function appLog(message, type) {
 }
 
 // ============================================================
-// WRV HELPER - Check if WRV is available
+// v1.21: HELPER - Generate backup document name
+// Format: BK-YYMMDD-HHMM_originalRecordId
 // ============================================================
 
-function isWrvAvailable() {
-    return typeof WRV !== 'undefined' && typeof WRV.write === 'function' && typeof WRV.update === 'function';
-}
-
-function logWrvStatus() {
-    if (isWrvAvailable()) {
-        appLog('✅ WRV available - writes will be verified', 'success');
-        return true;
-    } else {
-        appLog('⚠️ WRV not available - falling back to blind writes', 'warning');
-        return false;
-    }
+function generateBackupId(originalRecordId) {
+    var now = new Date();
+    var y = String(now.getFullYear()).slice(-2);
+    var m = String(now.getMonth() + 1).padStart(2, '0');
+    var d = String(now.getDate()).padStart(2, '0');
+    var h = String(now.getHours()).padStart(2, '0');
+    var min = String(now.getMinutes()).padStart(2, '0');
+    var timestamp = y + m + d + '-' + h + min;
+    return 'BK-' + timestamp + '_' + originalRecordId;
 }
 
 // ============================================================
@@ -283,7 +278,7 @@ function validateBackupOnly() {
     }
     
     var recordId = validateGameData.id;
-    var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
+    var backupId = generateBackupId(recordId);
     
     appLog('💾 Creating backup: ' + backupId, 'info');
     
@@ -390,7 +385,7 @@ function validateFixRecord() {
 }
 
 // ============================================================
-// v1.20: VALIDATE TAB: APPLY STAGED PHOTO TO RECORD (with WRV)
+// v1.21: VALIDATE TAB: APPLY STAGED PHOTO TO RECORD (with WRV)
 // ============================================================
 
 function applyStagedPhotoToRecord(recordId, collection, db) {
@@ -418,10 +413,11 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
         'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    // v1.20: Use WRV if available for verified write
+    // v1.21: Use WRV if available for verified write
     return new Promise(function(resolve, reject) {
         if (isWrvAvailable()) {
             appLog('📝 Using WRV for photo write (verified)', 'info');
+            // v1.10: WRV now skips timestamp fields automatically
             WRV.update(collection, recordId, photoUpdate, function(err, writtenData) {
                 if (err) {
                     appLog('❌ WRV photo write failed: ' + err.message, 'error');
@@ -462,7 +458,7 @@ function applyStagedPhotoToRecord(recordId, collection, db) {
 }
 
 // ============================================================
-// v1.20: VALIDATE TAB: APPLY FIX TO RECORD (with WRV)
+// v1.21: VALIDATE TAB: APPLY FIX TO RECORD (with WRV & backup naming)
 // ============================================================
 
 function applyFixToRecord(recordId, collection, db, recalculated) {
@@ -476,7 +472,8 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
         appLog('⚠️ WRV not available - falling back to blind writes', 'warning');
     }
     
-    var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
+    // v1.21: Generate backup ID using new format: BK-YYMMDD-HHMM_originalRecordId
+    var backupId = generateBackupId(recordId);
     
     db.collection(collection).doc(recordId).get()
         .then(function(doc) {
@@ -503,10 +500,13 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
             appLog('✍️ Applying ' + fixResult.fieldsUpdated.length + ' updates...', 'info');
             appLog('Fields: ' + fixResult.fieldsUpdated.join(', '), 'info');
             
-            // v1.20: Use WRV.write() for verified write with retry
+            // v1.21: Use WRV.write() with skipVerify option
+            // WRV v1.10 will skip timestamp fields automatically
             return new Promise(function(resolve, reject) {
                 if (useWrv) {
                     appLog('📝 Using WRV.write() for fix (verified with retry)', 'info');
+                    // v1.21: WRV v1.10 automatically skips timestamp fields
+                    // Pass empty skipVerify since WRV has defaults
                     WRV.write(collection, recordId, fixResult.updatePayload, function(err, writtenData) {
                         if (err) {
                             appLog('❌ WRV fix write failed after ' + WRV.MAX_RETRIES + ' retries: ' + err.message, 'error');
@@ -625,6 +625,24 @@ function validateApplyPhotoOnly() {
                 statusDiv.innerHTML = '❌ Failed to apply photo: ' + err.message;
             }
         });
+}
+
+// ============================================================
+// WRV AVAILABILITY CHECK
+// ============================================================
+
+function isWrvAvailable() {
+    return typeof WRV !== 'undefined' && typeof WRV.write === 'function';
+}
+
+function logWrvStatus() {
+    if (isWrvAvailable()) {
+        appLog('✅ WRV available - writes will be verified', 'success');
+        return true;
+    } else {
+        appLog('⚠️ WRV not available - falling back to blind writes', 'warning');
+        return false;
+    }
 }
 
 // ============================================================
@@ -826,6 +844,7 @@ function showValidateInfoGuide() {
                 <ul class="info-warnings">
                     <li><strong>Read-only:</strong> Validation does not modify data unless you click "Fix Record"</li>
                     <li><strong>Backup:</strong> A backup is created in <code>backupFolder</code> before fixing</li>
+                    <li><strong>Backup Naming:</strong> Format: <code>BK-YYMMDD-HHMM_originalRecordId</code> for easy identification</li>
                     <li><strong>Preserved:</strong> Raw scores, players, and course data are never modified</li>
                     <li><strong>AS = 0.5:</strong> All "All Square" results correctly give 0.5 TR points each</li>
                     <li><strong>Field Names:</strong> Uses documented schema (game1, game2, game3) with fallbacks</li>
@@ -860,7 +879,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     setTimeout(function() {
         loadValidateRecords();
-        // v1.20: Check WRV availability on load
+        // v1.21: Check WRV availability on load
         logWrvStatus();
     }, 300);
     
@@ -883,20 +902,18 @@ window.initValidateTabEvents = initValidateTabEvents;
 window.showValidateInfoGuide = showValidateInfoGuide;
 window.isWrvAvailable = isWrvAvailable;
 window.logWrvStatus = logWrvStatus;
+window.generateBackupId = generateBackupId;
 
-console.log('[UTIL-VALIDATE-APP] v1.20 loaded - WRV integration for fix operations');
+console.log('[UTIL-VALIDATE-APP] v1.21 loaded - Fixed backup naming (BK-YYMMDD-HHMM_originalRecordId)');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.20
-KEY CHANGES from v1.08:
-   - ADDED: WRV (Write & Verify) integration for fix operation
-   - CHANGED: applyFixToRecord() now uses WRV.write() instead of blind db.update()
-   - CHANGED: applyStagedPhotoToRecord() now uses WRV.update() for photo writes
-   - ADDED: Verification logging to confirm writes succeeded
-   - ADDED: Retry logic for failed writes (via WRV)
-   - PRESERVED: All existing functionality from v1.08
-   - PRESERVED: LOG card messaging for all operations
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: Backup document name now uses format: BK-YYMMDD-HHMM_originalRecordId
+   - Example: BK-260702-1030_TEST_FIX_RECORD
+   - This makes backups easily identifiable and searchable
+   - PRESERVED: All existing functionality from v1.20
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
