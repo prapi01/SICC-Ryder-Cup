@@ -1,20 +1,21 @@
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
-   - CHANGED: Now uses window.log and window.escapeHtml from util-core.js
-   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
-   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
-   - ADDED: Explicit state variables leftData, rightData, leftId, rightId
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: initCompareTabEvents() function with event bindings for all COMPARE tab buttons
+   - ADDED: Auto-initialization when file loads (similar to COPY tab)
+   - ADDED: getDateFromRecord() helper to extract date from multiple locations
+   - FIXED: loadCompareRecordsLeft() and loadCompareRecordsRight() now load ALL records
+   - FIXED: Removed orderBy('date') - manually sorts with fallback for missing dates
+   - FIXED: Records with missing top-level 'date' field are now included (checks gameInfo.date)
+   - PRESERVED: All existing comparison logic from v1.04
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_COMPARE_VERSION = "1.04";
-console.log("[UTIL-COMPARE] Initializing v1.04");
+window.UTIL_COMPARE_VERSION = "1.05";
+console.log("[UTIL-COMPARE] Initializing v1.05");
 
 // ============================================================
 // FALLBACK HELPERS (if util-core.js not loaded)
@@ -39,6 +40,34 @@ function compareEscapeHtml(str) {
         if (m === '>') return '&gt;';
         return m;
     });
+}
+
+// ============================================================
+// v1.05: HELPER - Get date from record (supports multiple locations)
+// ============================================================
+
+function getDateFromRecord(data) {
+    // Check top-level date first
+    if (data.date && data.date !== '') {
+        return data.date;
+    }
+    // Check gameInfo.date
+    if (data.gameInfo && data.gameInfo.date && data.gameInfo.date !== '') {
+        return data.gameInfo.date;
+    }
+    // Check createdAt as last resort
+    if (data.createdAt) {
+        if (typeof data.createdAt === 'string') {
+            return data.createdAt.split('T')[0];
+        }
+        if (data.createdAt.toDate && typeof data.createdAt.toDate === 'function') {
+            return data.createdAt.toDate().toISOString().split('T')[0];
+        }
+        if (data.createdAt.seconds) {
+            return new Date(data.createdAt.seconds * 1000).toISOString().split('T')[0];
+        }
+    }
+    return null;
 }
 
 // ============================================================
@@ -183,7 +212,7 @@ function updateCompareRightUI(env) {
 }
 
 // ============================================================
-// COMPARE TAB: LOAD RECORDS (INDEPENDENT SIDES)
+// COMPARE TAB: LOAD RECORDS (v1.05 - ALL records, manual sort)
 // ============================================================
 
 function loadCompareRecords() {
@@ -202,6 +231,7 @@ function loadCompareRecords() {
     }
 }
 
+// v1.05: Load LEFT records - ALL records, manual sort
 function loadCompareRecordsLeft() {
     if (!compareLeftDb) {
         compareLog("Select Left environment first", "error");
@@ -218,25 +248,52 @@ function loadCompareRecordsLeft() {
     
     compareLog('Loading Left records from: ' + collection + ' (' + envLabel + ')', 'info');
     
+    // v1.05: Remove orderBy('date') - fetch ALL records, sort manually
     compareLeftDb.collection(collection)
-        .orderBy('date', 'desc')
-        .limit(100)
         .get()
         .then(function(snapshot) {
             select.innerHTML = '<option value="">-- Select left record --</option>';
             select.disabled = false;
             
-            if (!snapshot.empty) {
-                snapshot.forEach(function(doc) {
-                    var data = doc.data();
-                    var option = document.createElement('option');
-                    option.value = doc.id;
-                    var displayDate = data.date || 'No date';
-                    var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    select.appendChild(option);
-                });
+            if (snapshot.empty) {
+                select.innerHTML = '<option value="">-- No records found --</option>';
+                compareLog('No records found in ' + collection, 'info');
+                return;
             }
+            
+            // Collect all docs with their dates
+            var docs = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                var date = getDateFromRecord(data) || 'No date';
+                var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
+                docs.push({
+                    id: doc.id,
+                    data: data,
+                    date: date,
+                    courseName: courseName
+                });
+            });
+            
+            // Sort manually by date (most recent first)
+            docs.sort(function(a, b) {
+                if (a.date === 'No date' && b.date === 'No date') {
+                    return a.id.localeCompare(b.id);
+                }
+                if (a.date === 'No date') return 1;
+                if (b.date === 'No date') return -1;
+                return b.date.localeCompare(a.date);
+            });
+            
+            var loadedCount = 0;
+            docs.forEach(function(doc) {
+                var option = document.createElement('option');
+                option.value = doc.id;
+                var displayDate = doc.date;
+                option.textContent = doc.id + ' | ' + displayDate + ' | ' + doc.courseName;
+                select.appendChild(option);
+                loadedCount++;
+            });
             
             // Restore selection if it still exists
             if (currentValue) {
@@ -258,7 +315,13 @@ function loadCompareRecordsLeft() {
                 if (infoDiv) infoDiv.style.display = 'none';
             }
             
-            compareLog('Loaded ' + snapshot.size + ' Left records from ' + collection + ' (' + envLabel + ')', 'success');
+            // Log any records with missing dates
+            var missingDate = docs.filter(function(d) { return d.date === 'No date'; });
+            if (missingDate.length > 0) {
+                compareLog('⚠️ ' + missingDate.length + ' Left record(s) with missing date field found', 'warning');
+            }
+            
+            compareLog('Loaded ' + loadedCount + ' Left records from ' + collection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
             select.innerHTML = '<option value="">-- Error loading --</option>';
@@ -267,6 +330,7 @@ function loadCompareRecordsLeft() {
         });
 }
 
+// v1.05: Load RIGHT records - ALL records, manual sort
 function loadCompareRecordsRight() {
     if (!compareRightDb) {
         compareLog("Select Right environment first", "error");
@@ -283,25 +347,52 @@ function loadCompareRecordsRight() {
     
     compareLog('Loading Right records from: ' + collection + ' (' + envLabel + ')', 'info');
     
+    // v1.05: Remove orderBy('date') - fetch ALL records, sort manually
     compareRightDb.collection(collection)
-        .orderBy('date', 'desc')
-        .limit(100)
         .get()
         .then(function(snapshot) {
             select.innerHTML = '<option value="">-- Select right record --</option>';
             select.disabled = false;
             
-            if (!snapshot.empty) {
-                snapshot.forEach(function(doc) {
-                    var data = doc.data();
-                    var option = document.createElement('option');
-                    option.value = doc.id;
-                    var displayDate = data.date || 'No date';
-                    var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    select.appendChild(option);
-                });
+            if (snapshot.empty) {
+                select.innerHTML = '<option value="">-- No records found --</option>';
+                compareLog('No records found in ' + collection, 'info');
+                return;
             }
+            
+            // Collect all docs with their dates
+            var docs = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                var date = getDateFromRecord(data) || 'No date';
+                var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
+                docs.push({
+                    id: doc.id,
+                    data: data,
+                    date: date,
+                    courseName: courseName
+                });
+            });
+            
+            // Sort manually by date (most recent first)
+            docs.sort(function(a, b) {
+                if (a.date === 'No date' && b.date === 'No date') {
+                    return a.id.localeCompare(b.id);
+                }
+                if (a.date === 'No date') return 1;
+                if (b.date === 'No date') return -1;
+                return b.date.localeCompare(a.date);
+            });
+            
+            var loadedCount = 0;
+            docs.forEach(function(doc) {
+                var option = document.createElement('option');
+                option.value = doc.id;
+                var displayDate = doc.date;
+                option.textContent = doc.id + ' | ' + displayDate + ' | ' + doc.courseName;
+                select.appendChild(option);
+                loadedCount++;
+            });
             
             // Restore selection if it still exists
             if (currentValue) {
@@ -323,7 +414,13 @@ function loadCompareRecordsRight() {
                 if (infoDiv) infoDiv.style.display = 'none';
             }
             
-            compareLog('Loaded ' + snapshot.size + ' Right records from ' + collection + ' (' + envLabel + ')', 'success');
+            // Log any records with missing dates
+            var missingDate = docs.filter(function(d) { return d.date === 'No date'; });
+            if (missingDate.length > 0) {
+                compareLog('⚠️ ' + missingDate.length + ' Right record(s) with missing date field found', 'warning');
+            }
+            
+            compareLog('Loaded ' + loadedCount + ' Right records from ' + collection + ' (' + envLabel + ')', 'success');
         })
         .catch(function(err) {
             select.innerHTML = '<option value="">-- Error loading --</option>';
@@ -380,9 +477,12 @@ function loadCompareRecordData(side) {
                 var infoDiv = document.getElementById(infoId);
                 if (!infoDiv) return;
                 
-                var courseName = data.course ? data.course.name : 'Unknown';
+                var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
                 var playerCount = data.players ? data.players.length : 0;
                 var envIcon = env === 'PROD' ? '🔴' : (env === 'DEV' ? '🟡' : '⚪');
+                
+                // Use getDateFromRecord for consistent date display
+                var displayDate = getDateFromRecord(data) || 'Unknown';
                 
                 infoDiv.innerHTML = `
                     <div class="game-info" style="margin:0;">
@@ -396,7 +496,7 @@ function loadCompareRecordData(side) {
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Date:</span>
-                            <span class="game-info-value">${compareEscapeHtml(data.date || 'Unknown')}</span>
+                            <span class="game-info-value">${compareEscapeHtml(displayDate)}</span>
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Course:</span>
@@ -676,6 +776,116 @@ function displayCompareResults(results) {
 }
 
 // ============================================================
+// v1.05: COMPARE TAB: EVENT BINDINGS
+// ============================================================
+
+function initCompareTabEvents() {
+    compareLog('Initializing COMPARE tab event bindings...', 'info');
+    
+    // Left environment buttons
+    var leftProdBtn = document.getElementById('compareLeftProdBtn');
+    var leftDevBtn = document.getElementById('compareLeftDevBtn');
+    
+    if (leftProdBtn) {
+        leftProdBtn.addEventListener('click', function() {
+            setCompareLeftEnvironment('PROD');
+        });
+    }
+    if (leftDevBtn) {
+        leftDevBtn.addEventListener('click', function() {
+            setCompareLeftEnvironment('DEV');
+        });
+    }
+    
+    // Right environment buttons
+    var rightProdBtn = document.getElementById('compareRightProdBtn');
+    var rightDevBtn = document.getElementById('compareRightDevBtn');
+    
+    if (rightProdBtn) {
+        rightProdBtn.addEventListener('click', function() {
+            setCompareRightEnvironment('PROD');
+        });
+    }
+    if (rightDevBtn) {
+        rightDevBtn.addEventListener('click', function() {
+            setCompareRightEnvironment('DEV');
+        });
+    }
+    
+    // Load records button
+    var loadBtn = document.getElementById('compareLoadBtn');
+    if (loadBtn) {
+        loadBtn.addEventListener('click', function() {
+            loadCompareRecords();
+        });
+    }
+    
+    // Compare button
+    var compareBtn = document.getElementById('compareBtn');
+    if (compareBtn) {
+        compareBtn.addEventListener('click', function() {
+            performCompare();
+        });
+    }
+    
+    // Left collection change - reload records
+    var leftCollection = document.getElementById('compareLeftCollection');
+    if (leftCollection) {
+        leftCollection.addEventListener('change', function() {
+            if (compareLeftDb) {
+                loadCompareRecordsLeft();
+            }
+        });
+    }
+    
+    // Right collection change - reload records
+    var rightCollection = document.getElementById('compareRightCollection');
+    if (rightCollection) {
+        rightCollection.addEventListener('change', function() {
+            if (compareRightDb) {
+                loadCompareRecordsRight();
+            }
+        });
+    }
+    
+    // Left record select change - load data
+    var leftRecord = document.getElementById('compareLeftRecord');
+    if (leftRecord) {
+        leftRecord.addEventListener('change', function() {
+            if (this.value) {
+                loadCompareRecordData('left');
+            } else {
+                leftData = null;
+                leftId = null;
+                var infoDiv = document.getElementById('compareLeftInfo');
+                if (infoDiv) infoDiv.style.display = 'none';
+                var resultsDiv = document.getElementById('compareResults');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+            }
+        });
+    }
+    
+    // Right record select change - load data
+    var rightRecord = document.getElementById('compareRightRecord');
+    if (rightRecord) {
+        rightRecord.addEventListener('change', function() {
+            if (this.value) {
+                loadCompareRecordData('right');
+            } else {
+                rightData = null;
+                rightId = null;
+                var infoDiv = document.getElementById('compareRightInfo');
+                if (infoDiv) infoDiv.style.display = 'none';
+                var resultsDiv = document.getElementById('compareResults');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+            }
+        });
+    }
+    
+    compareLog('✅ COMPARE tab event bindings initialized', 'success');
+}
+
+// ============================================================
 // COMPARE TAB: INFORMATION GUIDE
 // ============================================================
 
@@ -785,24 +995,42 @@ window.loadCompareRecordsRight = loadCompareRecordsRight;
 window.loadCompareRecordData = loadCompareRecordData;
 window.performCompare = performCompare;
 window.showCompareInfoGuide = showCompareInfoGuide;
+window.initCompareTabEvents = initCompareTabEvents;
+
+// ============================================================
+// AUTO-INIT: Initialize COMPARE tab event bindings
+// ============================================================
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+            initCompareTabEvents();
+        }, 100);
+    });
+} else {
+    setTimeout(function() {
+        initCompareTabEvents();
+    }, 100);
+}
 
 // ============================================================
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COMPARE_UTIL_VERSION = "1.04";
-console.log("[COMPARE-UTIL] v1.04 loaded");
+window.COMPARE_UTIL_VERSION = "1.05";
+console.log("[COMPARE-UTIL] v1.05 loaded - Fixed event bindings and date handling");
 
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - REMOVED: Dependency on HTML for initFirebase, log, logStep, escapeHtml
-   - CHANGED: Now uses window.log and window.escapeHtml from util-core.js
-   - CHANGED: Now uses window.prodDb and window.devDb from util-core.js
-   - ADDED: Fallback logging and escaping functions if util-core.js not loaded
-   - ADDED: Explicit state variables leftData, rightData, leftId, rightId
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: initCompareTabEvents() function with event bindings for all COMPARE tab buttons
+   - ADDED: Auto-initialization when file loads (similar to COPY tab)
+   - ADDED: getDateFromRecord() helper to extract date from multiple locations
+   - FIXED: loadCompareRecordsLeft() and loadCompareRecordsRight() now load ALL records
+   - FIXED: Removed orderBy('date') - manually sorts with fallback for missing dates
+   - FIXED: Records with missing top-level 'date' field are now included (checks gameInfo.date)
+   - PRESERVED: All existing comparison logic from v1.04
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
