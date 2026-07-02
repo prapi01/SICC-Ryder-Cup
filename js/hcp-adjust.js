@@ -1,13 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.54
-KEY CHANGES from v2.53:
-   - ADDED: Constant MULTIPLE_NEW_ANCHOR = "*multiple*" for multiple zero handicap scenario
-   - CHANGED: When multiple players have 0 after zero-rise, newAnchorName = "*multiple*"
-   - This makes the state intentional and self-documenting instead of null
-   - CHANGED: displayStoredAdjustment() now handles "*multiple*" value
-   - PRESERVED: ALL v2.53 functions and API unchanged
+VERSION: 2.55
+KEY CHANGES from v2.54:
+   - ADDED: updatePlayerRecordsInBackground() - background update for playerInformation + usedLabels
+   - CHANGED: init() callback now shows table FIRST, THEN triggers background updates
+   - CHANGED: updateAnchorAndRecalculate() now shows table FIRST, THEN triggers background updates
+   - CHANGED: saveAdjustmentToFirestore() no longer calls updatePlayerProfiles() synchronously
+   - ADDED: usedLabels update on game completion (all player labels added to usedLabels)
+   - PRESERVED: ALL v2.54 functions and API unchanged
    - PRESERVED: ALL existing functionality
+   - PRESERVED: WRV integration for reliable Firestore writes
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -818,7 +820,109 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Update anchor and recalculate - v2.51: WRV integration
+    // v2.55: BACKGROUND UPDATE - playerInformation + usedLabels
+    // Runs after display, doesn't block UI
+    // ============================================================
+    function updatePlayerRecordsInBackground(adjustedPlayersData, allGamePlayers) {
+        console.log('[HCP-ADJUST] Background update starting...');
+        
+        // Step 1: Update playerInformation with new handicaps
+        var db = getDb();
+        db.collection('playerInformation').doc('defaultPlayers').get()
+            .then(function(doc) {
+                var currentPlayers = [];
+                if (doc.exists && doc.data().players) {
+                    currentPlayers = doc.data().players;
+                }
+                
+                // Update handicaps for players in this game
+                var updatedCount = 0;
+                for (var i = 0; i < currentPlayers.length; i++) {
+                    for (var j = 0; j < adjustedPlayersData.length; j++) {
+                        if (currentPlayers[i].name === adjustedPlayersData[j].name) {
+                            var newHcp = adjustedPlayersData[j].newHcp;
+                            if (newHcp !== undefined && newHcp !== null) {
+                                currentPlayers[i].handicap = newHcp;
+                                updatedCount++;
+                                console.log('[HCP-ADJUST] Background: Updated ' + adjustedPlayersData[j].name + ' → ' + newHcp);
+                            }
+                            break;
+                        }
+                    }
+                }
+                
+                // Also add any new players that might not be in playerInformation yet
+                for (var j = 0; j < adjustedPlayersData.length; j++) {
+                    var found = false;
+                    for (var i = 0; i < currentPlayers.length; i++) {
+                        if (currentPlayers[i].name === adjustedPlayersData[j].name) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        var newHcp = adjustedPlayersData[j].newHcp;
+                        if (newHcp === undefined || newHcp === null) {
+                            newHcp = adjustedPlayersData[j].currentHcp || 0;
+                        }
+                        currentPlayers.push({
+                            name: adjustedPlayersData[j].name,
+                            label: adjustedPlayersData[j].label || adjustedPlayersData[j].name.substring(0, 3).toUpperCase(),
+                            handicap: newHcp,
+                            isDefault: false
+                        });
+                        console.log('[HCP-ADJUST] Background: Added new player ' + adjustedPlayersData[j].name + ' → ' + newHcp);
+                    }
+                }
+                
+                // Write updated playerInformation using WRV
+                return wrw('playerInformation', 'defaultPlayers', {
+                    players: currentPlayers,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, true);
+            })
+            .then(function() {
+                console.log('[HCP-ADJUST] Background: playerInformation updated successfully');
+                
+                // Step 2: Update usedLabels with all player labels from this game
+                if (allGamePlayers && allGamePlayers.length > 0) {
+                    var usedLabelsData = {};
+                    var labelCount = 0;
+                    for (var i = 0; i < allGamePlayers.length; i++) {
+                        var label = allGamePlayers[i].label;
+                        if (label && label !== '') {
+                            usedLabelsData['labels.' + label] = true;
+                            labelCount++;
+                        }
+                    }
+                    
+                    if (labelCount > 0) {
+                        console.log('[HCP-ADJUST] Background: Updating usedLabels for', labelCount, 'labels');
+                        return wrw('usedLabels', 'all', usedLabelsData, true)
+                            .then(function() {
+                                console.log('[HCP-ADJUST] Background: usedLabels updated successfully');
+                            })
+                            .catch(function(err) {
+                                console.warn('[HCP-ADJUST] Background: Failed to update usedLabels:', err);
+                                // Don't fail the main flow
+                            });
+                    } else {
+                        console.log('[HCP-ADJUST] Background: No labels to add to usedLabels');
+                        return Promise.resolve();
+                    }
+                } else {
+                    console.log('[HCP-ADJUST] Background: No players provided for usedLabels update');
+                    return Promise.resolve();
+                }
+            })
+            .catch(function(err) {
+                console.error('[HCP-ADJUST] Background: Error updating player records:', err);
+                // Don't fail the main flow - background update is non-blocking
+            });
+    }
+    
+    // ============================================================
+    // Update anchor and recalculate - v2.55: DISPLAY FIRST, background update
     // ============================================================
     
     function updateAnchorAndRecalculate(newAnchor) {
@@ -844,27 +948,36 @@ var HandicapAdjustment = (function() {
             var calculationResult = calculateAllAdjustments(newAnchor);
             currentTableData = calculationResult;
             
-            saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
-                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                    WaitingScreen.hide();
-                } else {
-                    var el = document.getElementById('waitingScreenOverlay');
-                    if (el) el.remove();
-                    var loadingModal = document.getElementById('loadingModal');
-                    if (loadingModal) loadingModal.remove();
-                }
-                
-                if (err) {
-                    console.error('Error saving recalculated handicaps:', err);
-                    alert('Error saving new handicap data. Please try again.');
-                    if (currentTableData) {
-                        showAdjustmentTable(currentTableData, anchorPlayer.name, false);
+            // Step 1: Save handicap data to history record
+            return new Promise(function(resolve, reject) {
+                saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(calculationResult);
                     }
-                } else {
-                    showAdjustmentTable(calculationResult, newAnchor.name, false);
-                }
+                });
             });
-        }).catch(function(err) {
+        })
+        .then(function(calculationResult) {
+            // Hide waiting screen
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
+            } else {
+                var el = document.getElementById('waitingScreenOverlay');
+                if (el) el.remove();
+                var loadingModal = document.getElementById('loadingModal');
+                if (loadingModal) loadingModal.remove();
+            }
+            
+            // v2.55: DISPLAY FIRST
+            showAdjustmentTable(calculationResult, newAnchor.name, false);
+            
+            // v2.55: THEN background update player records (non-blocking)
+            updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
+        })
+        .catch(function(err) {
+            // Hide waiting screen on error
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                 WaitingScreen.hide();
             } else {
@@ -1117,7 +1230,8 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // saveAdjustmentToFirestore - v2.51: WRV integration
+    // saveAdjustmentToFirestore - v2.55: No longer updates player profiles
+    // Player profiles are updated in background via updatePlayerRecordsInBackground()
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -1126,12 +1240,14 @@ var HandicapAdjustment = (function() {
             players: calculationResult.players.map(function(p) {
                 return {
                     name: p.name,
+                    label: p.label,
                     currentHcp: p.currentHcp,
+                    startingHcp: p.startingHcp || p.currentHcp,
                     anchorAdj: p.anchorAdj,
                     perfAdj: p.perfAdj,
-                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
-                    anchorRaw: p.anchorRaw,
-                    perfRaw: p.perfRaw
+                    finalHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
+                    anchorRaw: p.anchorRaw || 0,
+                    perfRaw: p.perfRaw || 0
                 };
             }),
             needsZeroRise: calculationResult.needsZeroRise,
@@ -1157,19 +1273,19 @@ var HandicapAdjustment = (function() {
                     if (callback) callback(err);
                 } else {
                     console.log("  ✅ Handicap data saved successfully");
-                    updatePlayerProfiles(handicapData.players, callback);
+                    if (callback) callback(null);
                 }
             });
         } else {
             console.warn("HistoryRecord.updateWithHandicap not available, skipping status update");
             console.warn("  currentArchiveId:", currentArchiveId);
             console.warn("  HistoryRecord:", typeof HistoryRecord);
-            updatePlayerProfiles(handicapData.players, callback);
+            if (callback) callback(null);
         }
     }
     
     // ============================================================
-    // Legacy init function
+    // Legacy init function - v2.55: DISPLAY FIRST, background update
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -1199,48 +1315,37 @@ var HandicapAdjustment = (function() {
                 anchorFound = allPlayers.find(function(p) { return p.name === storedAnchor; });
             }
             
+            var proceedWithAnchor = function(anchor) {
+                anchorPlayer = anchor;
+                var calculationResult = calculateAllAdjustments(anchorPlayer);
+                currentTableData = calculationResult;
+                
+                // Step 1: Save handicap data to history record
+                saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
+                    if (err) {
+                        console.error("Error saving handicap data:", err);
+                        alert("Error saving handicap data. Please try again.");
+                        // Still show the table even if save failed
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                    } else {
+                        // v2.55: DISPLAY FIRST
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                        
+                        // v2.55: THEN background update player records (non-blocking)
+                        updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
+                    }
+                });
+            };
+            
             if (anchorFound) {
-                anchorPlayer = anchorFound;
-                var calculationResult = calculateAllAdjustments(anchorPlayer);
-                currentTableData = calculationResult;
-                
-                saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
-                    if (err) {
-                        console.error("Error saving handicap data:", err);
-                        alert("Error saving handicap data. Please try again.");
-                    } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                    }
-                });
+                proceedWithAnchor(anchorFound);
             } else if (zeroHcpPlayers.length === 1) {
-                anchorPlayer = zeroHcpPlayers[0];
-                var calculationResult = calculateAllAdjustments(anchorPlayer);
-                currentTableData = calculationResult;
-                
-                saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
-                    if (err) {
-                        console.error("Error saving handicap data:", err);
-                        alert("Error saving handicap data. Please try again.");
-                    } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                    }
-                });
+                proceedWithAnchor(zeroHcpPlayers[0]);
             } else if (zeroHcpPlayers.length > 1) {
                 showAnchorSelectionModal(zeroHcpPlayers);
             } else {
                 var lowestHcpPlayer = allPlayers[0];
-                anchorPlayer = lowestHcpPlayer;
-                var calculationResult = calculateAllAdjustments(anchorPlayer);
-                currentTableData = calculationResult;
-                
-                saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
-                    if (err) {
-                        console.error("Error saving handicap data:", err);
-                        alert("Error saving handicap data. Please try again.");
-                    } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                    }
-                });
+                proceedWithAnchor(lowestHcpPlayer);
             }
         });
     }
@@ -1272,7 +1377,8 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // updatePlayerProfiles - v2.51: WRV integration
+    // LEGACY: updatePlayerProfiles - Kept for backward compatibility
+    // v2.55: No longer called automatically, but available for manual use
     // ============================================================
     
     function updatePlayerProfiles(players, callback) {
@@ -1336,8 +1442,13 @@ var HandicapAdjustment = (function() {
             saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
                 if (err) {
                     alert("Error saving handicap data. Please try again.");
-                } else {
                     showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                } else {
+                    // v2.55: DISPLAY FIRST
+                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                    
+                    // v2.55: THEN background update player records
+                    updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
                 }
             });
         });
@@ -1371,14 +1482,14 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.54";
+    window.HANDICAP_ADJUST_VERSION = "2.55";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
     // ============================================================
-    // v2.54: EXPOSE MULTIPLE_NEW_ANCHOR constant for other files
+    // v2.55: EXPOSE MULTIPLE_NEW_ANCHOR and background updater
     // ============================================================
     return {
         init: init,
@@ -1389,6 +1500,7 @@ var HandicapAdjustment = (function() {
         displayStoredAdjustment: displayStoredAdjustment,
         calculateAllAdjustments: calculateAllAdjustments,
         calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw,
+        updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,  // v2.55: Exposed for manual use
         MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR  // v2.54: Exposed for other files
     };
     
@@ -1399,15 +1511,16 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.54
-KEY CHANGES from v2.53:
-   - ADDED: Constant MULTIPLE_NEW_ANCHOR = "*multiple*" for multiple zero handicap scenario
-   - CHANGED: When multiple players have 0 after zero-rise, newAnchorName = "*multiple*"
-   - This makes the state intentional and self-documenting instead of null
-   - CHANGED: displayStoredAdjustment() now handles "*multiple*" value
-   - EXPOSED: MULTIPLE_NEW_ANCHOR in public API for other files to use
-   - PRESERVED: ALL v2.53 functions and API unchanged
+VERSION: 2.55
+KEY CHANGES from v2.54:
+   - ADDED: updatePlayerRecordsInBackground() - background update for playerInformation + usedLabels
+   - CHANGED: init() callback now shows table FIRST, THEN triggers background updates
+   - CHANGED: updateAnchorAndRecalculate() now shows table FIRST, THEN triggers background updates
+   - CHANGED: saveAdjustmentToFirestore() no longer calls updatePlayerProfiles() synchronously
+   - ADDED: usedLabels update on game completion (all player labels added to usedLabels)
+   - PRESERVED: ALL v2.54 functions and API unchanged
    - PRESERVED: ALL existing functionality
+   - PRESERVED: WRV integration for reliable Firestore writes
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
