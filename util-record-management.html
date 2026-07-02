@@ -1,11 +1,11 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - REMOVED: validateProgress div from Fix Record card (progress now goes to LOG card)
-   - ADDED: Note in Fix Record card indicating progress messages appear in LOG card
-   - PRESERVED: All existing functionality from v1.27
-DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - ADDED: wrv.js to script dependencies (Write & Verify support)
+   - ADDED: WRV availability check on load
+   - PRESERVED: All existing functionality from v1.28
+DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -29,6 +29,9 @@ STATUS: Ready for integration
     <script src="js/game-order.js"></script>
     <script src="js/game-loader.js"></script>
     <script src="js/hcp-adjust.js"></script>
+    
+    <!-- WRV - Write & Verify (v1.09+) - Required for verified writes -->
+    <script src="js/wrv.js"></script>
     
     <!-- Utility JS Files -->
     <script src="js/util-core.js"></script>
@@ -685,6 +688,7 @@ STATUS: Ready for integration
                     <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults, adjustedHandicaps</strong>
                     <br><strong style="color:#ffaa44;">A backup will be created before updating.</strong>
                     <br><strong style="color:#4a8af4;">Progress messages will appear in the LOG card below.</strong>
+                    <br><strong style="color:#8b5cf6;">WRV protection: writes are verified and retried.</strong>
                 </div>
                 <div class="validate-fix-btn-container">
                     <button class="validate-fix-btn validate-fix-btn-backup" id="validateBackupBtn">💾 Backup Only</button>
@@ -866,15 +870,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.28</div>
+<div class="version-tag">v1.29</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.28
+// VERSION: 1.29
 // ============================================================
 
-var APP_VERSION = "1.28";
+var APP_VERSION = "1.29";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -918,8 +922,16 @@ function renderVersionBadges() {
         deleteBadge.textContent = 'v' + v;
     }
     
+    // WRV badge
+    var wrvBadge = document.getElementById('wrvVersionBadge');
+    if (wrvBadge) {
+        var v = window.WRV_VERSION || '?';
+        wrvBadge.textContent = 'v' + v;
+    }
+    
     console.log('[REC-MGMT] Version badges rendered');
     console.log('  Core: ' + (window.UTIL_CORE_VERSION || '?'));
+    console.log('  WRV: ' + (window.WRV_VERSION || '?'));
     console.log('  Validate: r' + (window.UTIL_VALIDATE_VERSION || '?') + ' u' + (window.UTIL_VALIDATE_UI_VERSION || '?') + ' a' + (window.UTIL_VALIDATE_APP_VERSION || '?'));
     console.log('  Copy: v' + (window.UTIL_COPY_VERSION || '?'));
     console.log('  Compare: v' + (window.UTIL_COMPARE_VERSION || '?'));
@@ -928,10 +940,26 @@ function renderVersionBadges() {
 }
 
 // ============================================================
+// WRV AVAILABILITY CHECK
+// ============================================================
+
+function checkWrvAvailability() {
+    var wrvAvailable = typeof WRV !== 'undefined' && typeof WRV.write === 'function';
+    if (wrvAvailable) {
+        console.log('[REC-MGMT] ✅ WRV is available (v' + (window.WRV_VERSION || '?') + ')');
+        log('✅ WRV available - writes will be verified and retried', 'success');
+    } else {
+        console.log('[REC-MGMT] ⚠️ WRV NOT available - falling back to blind writes');
+        log('⚠️ WRV not available - blind writes only', 'warning');
+    }
+    return wrvAvailable;
+}
+
+// ============================================================
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.28...');
+console.log('[REC-MGMT] Initializing v1.29...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1004,6 +1032,7 @@ setInterval(function() {
 // Render version badges after all .js files have loaded
 setTimeout(function() {
     renderVersionBadges();
+    checkWrvAvailability();
 }, 300);
 
 // Pre-load records using functions from .js files
@@ -1017,7 +1046,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.28 ready', 'success');
+    log('Record Management v1.29 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1025,9 +1054,10 @@ if (typeof log === 'function') {
     log('🏌️ HANDICAP - Handicap adjustment validation now active', 'info');
     log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
+    log('🛡️ WRV     - Write & Verify protection for all database writes', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.28 ready');
+    console.log('[REC-MGMT] Record Management v1.29 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1037,11 +1067,11 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - REMOVED: validateProgress div from Fix Record card (progress now goes to LOG card)
-   - ADDED: Note in Fix Record card indicating progress messages appear in LOG card
-   - PRESERVED: All existing functionality from v1.27
-DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - ADDED: wrv.js to script dependencies (Write & Verify support)
+   - ADDED: WRV availability check on load
+   - PRESERVED: All existing functionality from v1.28
+DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
