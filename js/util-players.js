@@ -1,23 +1,18 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: loadPlayerEditorDropdown() - loads player names into dropdown
-   - ADDED: loadPlayerForEdit() - loads selected player data into form
-   - ADDED: savePlayerEdit() - validates and WRV saves player data
-   - ADDED: resetPlayerEdit() - resets form to current saved state
-   - ADDED: validatePlayerForm() - validates all fields before save
-   - ADDED: formatLastLabelChange() - formats timestamp for display
-   - ADDED: buildUpdateObject() - builds update payload with only changed fields
-   - ADDED: showEditorStatus() - displays success/error messages
-   - PRESERVED: All existing functionality from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: savePlayerEdit() now uses WRV.write() with merge instead of WRV.update()
+   - FIXED: WRV verification now works correctly with nested path writes
+   - CHANGED: Updated player object is written as a full object at the nested path
+   - PRESERVED: All existing functionality from v1.01
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.01";
-console.log("[UTIL-PLAYERS] Initializing v1.01");
+window.UTIL_PLAYERS_VERSION = "1.02";
+console.log("[UTIL-PLAYERS] Initializing v1.02");
 
 // ============================================================
 // STATE
@@ -923,7 +918,7 @@ function cancelLabelHistory() {
 }
 
 // ============================================================
-// v1.01: PLAYER EDITOR FUNCTIONS
+// v1.02: PLAYER EDITOR FUNCTIONS (FIXED WRV)
 // ============================================================
 
 function loadPlayerEditorDropdown() {
@@ -1201,6 +1196,10 @@ function buildUpdateObject(original, updated) {
     };
 }
 
+// ============================================================
+// v1.02: savePlayerEdit - FIXED using WRV.write() with merge
+// ============================================================
+
 function savePlayerEdit() {
     var saveBtn = document.getElementById('editorSaveBtn');
     var resetBtn = document.getElementById('editorResetBtn');
@@ -1253,22 +1252,30 @@ function savePlayerEdit() {
     playersLogStep(1, 'Player: ' + editorCurrentPlayer.name, 'info');
     playersLogStep(1, 'Changes: ' + updateResult.changeLog.length + ' field(s)', 'info');
     
-    // Build the update payload - only changed fields
-    var updatePayload = {};
+    // v1.02: Build the updated player object
+    var updatedPlayer = JSON.parse(JSON.stringify(editorOriginalData));
     for (var key in updateResult.changes) {
-        updatePayload['players.' + editorCurrentIndex + '.' + key] = updateResult.changes[key];
+        updatedPlayer[key] = updateResult.changes[key];
     }
-    updatePayload['players.' + editorCurrentIndex + '.updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
-    // Also update the document-level updatedAt
-    updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    playersLogStep(2, 'Writing to Firestore...', 'info');
+    // v1.02: Use nested path with WRV.write() and merge
+    var payload = {};
+    payload['players.' + editorCurrentIndex] = updatedPlayer;
     
-    // Use WRV for the update
-    if (typeof WRV !== 'undefined' && WRV.update) {
-        WRV.update('playerInformation', 'players', updatePayload, function(err, result) {
+    // Also update document-level updatedAt
+    var fullPayload = {
+        players: null, // This will be merged
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    fullPayload['players.' + editorCurrentIndex] = updatedPlayer;
+    
+    playersLogStep(2, 'Writing to Firestore using WRV.write() with merge...', 'info');
+    
+    // v1.02: Use WRV.write() with merge instead of WRV.update()
+    if (typeof WRV !== 'undefined' && WRV.write) {
+        WRV.write('playerInformation', 'players', fullPayload, true, function(err, result) {
             if (err) {
-                playersLogStep(2, '❌ WRV update failed: ' + err.message, 'error');
+                playersLogStep(2, '❌ WRV write failed: ' + err.message, 'error');
                 showEditorStatus('❌ Save failed: ' + err.message, 'error');
                 if (saveBtn) saveBtn.disabled = false;
                 if (resetBtn) resetBtn.disabled = false;
@@ -1282,13 +1289,9 @@ function savePlayerEdit() {
                 playersLogStep(2, '  • ' + updateResult.changeLog[i], 'info');
             }
             
-            // Reload the player data to refresh editor
-            var selectedName = document.getElementById('playerEditorSelect').value;
-            if (selectedName) {
-                // Update original data to reflect saved state
-                editorOriginalData = JSON.parse(JSON.stringify(validation.data));
-                showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
-            }
+            // Update original data to reflect saved state
+            editorOriginalData = JSON.parse(JSON.stringify(updatedPlayer));
+            showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
             
             if (saveBtn) saveBtn.disabled = false;
             if (resetBtn) resetBtn.disabled = false;
@@ -1300,7 +1303,7 @@ function savePlayerEdit() {
     } else {
         // Fallback: direct update
         playersLogStep(2, 'WRV not available, using direct update', 'warning');
-        playersDb.collection('playerInformation').doc('players').update(updatePayload)
+        playersDb.collection('playerInformation').doc('players').update(fullPayload)
             .then(function() {
                 playersLogStep(2, '✅ Player updated successfully (direct)', 'success');
                 
@@ -1308,7 +1311,7 @@ function savePlayerEdit() {
                     playersLogStep(2, '  • ' + updateResult.changeLog[i], 'info');
                 }
                 
-                editorOriginalData = JSON.parse(JSON.stringify(validation.data));
+                editorOriginalData = JSON.parse(JSON.stringify(updatedPlayer));
                 showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
                 
                 if (saveBtn) saveBtn.disabled = false;
@@ -1606,22 +1609,20 @@ window.savePlayerEdit = savePlayerEdit;
 window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
-window.UTIL_PLAYERS_VERSION = "1.01";
 
-console.log("[UTIL-PLAYERS] v1.01 loaded - Player Editor added");
+// v1.02: Updated version
+window.UTIL_PLAYERS_VERSION = "1.02";
+
+console.log("[UTIL-PLAYERS] v1.02 loaded - Fixed WRV write with merge");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: loadPlayerEditorDropdown() - loads player names into dropdown
-   - ADDED: loadPlayerForEdit() - loads selected player data into form
-   - ADDED: savePlayerEdit() - validates and WRV saves player data
-   - ADDED: resetPlayerEdit() - resets form to current saved state
-   - ADDED: validatePlayerForm() - validates all fields before save
-   - ADDED: buildUpdateObject() - builds update payload with only changed fields
-   - ADDED: showEditorStatus() - displays success/error messages
-   - PRESERVED: All existing functionality from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: savePlayerEdit() now uses WRV.write() with merge instead of WRV.update()
+   - FIXED: WRV verification now works correctly with nested path writes
+   - CHANGED: Updated player object is written as a full object at the nested path
+   - PRESERVED: All existing functionality from v1.01
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
