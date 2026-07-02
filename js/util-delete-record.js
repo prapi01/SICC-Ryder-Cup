@@ -1,21 +1,20 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - REMOVED: Custom collection entry option (no longer needed)
-   - ADDED: Firestore REST API to list ALL collections dynamically
-   - ADDED: getAllCollections() - fetches collection IDs using Firestore REST API
-   - CHANGED: loadAvailableCollections() now uses REST API for accurate collection listing
-   - CHANGED: Collection dropdown now shows ALL collections automatically
-   - REMOVED: Custom collection localStorage persistence (no longer needed)
-   - PRESERVED: All existing delete functionality from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: deviceMapping to default collections list
+   - ADDED: deviceSessions to default collections list
+   - ADDED: Custom collection entry option (restored from v1.08)
+   - ADDED: localStorage persistence for custom collections
+   - CHANGED: Fallback to known collections when REST API fails
+   - PRESERVED: All existing delete functionality from v1.09
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.09";
-console.log("[UTIL-DELETE] Initializing v1.09 - REST API collection listing");
+window.UTIL_DELETE_VERSION = "1.10";
+console.log("[UTIL-DELETE] Initializing v1.10 - Added device collections and custom entry");
 
 // ============================================================
 // STATE VARIABLES
@@ -54,36 +53,34 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.09: GET ALL COLLECTIONS USING FIRESTORE REST API
+// v1.10: GET ALL COLLECTIONS (with fallback)
 // ============================================================
 
 function getAllCollections(projectId, apiKey) {
-    return new Promise(function(resolve, reject) {
-        var url = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents';
+    return new Promise(function(resolve) {
+        // v1.10: Always include these core collections
+        var coreCollections = ['scheduledGames', 'historyGames', 'backupFolder', 'deviceMapping', 'deviceSessions'];
         
-        // Add API key if provided
+        // Try REST API first (but it may fail due to CORS)
+        var url = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents';
         if (apiKey) {
             url += '?key=' + apiKey;
         }
         
-        deleteLog('Fetching collections from: ' + projectId, 'info');
-        
         fetch(url)
             .then(function(response) {
                 if (!response.ok) {
-                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                    throw new Error('HTTP ' + response.status);
                 }
                 return response.json();
             })
             .then(function(data) {
                 if (!data.documents) {
-                    deleteLog('No collections found', 'info');
-                    resolve([]);
+                    // No documents found - return core collections
+                    resolve(coreCollections);
                     return;
                 }
                 
-                // Extract collection IDs from the documents
-                // Each document path looks like: projects/{projectId}/databases/(default)/documents/{collectionId}/{docId}
                 var collections = {};
                 data.documents.forEach(function(doc) {
                     var parts = doc.name.split('/documents/');
@@ -92,7 +89,6 @@ function getAllCollections(projectId, apiKey) {
                         var segments = path.split('/');
                         if (segments.length > 0) {
                             var collectionId = segments[0];
-                            // Filter out system collections and empty collections
                             if (collectionId && !collectionId.startsWith('_') && collectionId !== '') {
                                 collections[collectionId] = true;
                             }
@@ -100,25 +96,24 @@ function getAllCollections(projectId, apiKey) {
                     }
                 });
                 
+                // Ensure core collections are included even if empty
+                coreCollections.forEach(function(c) {
+                    collections[c] = true;
+                });
+                
                 var collectionNames = Object.keys(collections).sort();
-                deleteLog('Found ' + collectionNames.length + ' collections', 'success');
-                if (collectionNames.length > 0) {
-                    deleteLog('Collections: ' + collectionNames.join(', '), 'info');
-                }
                 resolve(collectionNames);
             })
             .catch(function(err) {
-                // If REST API fails, fallback to known collections
-                deleteLog('REST API error: ' + err.message + ' - falling back to known collections', 'warning');
-                // Fallback to known collections
-                var fallback = ['scheduledGames', 'historyGames', 'backupFolder'];
-                resolve(fallback);
+                // REST API failed (CORS or other) - return core collections
+                deleteLog('REST API unavailable, using core collections', 'warning');
+                resolve(coreCollections);
             });
     });
 }
 
 // ============================================================
-// v1.09: LOAD AVAILABLE COLLECTIONS
+// v1.10: LOAD AVAILABLE COLLECTIONS
 // ============================================================
 
 function loadAvailableCollections() {
@@ -157,35 +152,45 @@ function loadAvailableCollections() {
     select.innerHTML = '<option value="">⏳ Loading collections...</option>';
     select.disabled = true;
     
-    // Use REST API to get all collections
     getAllCollections(projectId, apiKey)
         .then(function(collections) {
-            // Filter out system collections that shouldn't be shown
+            // Filter out system collections
             var filtered = collections.filter(function(c) {
-                // Exclude system collections
                 if (c.startsWith('_')) return false;
                 if (c === '') return false;
-                // Include all user collections
                 return true;
             });
             
-            // Ensure the 3 main collections are always included
-            var mainCollections = ['scheduledGames', 'historyGames', 'backupFolder'];
-            mainCollections.forEach(function(mc) {
+            // Ensure core collections are always present
+            var coreCollections = ['scheduledGames', 'historyGames', 'backupFolder', 'deviceMapping', 'deviceSessions'];
+            coreCollections.forEach(function(mc) {
                 if (filtered.indexOf(mc) === -1) {
                     filtered.push(mc);
                 }
             });
             
-            // Sort alphabetically, but keep the 3 main ones at the top
+            // v1.10: Add custom collections from localStorage
+            var stored = localStorage.getItem('delete_custom_collections');
+            if (stored) {
+                try {
+                    var custom = JSON.parse(stored);
+                    custom.forEach(function(c) {
+                        if (filtered.indexOf(c) === -1) {
+                            filtered.push(c);
+                        }
+                    });
+                } catch(e) {}
+            }
+            
+            // Sort: core collections first, then alphabetically
             var sorted = [];
-            mainCollections.forEach(function(c) {
+            coreCollections.forEach(function(c) {
                 if (filtered.indexOf(c) !== -1) {
                     sorted.push(c);
                 }
             });
             var rest = filtered.filter(function(c) {
-                return mainCollections.indexOf(c) === -1;
+                return coreCollections.indexOf(c) === -1;
             }).sort();
             filtered = sorted.concat(rest);
             
@@ -199,14 +204,14 @@ function loadAvailableCollections() {
         })
         .catch(function(err) {
             deleteLog('Error loading collections: ' + err.message, 'error');
-            // Fallback to default collections
-            var defaultCollections = ['scheduledGames', 'historyGames', 'backupFolder'];
+            // Fallback to core collections
+            var defaultCollections = ['scheduledGames', 'historyGames', 'backupFolder', 'deviceMapping', 'deviceSessions'];
             populateCollectionDropdown(defaultCollections);
         });
 }
 
 // ============================================================
-// v1.09: POPULATE COLLECTION DROPDOWN
+// v1.10: POPULATE COLLECTION DROPDOWN (with custom entry)
 // ============================================================
 
 function populateCollectionDropdown(collections) {
@@ -219,11 +224,11 @@ function populateCollectionDropdown(collections) {
     var html = '';
     var hasValue = false;
     
-    // Main collections (always shown first)
-    var mainCollections = ['scheduledGames', 'historyGames', 'backupFolder'];
+    // v1.10: Core collections (always shown first)
+    var coreCollections = ['scheduledGames', 'historyGames', 'backupFolder', 'deviceMapping', 'deviceSessions'];
     
-    // Add main collections
-    mainCollections.forEach(function(c) {
+    // Add core collections
+    coreCollections.forEach(function(c) {
         if (collections.indexOf(c) !== -1) {
             var selected = (currentValue === c) ? 'selected' : '';
             if (currentValue === c) hasValue = true;
@@ -231,9 +236,9 @@ function populateCollectionDropdown(collections) {
         }
     });
     
-    // Add other collections (excluding main ones)
+    // Add other collections (excluding core ones)
     var others = collections.filter(function(c) {
-        return mainCollections.indexOf(c) === -1;
+        return coreCollections.indexOf(c) === -1;
     });
     
     if (others.length > 0) {
@@ -245,12 +250,75 @@ function populateCollectionDropdown(collections) {
         });
     }
     
+    // v1.10: Add custom collection option
+    html += '<option disabled>──────────</option>';
+    html += '<option value="__custom__" ' + (currentValue === '__custom__' ? 'selected' : '') + '>✏️ Custom Collection...</option>';
+    
     select.innerHTML = html;
     select.disabled = false;
     
+    // Handle custom collection selection
+    select.onchange = function() {
+        if (this.value === '__custom__') {
+            var customName = prompt('Enter collection name:');
+            if (customName && customName.trim() !== '') {
+                var name = customName.trim();
+                // Add to the list
+                if (!deleteCollectionCache) {
+                    deleteCollectionCache = {};
+                }
+                var envText = document.getElementById('deleteIndicator') ? document.getElementById('deleteIndicator').textContent : 'PROD';
+                if (!deleteCollectionCache[envText]) {
+                    deleteCollectionCache[envText] = [];
+                }
+                if (deleteCollectionCache[envText].indexOf(name) === -1) {
+                    deleteCollectionCache[envText].push(name);
+                }
+                // Save to localStorage
+                var stored = localStorage.getItem('delete_custom_collections');
+                var customCollections = [];
+                if (stored) {
+                    try {
+                        customCollections = JSON.parse(stored);
+                    } catch(e) {}
+                }
+                if (customCollections.indexOf(name) === -1) {
+                    customCollections.push(name);
+                    localStorage.setItem('delete_custom_collections', JSON.stringify(customCollections));
+                }
+                // Repopulate and select
+                populateCollectionDropdown(deleteCollectionCache[envText]);
+                // Try to select the new collection
+                var options = select.options;
+                for (var i = 0; i < options.length; i++) {
+                    if (options[i].value === name) {
+                        select.value = name;
+                        break;
+                    }
+                }
+                // Trigger load
+                loadDeleteRecords();
+            } else {
+                // Reset to previous selection
+                var prevValue = localStorage.getItem('delete_last_collection') || 'scheduledGames';
+                if (select.querySelector('option[value="' + prevValue + '"]')) {
+                    select.value = prevValue;
+                } else {
+                    select.value = 'scheduledGames';
+                }
+            }
+        } else {
+            // Save selection
+            localStorage.setItem('delete_last_collection', this.value);
+            loadDeleteRecords();
+        }
+    };
+    
     // Restore selection if possible
-    if (hasValue) {
+    if (hasValue && currentValue !== '__custom__') {
         select.value = currentValue;
+    } else if (currentValue === '__custom__') {
+        // Keep as is
     } else {
         // Select the first available option
         var firstOption = select.querySelector('option:not([disabled])');
@@ -259,16 +327,14 @@ function populateCollectionDropdown(collections) {
         }
     }
     
-    // Save selection
-    var selectedValue = select.value;
-    if (selectedValue) {
-        localStorage.setItem('delete_last_collection', selectedValue);
-    }
-    
     // Load records for the selected collection
-    setTimeout(function() {
-        loadDeleteRecords();
-    }, 100);
+    var selectedValue = select.value;
+    if (selectedValue && selectedValue !== '__custom__') {
+        localStorage.setItem('delete_last_collection', selectedValue);
+        setTimeout(function() {
+            loadDeleteRecords();
+        }, 100);
+    }
 }
 
 // ============================================================
@@ -285,8 +351,7 @@ function loadDeleteRecords() {
     var envText = indicator.textContent || 'PROD';
     var db = envText === 'PROD' ? window.prodDb : window.devDb;
     
-    if (!collectionName) {
-        deleteLog('No collection selected', 'error');
+    if (!collectionName || collectionName === '__custom__') {
         return;
     }
     
@@ -695,7 +760,8 @@ function showDeleteInfoGuide() {
                         <li>🗑️ Delete individual records by checking the checkbox</li>
                         <li>☑️ Select All / Deselect All for bulk operations</li>
                         <li>🔄 Switch between PROD and DEV environments</li>
-                        <li>📂 ALL collections are automatically detected and listed</li>
+                        <li>📂 Collections include: scheduledGames, historyGames, backupFolder, deviceMapping, deviceSessions</li>
+                        <li>✏️ Add custom collections via "Custom Collection..." option</li>
                     </ul>
                 </div>
             </div>
@@ -706,7 +772,7 @@ function showDeleteInfoGuide() {
                 <div class="info-section-title">📖 How To Use</div>
                 <ol class="info-steps">
                     <li><strong>Step 1 - Environment:</strong> Select PROD or DEV</li>
-                    <li><strong>Step 2 - Collection:</strong> Choose a collection from the automatically populated dropdown</li>
+                    <li><strong>Step 2 - Collection:</strong> Choose a collection from the dropdown or enter a custom one</li>
                     <li><strong>Step 3 - Select:</strong> Check individual records or click "Select All"</li>
                     <li><strong>Step 4 - Delete:</strong> Click "DELETE SELECTED" to confirm deletion</li>
                 </ol>
@@ -717,12 +783,14 @@ function showDeleteInfoGuide() {
             <div class="info-section">
                 <div class="info-section-title">📂 Collections</div>
                 <div class="info-text">
-                    The dropdown automatically shows ALL collections available in the selected environment.
+                    The dropdown includes:
                     <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
                         <li><strong>scheduledGames:</strong> Active/live games</li>
                         <li><strong>historyGames:</strong> Completed and archived games</li>
                         <li><strong>backupFolder:</strong> Backups created by the app</li>
-                        <li><strong>All other collections:</strong> Any other collection in the database</li>
+                        <li><strong>deviceMapping:</strong> Device mapping records</li>
+                        <li><strong>deviceSessions:</strong> Device session records</li>
+                        <li><strong>Custom collections:</strong> Any collection you've added manually</li>
                     </ul>
                 </div>
             </div>
@@ -735,7 +803,7 @@ function showDeleteInfoGuide() {
                     <li><strong>PERMANENT:</strong> Deleted records cannot be recovered</li>
                     <li><strong>Backup:</strong> Consider backing up before deleting</li>
                     <li><strong>Photos:</strong> Deleting a record does NOT delete its photo from Storage</li>
-                    <li><strong>Collections:</strong> All collections are automatically detected via Firestore REST API</li>
+                    <li><strong>Custom Collections:</strong> Only use if you know what you're doing</li>
                 </ul>
             </div>
             
@@ -838,19 +906,18 @@ window.loadAvailableCollections = loadAvailableCollections;
 window.populateCollectionDropdown = populateCollectionDropdown;
 window.getAllCollections = getAllCollections;
 
-console.log('[UTIL-DELETE] v1.09 loaded - REST API collection listing');
+console.log('[UTIL-DELETE] v1.10 loaded - Added device collections and custom entry');
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - REMOVED: Custom collection entry option (no longer needed)
-   - ADDED: Firestore REST API to list ALL collections dynamically
-   - ADDED: getAllCollections() - fetches collection IDs using Firestore REST API
-   - CHANGED: loadAvailableCollections() now uses REST API for accurate collection listing
-   - CHANGED: Collection dropdown now shows ALL collections automatically
-   - REMOVED: Custom collection localStorage persistence (no longer needed)
-   - PRESERVED: All existing delete functionality from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: deviceMapping to default collections list
+   - ADDED: deviceSessions to default collections list
+   - ADDED: Custom collection entry option (restored from v1.08)
+   - ADDED: localStorage persistence for custom collections
+   - CHANGED: Fallback to known collections when REST API fails
+   - PRESERVED: All existing delete functionality from v1.09
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
