@@ -1,20 +1,19 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: WRV.write() calls now use correct signature: (collection, docId, data, callback, options)
-   - FIXED: executeRebuildUsedLabels() now uses WRV.write() with proper callback
-   - FIXED: savePlayerEdit() now uses WRV.write() with proper callback
-   - FIXED: executeSyncLabelHistory() now uses WRV.update() with proper callback
-   - REMOVED: Merge parameter passed as callback (was causing "callback is not a function" error)
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: savePlayerEdit() now uses read-modify-write approach to avoid dot notation issues
+   - CHANGED: Reads the full document, modifies the player in the players array, writes back
+   - FIXED: No more top-level "players.7.*" fields being created
+   - FIXED: Preserves usedLabels and labelHistory when writing back
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.04";
-console.log("[UTIL-PLAYERS] Initializing v1.04 - Fixed WRV signature");
+window.UTIL_PLAYERS_VERSION = "1.05";
+console.log("[UTIL-PLAYERS] Initializing v1.05 - Read-modify-write for savePlayerEdit");
 
 // ============================================================
 // STATE
@@ -390,7 +389,7 @@ function viewLabelHistory() {
 }
 
 // ============================================================
-// REBUILD usedLabels (v1.04: Fixed WRV signature)
+// REBUILD usedLabels
 // ============================================================
 
 function rebuildUsedLabels() {
@@ -501,7 +500,6 @@ function rebuildUsedLabels() {
         });
 }
 
-// v1.04: executeRebuildUsedLabels - Fixed WRV signature
 function executeRebuildUsedLabels() {
     if (!playersDb || !stagedUsedLabels) {
         playersLog("No staged data to write", "error");
@@ -536,7 +534,6 @@ function executeRebuildUsedLabels() {
     if (cancelBtn) cancelBtn.disabled = true;
     if (rebuildBtn) rebuildBtn.disabled = true;
     
-    // v1.04: WRV.write signature: (collection, docId, data, callback, options)
     var payload = {
         usedLabels: labelSet,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -607,7 +604,7 @@ function handleRebuildSuccess(count) {
 }
 
 // ============================================================
-// SYNC labelHistory (v1.04: Fixed WRV signature)
+// SYNC labelHistory
 // ============================================================
 
 function syncLabelHistory() {
@@ -778,7 +775,6 @@ function syncLabelHistory() {
         });
 }
 
-// v1.04: executeSyncLabelHistory - Fixed WRV signature
 function executeSyncLabelHistory() {
     if (!playersDb || !stagedLabelHistory) {
         playersLog("No staged data to write", "error");
@@ -812,7 +808,6 @@ function executeSyncLabelHistory() {
     if (cancelBtn) cancelBtn.disabled = true;
     if (syncBtn) syncBtn.disabled = true;
     
-    // v1.04: WRV.update signature: (collection, docId, data, callback, options)
     var updateObj = {};
     for (var oldLabel in mappings) {
         var newLabel = mappings[oldLabel];
@@ -1203,7 +1198,10 @@ function buildUpdateObject(original, updated) {
     };
 }
 
-// v1.04: savePlayerEdit - Fixed WRV signature
+// ============================================================
+// v1.05: savePlayerEdit - Read-modify-write approach
+// ============================================================
+
 function savePlayerEdit() {
     var saveBtn = document.getElementById('editorSaveBtn');
     var resetBtn = document.getElementById('editorResetBtn');
@@ -1255,65 +1253,89 @@ function savePlayerEdit() {
         updatedPlayer[key] = updateResult.changes[key];
     }
     
-    // v1.04: WRV.write signature: (collection, docId, data, callback, options)
-    var fullPayload = {
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    fullPayload['players.' + editorCurrentIndex] = updatedPlayer;
+    // v1.05: Read-modify-write approach - read the full document first
+    playersLogStep(2, 'Reading current document...', 'info');
     
-    playersLogStep(2, 'Writing to Firestore using WRV.write() with merge...', 'info');
-    
-    if (typeof WRV !== 'undefined' && WRV.write) {
-        WRV.write('playerInformation', 'players', fullPayload, function(err, result) {
-            if (err) {
-                playersLogStep(2, '❌ WRV write failed: ' + err.message, 'error');
-                showEditorStatus('❌ Save failed: ' + err.message, 'error');
-                if (saveBtn) saveBtn.disabled = false;
-                if (resetBtn) resetBtn.disabled = false;
-                return;
+    playersDb.collection('playerInformation').doc('players').get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                throw new Error('Document not found');
             }
             
+            var data = doc.data();
+            var players = data.players || [];
+            
+            // Ensure the player index exists
+            if (editorCurrentIndex >= players.length) {
+                playersLogStep(2, '⚠️ Player index out of range, extending array', 'warning');
+                // Extend array if needed
+                while (players.length <= editorCurrentIndex) {
+                    players.push({});
+                }
+            }
+            
+            // Update the player
+            players[editorCurrentIndex] = updatedPlayer;
+            
+            // Build payload with all fields preserved
+            var payload = {
+                players: players,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            // Preserve usedLabels if it exists
+            if (data.usedLabels) {
+                payload.usedLabels = data.usedLabels;
+            }
+            
+            // Preserve labelHistory if it exists
+            if (data.labelHistory) {
+                payload.labelHistory = data.labelHistory;
+            }
+            
+            playersLogStep(2, 'Writing updated document with WRV...', 'info');
+            
+            // Use WRV.write with the full payload
+            if (typeof WRV !== 'undefined' && WRV.write) {
+                return new Promise(function(resolve, reject) {
+                    WRV.write('playerInformation', 'players', payload, function(err, result) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+            } else {
+                // Fallback: direct write
+                playersLogStep(2, 'WRV not available, using direct write', 'warning');
+                return playersDb.collection('playerInformation').doc('players').set(payload, { merge: true });
+            }
+        })
+        .then(function() {
             playersLogStep(2, '✅ Player updated successfully', 'success');
             
             for (var i = 0; i < updateResult.changeLog.length; i++) {
                 playersLogStep(2, '  • ' + updateResult.changeLog[i], 'info');
             }
             
+            // Update original data to reflect saved state
             editorOriginalData = JSON.parse(JSON.stringify(updatedPlayer));
             showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
             
             if (saveBtn) saveBtn.disabled = false;
             if (resetBtn) resetBtn.disabled = false;
             
+            // Reload status for other cards
             loadPlayersStatus();
             playersLogStep(2, '=== SAVE COMPLETE ===', 'success');
+        })
+        .catch(function(err) {
+            playersLogStep(2, '❌ Save failed: ' + err.message, 'error');
+            showEditorStatus('❌ Save failed: ' + err.message, 'error');
+            if (saveBtn) saveBtn.disabled = false;
+            if (resetBtn) resetBtn.disabled = false;
         });
-    } else {
-        playersLogStep(2, 'WRV not available, using direct update', 'warning');
-        playersDb.collection('playerInformation').doc('players').update(fullPayload)
-            .then(function() {
-                playersLogStep(2, '✅ Player updated successfully (direct)', 'success');
-                
-                for (var i = 0; i < updateResult.changeLog.length; i++) {
-                    playersLogStep(2, '  • ' + updateResult.changeLog[i], 'info');
-                }
-                
-                editorOriginalData = JSON.parse(JSON.stringify(updatedPlayer));
-                showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
-                
-                if (saveBtn) saveBtn.disabled = false;
-                if (resetBtn) resetBtn.disabled = false;
-                
-                loadPlayersStatus();
-                playersLogStep(2, '=== SAVE COMPLETE ===', 'success');
-            })
-            .catch(function(err) {
-                playersLogStep(2, '❌ Direct update failed: ' + err.message, 'error');
-                showEditorStatus('❌ Save failed: ' + err.message, 'error');
-                if (saveBtn) saveBtn.disabled = false;
-                if (resetBtn) resetBtn.disabled = false;
-            });
-    }
 }
 
 function resetPlayerEdit() {
@@ -1587,20 +1609,19 @@ window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
 
-window.UTIL_PLAYERS_VERSION = "1.04";
+window.UTIL_PLAYERS_VERSION = "1.05";
 
-console.log("[UTIL-PLAYERS] v1.04 loaded - Fixed WRV signature");
+console.log("[UTIL-PLAYERS] v1.05 loaded - Read-modify-write for savePlayerEdit");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: WRV.write() calls now use correct signature: (collection, docId, data, callback, options)
-   - FIXED: executeRebuildUsedLabels() now uses WRV.write() with proper callback
-   - FIXED: savePlayerEdit() now uses WRV.write() with proper callback
-   - FIXED: executeSyncLabelHistory() now uses WRV.update() with proper callback
-   - REMOVED: Merge parameter passed as callback (was causing "callback is not a function" error)
-   - PRESERVED: All existing functionality from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: savePlayerEdit() now uses read-modify-write approach to avoid dot notation issues
+   - CHANGED: Reads the full document, modifies the player in the players array, writes back
+   - FIXED: No more top-level "players.7.*" fields being created
+   - FIXED: Preserves usedLabels and labelHistory when writing back
+   - PRESERVED: All existing functionality from v1.04
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
