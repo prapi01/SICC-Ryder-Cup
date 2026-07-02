@@ -1,20 +1,21 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: deviceMapping to default collections list
-   - ADDED: deviceSessions to default collections list
-   - ADDED: Custom collection entry option (restored from v1.08)
-   - ADDED: localStorage persistence for custom collections
-   - CHANGED: Fallback to known collections when REST API fails
-   - PRESERVED: All existing delete functionality from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - ADDED: cleanupDeviceMapping() - Purges old device records while preserving counter
+   - ADDED: cleanupDeviceSessions() - Purges old session records
+   - ADDED: "Cleanup" button in DELETE tab interface (added via HTML)
+   - ADDED: Confirmation dialog before cleanup
+   - ADDED: Progress logging during cleanup
+   - ADDED: getCurrentEnvironment() helper to get env safely
+   - PRESERVED: All existing functionality from v1.10
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.10";
-console.log("[UTIL-DELETE] Initializing v1.10 - Added device collections and custom entry");
+window.UTIL_DELETE_VERSION = "1.11";
+console.log("[UTIL-DELETE] Initializing v1.11 - Device cleanup functions");
 
 // ============================================================
 // STATE VARIABLES
@@ -53,7 +54,372 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.10: GET ALL COLLECTIONS (with fallback)
+// v1.11: HELPERS
+// ============================================================
+
+function getCurrentEnvironment() {
+    var indicator = document.getElementById('deleteIndicator');
+    return indicator ? indicator.textContent : 'PROD';
+}
+
+function getCurrentDb() {
+    var envText = getCurrentEnvironment();
+    return envText === 'PROD' ? window.prodDb : window.devDb;
+}
+
+// ============================================================
+// v1.11: CLEANUP DEVICE MAPPING
+// ============================================================
+
+function cleanupDeviceMapping(options) {
+    var db = getCurrentDb();
+    var envText = getCurrentEnvironment();
+    
+    if (!db) {
+        deleteLog('Database not available for cleanup', 'error');
+        return;
+    }
+    
+    var days = (options && options.days) || 90;
+    var dryRun = (options && options.dryRun) || false;
+    var cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+    
+    deleteLog('🧹 Starting deviceMapping cleanup (dryRun: ' + dryRun + ', days: ' + days + ')', 'info');
+    
+    var progressDiv = document.getElementById('deleteProgress');
+    if (progressDiv) {
+        progressDiv.className = 'delete-progress active';
+        progressDiv.innerHTML = '<div class="step info">🧹 Scanning deviceMapping for records older than ' + days + ' days...</div>';
+    }
+    
+    var toDelete = [];
+    var preserved = 0;
+    var skipped = 0;
+    
+    db.collection('deviceMapping').get()
+        .then(function(snapshot) {
+            if (snapshot.empty) {
+                deleteLog('No deviceMapping records found', 'info');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step info">No deviceMapping records found</div>';
+                }
+                return;
+            }
+            
+            var records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    data: data
+                });
+            });
+            
+            // Process each record
+            records.forEach(function(record) {
+                // NEVER delete the counter document
+                if (record.id === 'counter') {
+                    preserved++;
+                    return;
+                }
+                
+                // Check if this is a device record with lastSeen
+                if (record.data.lastSeen !== undefined) {
+                    var lastSeen = record.data.lastSeen;
+                    var lastSeenDate = new Date(lastSeen);
+                    var age = Date.now() - lastSeen;
+                    var ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
+                    
+                    if (age > cutoffTime) {
+                        // This device is old - mark for deletion
+                        toDelete.push({
+                            id: record.id,
+                            shortName: record.data.shortName || record.id,
+                            lastSeen: record.data.lastSeen,
+                            ageDays: ageDays
+                        });
+                    } else {
+                        skipped++;
+                    }
+                } else {
+                    // Record doesn't have lastSeen - skip it
+                    skipped++;
+                }
+            });
+            
+            if (toDelete.length === 0) {
+                deleteLog('No old device records to clean up', 'success');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step done">✅ No old device records to clean up</div>';
+                }
+                return;
+            }
+            
+            deleteLog('Found ' + toDelete.length + ' device records older than ' + days + ' days', 'info');
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step info">📋 Found ' + toDelete.length + ' old device records</div>';
+            }
+            
+            // Log the records to be deleted
+            toDelete.forEach(function(record) {
+                deleteLog('  - ' + record.id + ' (' + record.shortName + ', ' + record.ageDays + ' days old)', 'info');
+            });
+            
+            if (dryRun) {
+                deleteLog('🧹 DRY RUN: Would delete ' + toDelete.length + ' records (counter preserved, ' + skipped + ' kept)', 'success');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step done">🧹 DRY RUN: Would delete ' + toDelete.length + ' records</div>';
+                }
+                return;
+            }
+            
+            // Confirm before deletion
+            if (!confirm('Delete ' + toDelete.length + ' old device records?\n\nCounter will be preserved.\nRecords with lastSeen > ' + days + ' days will be kept.')) {
+                deleteLog('Cleanup cancelled by user', 'info');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step info">❌ Cleanup cancelled</div>';
+                }
+                return;
+            }
+            
+            // Delete the records
+            var deleted = 0;
+            var failed = 0;
+            var errors = [];
+            
+            function deleteNext(index) {
+                if (index >= toDelete.length) {
+                    var msg = '🧹 Cleanup complete: ' + deleted + ' deleted, ' + failed + ' failed, ' + skipped + ' kept, ' + preserved + ' preserved (counter)';
+                    deleteLog(msg, failed > 0 ? 'warning' : 'success');
+                    if (progressDiv) {
+                        progressDiv.innerHTML += '<div class="step ' + (failed > 0 ? 'warning' : 'done') + '">' + msg + '</div>';
+                        if (failed > 0) {
+                            progressDiv.innerHTML += '<div class="step error">Errors: ' + errors.join('; ') + '</div>';
+                        }
+                    }
+                    return;
+                }
+                
+                var record = toDelete[index];
+                db.collection('deviceMapping').doc(record.id).delete()
+                    .then(function() {
+                        deleted++;
+                        if (progressDiv) {
+                            progressDiv.innerHTML += '<div class="step done">✅ Deleted: ' + record.id + ' (' + record.shortName + ')</div>';
+                        }
+                        deleteNext(index + 1);
+                    })
+                    .catch(function(err) {
+                        failed++;
+                        errors.push(record.id + ': ' + err.message);
+                        if (progressDiv) {
+                            progressDiv.innerHTML += '<div class="step error">❌ Failed: ' + record.id + ' - ' + err.message + '</div>';
+                        }
+                        deleteNext(index + 1);
+                    });
+            }
+            
+            deleteNext(0);
+        })
+        .catch(function(err) {
+            deleteLog('Error during deviceMapping cleanup: ' + err.message, 'error');
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            }
+        });
+}
+
+// ============================================================
+// v1.11: CLEANUP DEVICE SESSIONS
+// ============================================================
+
+function cleanupDeviceSessions(options) {
+    var db = getCurrentDb();
+    var envText = getCurrentEnvironment();
+    
+    if (!db) {
+        deleteLog('Database not available for cleanup', 'error');
+        return;
+    }
+    
+    var days = (options && options.days) || 30;
+    var dryRun = (options && options.dryRun) || false;
+    var cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+    
+    deleteLog('🧹 Starting deviceSessions cleanup (dryRun: ' + dryRun + ', days: ' + days + ')', 'info');
+    
+    var progressDiv = document.getElementById('deleteProgress');
+    if (progressDiv) {
+        progressDiv.className = 'delete-progress active';
+        progressDiv.innerHTML = '<div class="step info">🧹 Scanning deviceSessions for records older than ' + days + ' days...</div>';
+    }
+    
+    var toDelete = [];
+    var skipped = 0;
+    
+    db.collection('deviceSessions').get()
+        .then(function(snapshot) {
+            if (snapshot.empty) {
+                deleteLog('No deviceSessions records found', 'info');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step info">No deviceSessions records found</div>';
+                }
+                return;
+            }
+            
+            var records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    data: data
+                });
+            });
+            
+            // Process each record
+            records.forEach(function(record) {
+                // Check if this is a session record with an expiry or timestamp
+                var timestamp = null;
+                
+                // Check for various timestamp fields
+                if (record.data.createdAt !== undefined) {
+                    timestamp = record.data.createdAt;
+                } else if (record.data.updatedAt !== undefined) {
+                    timestamp = record.data.updatedAt;
+                } else if (record.data.lastActive !== undefined) {
+                    timestamp = record.data.lastActive;
+                } else if (record.data.expiresAt !== undefined) {
+                    timestamp = record.data.expiresAt;
+                }
+                
+                if (timestamp !== null) {
+                    var age = Date.now() - timestamp;
+                    var ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
+                    
+                    if (age > cutoffTime) {
+                        // This session is old - mark for deletion
+                        toDelete.push({
+                            id: record.id,
+                            ageDays: ageDays,
+                            data: record.data
+                        });
+                    } else {
+                        skipped++;
+                    }
+                } else {
+                    // No timestamp found - skip it
+                    skipped++;
+                }
+            });
+            
+            if (toDelete.length === 0) {
+                deleteLog('No old session records to clean up', 'success');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step done">✅ No old session records to clean up</div>';
+                }
+                return;
+            }
+            
+            deleteLog('Found ' + toDelete.length + ' session records older than ' + days + ' days', 'info');
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step info">📋 Found ' + toDelete.length + ' old session records</div>';
+            }
+            
+            // Log the records to be deleted (first 10 only)
+            var logCount = Math.min(toDelete.length, 10);
+            for (var i = 0; i < logCount; i++) {
+                var record = toDelete[i];
+                deleteLog('  - ' + record.id + ' (' + record.ageDays + ' days old)', 'info');
+            }
+            if (toDelete.length > 10) {
+                deleteLog('  ... and ' + (toDelete.length - 10) + ' more', 'info');
+            }
+            
+            if (dryRun) {
+                deleteLog('🧹 DRY RUN: Would delete ' + toDelete.length + ' session records (' + skipped + ' kept)', 'success');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step done">🧹 DRY RUN: Would delete ' + toDelete.length + ' session records</div>';
+                }
+                return;
+            }
+            
+            // Confirm before deletion
+            if (!confirm('Delete ' + toDelete.length + ' old session records?\n\nRecords with activity in the last ' + days + ' days will be kept.')) {
+                deleteLog('Cleanup cancelled by user', 'info');
+                if (progressDiv) {
+                    progressDiv.innerHTML += '<div class="step info">❌ Cleanup cancelled</div>';
+                }
+                return;
+            }
+            
+            // Delete the records
+            var deleted = 0;
+            var failed = 0;
+            var errors = [];
+            
+            function deleteNext(index) {
+                if (index >= toDelete.length) {
+                    var msg = '🧹 Cleanup complete: ' + deleted + ' deleted, ' + failed + ' failed, ' + skipped + ' kept';
+                    deleteLog(msg, failed > 0 ? 'warning' : 'success');
+                    if (progressDiv) {
+                        progressDiv.innerHTML += '<div class="step ' + (failed > 0 ? 'warning' : 'done') + '">' + msg + '</div>';
+                        if (failed > 0) {
+                            progressDiv.innerHTML += '<div class="step error">Errors: ' + errors.join('; ') + '</div>';
+                        }
+                    }
+                    return;
+                }
+                
+                var record = toDelete[index];
+                db.collection('deviceSessions').doc(record.id).delete()
+                    .then(function() {
+                        deleted++;
+                        if (progressDiv) {
+                            progressDiv.innerHTML += '<div class="step done">✅ Deleted session: ' + record.id + '</div>';
+                        }
+                        deleteNext(index + 1);
+                    })
+                    .catch(function(err) {
+                        failed++;
+                        errors.push(record.id + ': ' + err.message);
+                        if (progressDiv) {
+                            progressDiv.innerHTML += '<div class="step error">❌ Failed: ' + record.id + ' - ' + err.message + '</div>';
+                        }
+                        deleteNext(index + 1);
+                    });
+            }
+            
+            deleteNext(0);
+        })
+        .catch(function(err) {
+            deleteLog('Error during deviceSessions cleanup: ' + err.message, 'error');
+            if (progressDiv) {
+                progressDiv.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            }
+        });
+}
+
+// ============================================================
+// v1.11: RUN FULL CLEANUP (deviceMapping + deviceSessions)
+// ============================================================
+
+function runCleanup() {
+    var days = 90;
+    var sessionDays = 30;
+    
+    deleteLog('🧹 Starting full cleanup (deviceMapping: ' + days + ' days, deviceSessions: ' + sessionDays + ' days)', 'info');
+    
+    // Run deviceMapping cleanup first
+    cleanupDeviceMapping({ days: days, dryRun: false });
+    
+    // Run deviceSessions cleanup after a delay
+    setTimeout(function() {
+        cleanupDeviceSessions({ days: sessionDays, dryRun: false });
+    }, 1000);
+}
+
+// ============================================================
+// v1.11: GET ALL COLLECTIONS (with fallback)
 // ============================================================
 
 function getAllCollections(projectId, apiKey) {
@@ -762,6 +1128,7 @@ function showDeleteInfoGuide() {
                         <li>🔄 Switch between PROD and DEV environments</li>
                         <li>📂 Collections include: scheduledGames, historyGames, backupFolder, deviceMapping, deviceSessions</li>
                         <li>✏️ Add custom collections via "Custom Collection..." option</li>
+                        <li>🧹 Clean up old deviceMapping and deviceSessions records</li>
                     </ul>
                 </div>
             </div>
@@ -775,22 +1142,19 @@ function showDeleteInfoGuide() {
                     <li><strong>Step 2 - Collection:</strong> Choose a collection from the dropdown or enter a custom one</li>
                     <li><strong>Step 3 - Select:</strong> Check individual records or click "Select All"</li>
                     <li><strong>Step 4 - Delete:</strong> Click "DELETE SELECTED" to confirm deletion</li>
+                    <li><strong>Step 5 - Cleanup:</strong> Click "🧹 Cleanup" to remove old device records</li>
                 </ol>
             </div>
             
             <hr class="info-divider">
             
             <div class="info-section">
-                <div class="info-section-title">📂 Collections</div>
+                <div class="info-section-title">🧹 Cleanup Function</div>
                 <div class="info-text">
-                    The dropdown includes:
+                    The cleanup function removes old records from:
                     <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li><strong>scheduledGames:</strong> Active/live games</li>
-                        <li><strong>historyGames:</strong> Completed and archived games</li>
-                        <li><strong>backupFolder:</strong> Backups created by the app</li>
-                        <li><strong>deviceMapping:</strong> Device mapping records</li>
-                        <li><strong>deviceSessions:</strong> Device session records</li>
-                        <li><strong>Custom collections:</strong> Any collection you've added manually</li>
+                        <li><strong>deviceMapping:</strong> Removes devices not seen in 90 days (preserves the counter document)</li>
+                        <li><strong>deviceSessions:</strong> Removes sessions older than 30 days</li>
                     </ul>
                 </div>
             </div>
@@ -804,6 +1168,7 @@ function showDeleteInfoGuide() {
                     <li><strong>Backup:</strong> Consider backing up before deleting</li>
                     <li><strong>Photos:</strong> Deleting a record does NOT delete its photo from Storage</li>
                     <li><strong>Custom Collections:</strong> Only use if you know what you're doing</li>
+                    <li><strong>Cleanup:</strong> The counter document in deviceMapping is never deleted</li>
                 </ul>
             </div>
             
@@ -864,6 +1229,14 @@ function initDeleteTabEvents() {
         };
     }
     
+    // v1.11: Cleanup button
+    var cleanupBtn = document.getElementById('deleteCleanupBtn');
+    if (cleanupBtn) {
+        cleanupBtn.onclick = function() {
+            runCleanup();
+        };
+    }
+    
     deleteLog('Delete tab event bindings initialized', 'info');
 }
 
@@ -905,19 +1278,25 @@ window.initDeleteTabEvents = initDeleteTabEvents;
 window.loadAvailableCollections = loadAvailableCollections;
 window.populateCollectionDropdown = populateCollectionDropdown;
 window.getAllCollections = getAllCollections;
+window.cleanupDeviceMapping = cleanupDeviceMapping;
+window.cleanupDeviceSessions = cleanupDeviceSessions;
+window.runCleanup = runCleanup;
+window.getCurrentEnvironment = getCurrentEnvironment;
+window.getCurrentDb = getCurrentDb;
 
-console.log('[UTIL-DELETE] v1.10 loaded - Added device collections and custom entry');
+console.log('[UTIL-DELETE] v1.11 loaded - Added device cleanup functions');
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: deviceMapping to default collections list
-   - ADDED: deviceSessions to default collections list
-   - ADDED: Custom collection entry option (restored from v1.08)
-   - ADDED: localStorage persistence for custom collections
-   - CHANGED: Fallback to known collections when REST API fails
-   - PRESERVED: All existing delete functionality from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - ADDED: cleanupDeviceMapping() - Purges old device records while preserving counter
+   - ADDED: cleanupDeviceSessions() - Purges old session records
+   - ADDED: "Cleanup" button in DELETE tab interface (added via HTML)
+   - ADDED: Confirmation dialog before cleanup
+   - ADDED: Progress logging during cleanup
+   - ADDED: getCurrentEnvironment() helper to get env safely
+   - PRESERVED: All existing functionality from v1.10
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
