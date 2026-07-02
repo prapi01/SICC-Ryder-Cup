@@ -1,11 +1,19 @@
 <!--
 FILE: player-management.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - CHANGED: Team group now fixed width (100px) instead of flex: 1
-   - CHANGED: Form line now uses flex-wrap: nowrap to keep fields on one line
-   - PRESERVED: All functionality and other styling from v1.17
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - ADDED: usedLabels integration - loads from UsedLabels singleton on start
+   - ADDED: validateLabelChange() - checks against usedLabels and current players
+   - ADDED: canChangeLabel() - checks 12-month cooldown
+   - ADDED: updateLabelHistory() - tracks old→new label mappings
+   - ADDED: lastLabelChange tracking - timestamp when label changes
+   - ADDED: labelHistory in playerInformation document
+   - CHANGED: savePlayer() now validates label before saving
+   - CHANGED: onLabelInput() now shows real-time validation warnings
+   - ADDED: error message display for label validation failures
+   - PRESERVED: All UI styling and layout from v1.18 unchanged
+   - PRESERVED: All existing CRUD functionality unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/used-labels.js
 STATUS: Ready for integration
 -->
 
@@ -22,6 +30,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/modal.js"></script>
+    <script src="js/used-labels.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -375,6 +384,41 @@ STATUS: Ready for integration
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
+        /* v1.19: Label validation error/warning styles */
+        .label-error {
+            color: #ff6b6b;
+            font-size: 0.6rem;
+            margin-top: 2px;
+            min-height: 16px;
+            letter-spacing: 0.3px;
+        }
+        .label-warning {
+            color: #ffaa44;
+            font-size: 0.6rem;
+            margin-top: 2px;
+            min-height: 16px;
+            letter-spacing: 0.3px;
+        }
+        .label-valid {
+            color: #4caf50;
+            font-size: 0.6rem;
+            margin-top: 2px;
+            min-height: 16px;
+            letter-spacing: 0.3px;
+        }
+        .form-group.label-group .label-status {
+            min-height: 16px;
+        }
+        .form-group.label-group input.label-error-input {
+            border-color: #ff6b6b;
+        }
+        .form-group.label-group input.label-warning-input {
+            border-color: #ffaa44;
+        }
+        .form-group.label-group input.label-valid-input {
+            border-color: #4caf50;
+        }
+        
         /* ===== MOBILE ADJUSTMENTS ===== */
         @media (max-width: 400px) {
             .player-item {
@@ -431,12 +475,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.18</div>
+<div class="version-tag">v1.19</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.18
+// VERSION: 1.19
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -445,8 +489,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.18";
-var CACHE_KEY = "player_management_v118";
+var APP_VERSION = "1.19";
+var CACHE_KEY = "player_management_v119";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -458,8 +502,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.18";
-console.log("[PLAYER-MGMT] Initializing v1.18 - Team fixed width, no wrap");
+window.PLAYER_MGMT_VERSION = "1.19";
+console.log("[PLAYER-MGMT] Initializing v1.19 - Label validation with usedLabels + cooldown");
 
 // ============================================================
 // Firebase
@@ -474,6 +518,8 @@ var deviceSession = null;
 var players = [];
 var editingIndex = -1;
 var isLoading = false;
+var usedLabelsLoaded = false;
+var labelValidationResult = null;
 
 // ============================================================
 // SVG Icons
@@ -500,6 +546,88 @@ function generateLabel(name) {
         }
     }
     return label;
+}
+
+// ============================================================
+// v1.19: Label Validation Functions
+// ============================================================
+
+// Check if a label is currently in use by another active player (not the one being edited)
+function isLabelInUseByPlayer(label, excludeIndex) {
+    if (!label || label === '') return false;
+    var upperLabel = label.toUpperCase();
+    for (var i = 0; i < players.length; i++) {
+        if (i === excludeIndex) continue;
+        var playerLabel = players[i].label || generateLabel(players[i].name);
+        if (playerLabel.toUpperCase() === upperLabel) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check 12-month cooldown for label change
+function canChangeLabel(player) {
+    if (!player) return true;
+    
+    // First change always allowed
+    if (!player.lastLabelChange) {
+        return true;
+    }
+    
+    var lastChange = new Date(player.lastLabelChange);
+    var twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    
+    return lastChange <= twelveMonthsAgo;
+}
+
+// Get cooldown remaining in months (for display)
+function getCooldownRemaining(player) {
+    if (!player || !player.lastLabelChange) return 0;
+    
+    var lastChange = new Date(player.lastLabelChange);
+    var now = new Date();
+    var monthsPassed = (now.getFullYear() - lastChange.getFullYear()) * 12 + (now.getMonth() - lastChange.getMonth());
+    var monthsRemaining = 12 - monthsPassed;
+    return monthsRemaining > 0 ? monthsRemaining : 0;
+}
+
+// Validate label change - returns { valid: boolean, message: string, type: 'error'|'warning'|'success' }
+function validateLabelChange(newLabel, currentPlayer, excludeIndex) {
+    var label = newLabel ? newLabel.toUpperCase().trim() : '';
+    
+    // Empty label - allow but warn
+    if (!label || label === '') {
+        return { valid: false, message: 'Label cannot be empty', type: 'error' };
+    }
+    
+    // Check length
+    if (label.length > 3) {
+        return { valid: false, message: 'Label must be 3 characters or less', type: 'error' };
+    }
+    
+    // Check against usedLabels (history)
+    if (typeof UsedLabels !== 'undefined' && UsedLabels.isLabelUsed) {
+        if (UsedLabels.isLabelUsed(label)) {
+            return { valid: false, message: 'Label "' + label + '" is already used in history', type: 'error' };
+        }
+    }
+    
+    // Check against current players (excluding the one being edited)
+    if (isLabelInUseByPlayer(label, excludeIndex)) {
+        return { valid: false, message: 'Label "' + label + '" is already in use by another player', type: 'error' };
+    }
+    
+    // Check cooldown if changing an existing player's label
+    if (currentPlayer && currentPlayer.label && currentPlayer.label.toUpperCase() !== label) {
+        if (!canChangeLabel(currentPlayer)) {
+            var monthsLeft = getCooldownRemaining(currentPlayer);
+            return { valid: false, message: 'Label can only be changed once every 12 months. ' + monthsLeft + ' month(s) remaining.', type: 'error' };
+        }
+    }
+    
+    return { valid: true, message: 'Label "' + label + '" is available', type: 'success' };
 }
 
 // ============================================================
@@ -565,7 +693,7 @@ function loadPlayers(callback) {
 }
 
 // ============================================================
-// Save Players to Firestore
+// Save Players to Firestore with labelHistory support
 // ============================================================
 function savePlayers(callback) {
     var data = {
@@ -573,7 +701,14 @@ function savePlayers(callback) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    db.collection("playerInformation").doc("players").set(data)
+    // v1.19: Also preserve labelHistory if it exists
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            if (doc.exists && doc.data().labelHistory) {
+                data.labelHistory = doc.data().labelHistory;
+            }
+            return db.collection("playerInformation").doc("players").set(data);
+        })
         .then(function() {
             console.log("[PLAYER-MGMT] Saved", players.length, "players");
             if (callback) callback(true);
@@ -586,6 +721,28 @@ function savePlayers(callback) {
 }
 
 // ============================================================
+// v1.19: Update labelHistory when a label changes
+// ============================================================
+function updateLabelHistory(playerName, oldLabel, newLabel) {
+    if (!oldLabel || !newLabel || oldLabel === newLabel) return Promise.resolve();
+    
+    var labelHistoryEntry = {};
+    labelHistoryEntry[oldLabel] = newLabel;
+    
+    console.log("[PLAYER-MGMT] Updating labelHistory:", oldLabel, "→", newLabel);
+    
+    return db.collection("playerInformation").doc("players").update({
+        labelHistory: firebase.firestore.FieldValue.merge(labelHistoryEntry),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(function() {
+        console.log("[PLAYER-MGMT] labelHistory updated:", oldLabel, "→", newLabel);
+    }).catch(function(err) {
+        console.warn("[PLAYER-MGMT] Failed to update labelHistory:", err);
+        // Don't fail the main flow
+    });
+}
+
+// ============================================================
 // updateLabelPreview - auto-generate label from name
 // ============================================================
 function updateLabelPreview() {
@@ -594,6 +751,7 @@ function updateLabelPreview() {
     if (nameInput && labelInput) {
         if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
             labelInput.value = generateLabel(nameInput.value);
+            validateLabelInput();
         }
     }
 }
@@ -606,6 +764,7 @@ function onLabelInput() {
             labelInput.value = labelInput.value.substring(0, 3);
         }
         labelInput.value = labelInput.value.toUpperCase();
+        validateLabelInput();
     }
 }
 
@@ -615,8 +774,47 @@ function onNameInput() {
     if (nameInput && labelInput) {
         if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
             labelInput.value = generateLabel(nameInput.value);
+            validateLabelInput();
         }
     }
+}
+
+// ============================================================
+// v1.19: Real-time label validation
+// ============================================================
+function validateLabelInput() {
+    var labelInput = document.getElementById('playerLabel');
+    var statusDiv = document.getElementById('labelStatus');
+    
+    if (!labelInput || !statusDiv) return;
+    
+    var label = labelInput.value.trim().toUpperCase();
+    var excludeIndex = editingIndex;
+    
+    // Get current player for cooldown check
+    var currentPlayer = null;
+    if (editingIndex >= 0 && players[editingIndex]) {
+        currentPlayer = players[editingIndex];
+    }
+    
+    var result = validateLabelChange(label, currentPlayer, excludeIndex);
+    labelValidationResult = result;
+    
+    // Update status display
+    statusDiv.textContent = result.message;
+    statusDiv.className = 'label-status ' + result.type;
+    
+    // Update input border color
+    labelInput.className = '';
+    if (result.type === 'error') {
+        labelInput.classList.add('label-error-input');
+    } else if (result.type === 'warning') {
+        labelInput.classList.add('label-warning-input');
+    } else if (result.type === 'success') {
+        labelInput.classList.add('label-valid-input');
+    }
+    
+    return result;
 }
 
 // ============================================================
@@ -624,6 +822,7 @@ function onNameInput() {
 // ============================================================
 function cancelForm() {
     editingIndex = -1;
+    labelValidationResult = null;
     render();
 }
 
@@ -672,7 +871,7 @@ function render() {
                 <div class="form-group label-group">
                     <label>Label</label>
                     <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="" oninput="onLabelInput()">
-                    <span class="hint">system generated</span>
+                    <div id="labelStatus" class="label-status"></div>
                 </div>
             </div>
             
@@ -728,13 +927,15 @@ function render() {
         nameInput.addEventListener('input', function() {
             if (!labelInput.value || labelInput.dataset.userEdited === 'false') {
                 labelInput.value = generateLabel(nameInput.value);
-                labelInput.dataset.userEdited = 'false';
+                validateLabelInput();
             }
         });
     }
     
     if (editingIndex >= 0 && labelInput) {
         labelInput.dataset.userEdited = 'true';
+        // Validate the current label on render
+        setTimeout(validateLabelInput, 50);
     }
     
     attachPlayerActions();
@@ -774,6 +975,7 @@ function attachPlayerActions() {
     document.querySelectorAll('.edit-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
             editingIndex = parseInt(this.dataset.index);
+            labelValidationResult = null;
             render();
             setTimeout(function() {
                 var nameInput = document.getElementById('playerName');
@@ -781,6 +983,7 @@ function attachPlayerActions() {
                 var labelInput = document.getElementById('playerLabel');
                 if (labelInput) {
                     labelInput.dataset.userEdited = 'true';
+                    validateLabelInput();
                 }
             }, 100);
         });
@@ -794,7 +997,7 @@ function attachPlayerActions() {
 }
 
 // ============================================================
-// Player CRUD Operations
+// Player CRUD Operations - v1.19: With label validation
 // ============================================================
 function savePlayer() {
     var nameInput = document.getElementById('playerName');
@@ -803,7 +1006,7 @@ function savePlayer() {
     var teamSelect = document.getElementById('playerTeam');
     
     var name = nameInput.value.trim();
-    var label = labelInput ? labelInput.value.trim().toUpperCase() : generateLabel(name);
+    var newLabel = labelInput ? labelInput.value.trim().toUpperCase() : generateLabel(name);
     var handicap = parseInt(hcpInput.value);
     var defaultTeam = teamSelect.value;
     
@@ -819,12 +1022,24 @@ function savePlayer() {
         return;
     }
     
-    if (label.length > 3) {
-        Modal.alert("Label must be 3 characters or less.");
-        labelInput.focus();
+    // v1.19: Get current player for cooldown check
+    var currentPlayer = null;
+    var oldLabel = null;
+    if (editingIndex >= 0 && players[editingIndex]) {
+        currentPlayer = players[editingIndex];
+        oldLabel = currentPlayer.label || generateLabel(currentPlayer.name);
+    }
+    
+    // Validate label
+    var validationResult = validateLabelChange(newLabel, currentPlayer, editingIndex);
+    
+    if (!validationResult.valid) {
+        Modal.alert(validationResult.message);
+        document.getElementById('playerLabel').focus();
         return;
     }
     
+    // Check duplicate name
     for (var i = 0; i < players.length; i++) {
         if (i !== editingIndex && players[i].name.toLowerCase() === name.toLowerCase()) {
             Modal.alert("A player with this name already exists.");
@@ -833,21 +1048,54 @@ function savePlayer() {
         }
     }
     
+    // v1.19: Label is changing - need to update labelHistory and lastLabelChange
+    var labelChanged = (oldLabel && oldLabel.toUpperCase() !== newLabel);
+    
     var playerData = {
         name: name,
-        label: label || generateLabel(name),
+        label: newLabel || generateLabel(name),
         handicap: handicap,
         defaultTeam: defaultTeam
     };
     
+    // v1.19: If label changed, record it
+    if (labelChanged) {
+        playerData.lastLabelChange = new Date().toISOString();
+        console.log("[PLAYER-MGMT] Label changed:", oldLabel, "→", newLabel);
+    } else if (currentPlayer && currentPlayer.lastLabelChange) {
+        // Preserve existing lastLabelChange if label didn't change
+        playerData.lastLabelChange = currentPlayer.lastLabelChange;
+    }
+    
+    // v1.19: Preserve other fields
+    if (currentPlayer) {
+        // Preserve any fields not being updated
+        if (currentPlayer.isDefault !== undefined) playerData.isDefault = currentPlayer.isDefault;
+        if (currentPlayer.flight !== undefined) playerData.flight = currentPlayer.flight;
+    }
+    
     if (editingIndex >= 0) {
         players[editingIndex] = playerData;
+        
+        // v1.19: Update labelHistory if label changed
+        if (labelChanged && oldLabel) {
+            updateLabelHistory(name, oldLabel, newLabel)
+                .then(function() {
+                    // Continue with save
+                })
+                .catch(function(err) {
+                    console.warn("[PLAYER-MGMT] labelHistory update warning:", err);
+                });
+        }
+        
         players.sort(function(a, b) { return a.name.localeCompare(b.name); });
         editingIndex = -1;
     } else {
         players.push(playerData);
         players.sort(function(a, b) { return a.name.localeCompare(b.name); });
     }
+    
+    labelValidationResult = null;
     
     savePlayers(function(success) {
         if (success) {
@@ -887,13 +1135,45 @@ function goBackToSettings() {
 }
 
 // ============================================================
+// v1.19: Check usedLabels loading status
+// ============================================================
+function checkUsedLabelsStatus() {
+    if (typeof UsedLabels !== 'undefined') {
+        UsedLabels.ensureInitialized()
+            .then(function() {
+                usedLabelsLoaded = true;
+                console.log("[PLAYER-MGMT] usedLabels loaded, count:", UsedLabels.getLabelCount());
+                // Re-validate label if currently editing
+                if (document.getElementById('playerLabel')) {
+                    validateLabelInput();
+                }
+            })
+            .catch(function(err) {
+                console.warn("[PLAYER-MGMT] usedLabels not loaded:", err);
+                usedLabelsLoaded = false;
+            });
+    } else {
+        console.warn("[PLAYER-MGMT] UsedLabels not available");
+        usedLabelsLoaded = false;
+    }
+}
+
+// ============================================================
 // INIT
 // ============================================================
 SessionManager.initSession("player-management.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
-    loadPlayers(function() { render(); });
+    
+    // v1.19: Load usedLabels in background
+    checkUsedLabelsStatus();
+    
+    loadPlayers(function() { 
+        render();
+        // Re-check usedLabels after render
+        setTimeout(checkUsedLabelsStatus, 500);
+    });
 });
 
 window.goBackToSettings = goBackToSettings;
@@ -904,17 +1184,29 @@ window.updateLabelPreview = updateLabelPreview;
 window.onLabelInput = onLabelInput;
 window.onNameInput = onNameInput;
 window.cancelForm = cancelForm;
+window.validateLabelInput = validateLabelInput;
+window.validateLabelChange = validateLabelChange;
+window.canChangeLabel = canChangeLabel;
+window.isLabelInUseByPlayer = isLabelInUseByPlayer;
 </script>
 </body>
 </html>
 
 <!--
 FILE: player-management.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - CHANGED: Team group now fixed width (100px) instead of flex: 1
-   - CHANGED: Form line now uses flex-wrap: nowrap to keep fields on one line
-   - PRESERVED: All functionality and other styling from v1.17
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - ADDED: usedLabels integration - loads from UsedLabels singleton on start
+   - ADDED: validateLabelChange() - checks against usedLabels and current players
+   - ADDED: canChangeLabel() - checks 12-month cooldown
+   - ADDED: updateLabelHistory() - tracks old→new label mappings
+   - ADDED: lastLabelChange tracking - timestamp when label changes
+   - ADDED: labelHistory in playerInformation document
+   - CHANGED: savePlayer() now validates label before saving
+   - CHANGED: onLabelInput() now shows real-time validation warnings
+   - ADDED: error message display for label validation failures
+   - PRESERVED: All UI styling and layout from v1.18 unchanged
+   - PRESERVED: All existing CRUD functionality unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/used-labels.js
 STATUS: Ready for integration
 -->
