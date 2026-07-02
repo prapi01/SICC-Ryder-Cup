@@ -1,12 +1,13 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.56
-KEY CHANGES from v2.55:
-   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
-   - CHANGED: updatePlayerRecordsInBackground() now writes usedLabels to playerInformation/players.usedLabels
-   - CHANGED: Instead of WRV.write('usedLabels', 'all', ...), now reads current playerInformation,
-              merges usedLabels, and writes back to the same document
-   - PRESERVED: ALL v2.55 functions and API unchanged
+VERSION: 2.57
+KEY CHANGES from v2.56:
+   - FIXED: usedLabels update logic now reads existing usedLabels and adds new labels
+   - CHANGED: updatePlayerRecordsInBackground() now reads current document first
+   - CHANGED: Merges new labels with existing usedLabels (doesn't overwrite)
+   - FIXED: Uses playerInformation/players.usedLabels (not separate collection)
+   - FIXED: No longer uses dot notation for usedLabels
+   - PRESERVED: ALL v2.56 functions and API unchanged
    - PRESERVED: ALL existing functionality
    - PRESERVED: WRV integration for reliable Firestore writes
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
@@ -819,26 +820,27 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.56: BACKGROUND UPDATE - playerInformation + usedLabels (IN SAME DOCUMENT)
-    // v2.56: usedLabels now stored inside playerInformation document
-    // Runs after display, doesn't block UI
+    // v2.57: BACKGROUND UPDATE - playerInformation + usedLabels (CORRECTED)
     // ============================================================
     function updatePlayerRecordsInBackground(adjustedPlayersData, allGamePlayers) {
         console.log('[HCP-ADJUST] Background update starting...');
         
-        // Step 1: Update playerInformation with new handicaps
         var db = getDb();
+        
+        // v2.57: READ first - get the current document
         db.collection('playerInformation').doc('defaultPlayers').get()
             .then(function(doc) {
                 var currentPlayers = [];
                 var existingUsedLabels = {};
+                
                 if (doc.exists && doc.data().players) {
                     currentPlayers = doc.data().players;
-                    // v2.56: Read existing usedLabels from the same document
                     existingUsedLabels = doc.data().usedLabels || {};
                 }
                 
-                // Update handicaps for players in this game
+                console.log('[HCP-ADJUST] Background: Current usedLabels has', Object.keys(existingUsedLabels).length, 'labels');
+                
+                // Step 1: Update player handicaps
                 var updatedCount = 0;
                 for (var i = 0; i < currentPlayers.length; i++) {
                     for (var j = 0; j < adjustedPlayersData.length; j++) {
@@ -854,7 +856,7 @@ var HandicapAdjustment = (function() {
                     }
                 }
                 
-                // Also add any new players that might not be in playerInformation yet
+                // Add any new players
                 for (var j = 0; j < adjustedPlayersData.length; j++) {
                     var found = false;
                     for (var i = 0; i < currentPlayers.length; i++) {
@@ -878,42 +880,49 @@ var HandicapAdjustment = (function() {
                     }
                 }
                 
-                // v2.56: Build usedLabels from all game players and merge with existing
-                var usedLabelsToWrite = {};
+                // v2.57: Step 2 - Merge usedLabels (don't replace!)
+                var mergedUsedLabels = {};
+                
+                // Copy existing usedLabels
+                for (var key in existingUsedLabels) {
+                    mergedUsedLabels[key] = existingUsedLabels[key];
+                }
+                
+                // Add new labels from this game
+                var newLabelCount = 0;
                 if (allGamePlayers && allGamePlayers.length > 0) {
-                    // Copy existing usedLabels
-                    for (var key in existingUsedLabels) {
-                        usedLabelsToWrite[key] = existingUsedLabels[key];
-                    }
-                    
-                    // Add new labels from this game
-                    var labelCount = 0;
                     for (var i = 0; i < allGamePlayers.length; i++) {
                         var label = allGamePlayers[i].label;
                         if (label && label !== '') {
-                            usedLabelsToWrite[label] = true;
-                            labelCount++;
+                            if (!mergedUsedLabels[label]) {
+                                mergedUsedLabels[label] = true;
+                                newLabelCount++;
+                                console.log('[HCP-ADJUST] Background: Adding new label to usedLabels:', label);
+                            }
                         }
                     }
-                    console.log('[HCP-ADJUST] Background: Adding ' + labelCount + ' labels to usedLabels');
                 }
                 
-                // v2.56: Build the full payload - players + usedLabels in one document
+                console.log('[HCP-ADJUST] Background: usedLabels merged - added', newLabelCount, 'new labels, total:', Object.keys(mergedUsedLabels).length);
+                
+                // v2.57: Step 3 - Build full payload
                 var payload = {
                     players: currentPlayers,
-                    usedLabels: usedLabelsToWrite,
+                    usedLabels: mergedUsedLabels,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 
-                // Write updated playerInformation using WRV
+                console.log('[HCP-ADJUST] Background: Writing playerInformation with updated handicaps and merged usedLabels');
+                
+                // Write using WRV
                 return wrw('playerInformation', 'defaultPlayers', payload, true);
             })
             .then(function() {
-                console.log('[HCP-ADJUST] Background: playerInformation updated successfully (players + usedLabels)');
+                console.log('[HCP-ADJUST] Background: playerInformation updated successfully (players + merged usedLabels)');
             })
             .catch(function(err) {
                 console.error('[HCP-ADJUST] Background: Error updating player records:', err);
-                // Don't fail the main flow - background update is non-blocking
+                // Don't fail the main flow
             });
     }
     
@@ -969,7 +978,7 @@ var HandicapAdjustment = (function() {
             // v2.55: DISPLAY FIRST
             showAdjustmentTable(calculationResult, newAnchor.name, false);
             
-            // v2.56: THEN background update player records (non-blocking)
+            // v2.57: THEN background update player records (non-blocking)
             updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
         })
         .catch(function(err) {
@@ -1327,7 +1336,7 @@ var HandicapAdjustment = (function() {
                         // v2.55: DISPLAY FIRST
                         showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                         
-                        // v2.56: THEN background update player records (non-blocking)
+                        // v2.57: THEN background update player records (non-blocking)
                         updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
                     }
                 });
@@ -1443,7 +1452,7 @@ var HandicapAdjustment = (function() {
                     // v2.55: DISPLAY FIRST
                     showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     
-                    // v2.56: THEN background update player records
+                    // v2.57: THEN background update player records
                     updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
                 }
             });
@@ -1478,14 +1487,14 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.56";
+    window.HANDICAP_ADJUST_VERSION = "2.57";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
     // ============================================================
-    // v2.56: EXPOSE MULTIPLE_NEW_ANCHOR and background updater
+    // v2.57: EXPOSE MULTIPLE_NEW_ANCHOR and background updater
     // ============================================================
     return {
         init: init,
@@ -1496,7 +1505,7 @@ var HandicapAdjustment = (function() {
         displayStoredAdjustment: displayStoredAdjustment,
         calculateAllAdjustments: calculateAllAdjustments,
         calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw,
-        updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,  // v2.56: Updated to write usedLabels inside playerInformation
+        updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,  // v2.57: Updated with correct usedLabels merge logic
         MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR  // v2.54: Exposed for other files
     };
     
@@ -1507,13 +1516,14 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.56
-KEY CHANGES from v2.55:
-   - CHANGED: usedLabels now stored INSIDE playerInformation document (not separate collection)
-   - CHANGED: updatePlayerRecordsInBackground() now writes usedLabels to playerInformation/players.usedLabels
-   - CHANGED: Instead of WRV.write('usedLabels', 'all', ...), now reads current playerInformation,
-              merges usedLabels, and writes back to the same document
-   - PRESERVED: ALL v2.55 functions and API unchanged
+VERSION: 2.57
+KEY CHANGES from v2.56:
+   - FIXED: usedLabels update logic now reads existing usedLabels and adds new labels
+   - CHANGED: updatePlayerRecordsInBackground() now reads current document first
+   - CHANGED: Merges new labels with existing usedLabels (doesn't overwrite)
+   - FIXED: Uses playerInformation/players.usedLabels (not separate collection)
+   - FIXED: No longer uses dot notation for usedLabels
+   - PRESERVED: ALL v2.56 functions and API unchanged
    - PRESERVED: ALL existing functionality
    - PRESERVED: WRV integration for reliable Firestore writes
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
