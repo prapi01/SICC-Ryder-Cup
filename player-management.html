@@ -1,18 +1,11 @@
 <!--
 FILE: player-management.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - ADDED: usedLabels integration - loads from UsedLabels singleton on start
-   - ADDED: validateLabelChange() - checks against usedLabels and current players
-   - ADDED: canChangeLabel() - checks 12-month cooldown
-   - ADDED: updateLabelHistory() - tracks old→new label mappings
-   - ADDED: lastLabelChange tracking - timestamp when label changes
-   - ADDED: labelHistory in playerInformation document
-   - CHANGED: savePlayer() now validates label before saving
-   - CHANGED: onLabelInput() now shows real-time validation warnings
-   - ADDED: error message display for label validation failures
-   - PRESERVED: All UI styling and layout from v1.18 unchanged
-   - PRESERVED: All existing CRUD functionality unchanged
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - CHANGED: usedLabels now read from playerInformation document (not separate collection)
+   - CHANGED: UsedLabels.isLabelUsed() now checks playerInformation.usedLabels
+   - PRESERVED: All v1.19 functionality unchanged
+   - PRESERVED: All UI styling and layout from v1.19 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/used-labels.js
 STATUS: Ready for integration
 -->
@@ -475,12 +468,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.19</div>
+<div class="version-tag">v1.20</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.19
+// VERSION: 1.20
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -489,8 +482,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.19";
-var CACHE_KEY = "player_management_v119";
+var APP_VERSION = "1.20";
+var CACHE_KEY = "player_management_v120";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -502,8 +495,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.19";
-console.log("[PLAYER-MGMT] Initializing v1.19 - Label validation with usedLabels + cooldown");
+window.PLAYER_MGMT_VERSION = "1.20";
+console.log("[PLAYER-MGMT] Initializing v1.20 - usedLabels from playerInformation");
 
 // ============================================================
 // Firebase
@@ -607,7 +600,7 @@ function validateLabelChange(newLabel, currentPlayer, excludeIndex) {
         return { valid: false, message: 'Label must be 3 characters or less', type: 'error' };
     }
     
-    // Check against usedLabels (history)
+    // v1.20: Check against usedLabels (now stored in playerInformation)
     if (typeof UsedLabels !== 'undefined' && UsedLabels.isLabelUsed) {
         if (UsedLabels.isLabelUsed(label)) {
             return { valid: false, message: 'Label "' + label + '" is already used in history', type: 'error' };
@@ -1194,19 +1187,12 @@ window.isLabelInUseByPlayer = isLabelInUseByPlayer;
 
 <!--
 FILE: player-management.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - ADDED: usedLabels integration - loads from UsedLabels singleton on start
-   - ADDED: validateLabelChange() - checks against usedLabels and current players
-   - ADDED: canChangeLabel() - checks 12-month cooldown
-   - ADDED: updateLabelHistory() - tracks old→new label mappings
-   - ADDED: lastLabelChange tracking - timestamp when label changes
-   - ADDED: labelHistory in playerInformation document
-   - CHANGED: savePlayer() now validates label before saving
-   - CHANGED: onLabelInput() now shows real-time validation warnings
-   - ADDED: error message display for label validation failures
-   - PRESERVED: All UI styling and layout from v1.18 unchanged
-   - PRESERVED: All existing CRUD functionality unchanged
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - CHANGED: usedLabels now read from playerInformation document (not separate collection)
+   - CHANGED: UsedLabels.isLabelUsed() now checks playerInformation.usedLabels
+   - PRESERVED: All v1.19 functionality unchanged
+   - PRESERVED: All UI styling and layout from v1.19 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/used-labels.js
 STATUS: Ready for integration
 -->
