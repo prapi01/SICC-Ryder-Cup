@@ -1,10 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - ADDED: wrv.js to script dependencies (Write & Verify support)
-   - ADDED: WRV availability check on load
-   - PRESERVED: All existing functionality from v1.28
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - ADDED: Copy Log button to LOG card header
+   - ADDED: Download Log button to LOG card header
+   - ADDED: Log count badge showing total stored logs
+   - ADDED: Auto-refresh of log count badge
+   - PRESERVED: All existing functionality from v1.29
 DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
@@ -52,9 +54,11 @@ STATUS: Ready for integration
         .device-tag { position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); font-size: 0.55rem; color: #4caf50; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 12px; font-family: monospace; z-index: 1000; opacity: 0.6; }
         h1 { font-size: 1.4rem; font-weight: 700; color: #4caf50; text-align: center; margin-bottom: 20px; }
         .card { background: #111111; border: 1px solid #333333; border-radius: 20px; padding: 16px; margin-bottom: 16px; overflow: hidden; }
-        .card-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; margin-bottom: 12px; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .card-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; margin-bottom: 12px; border-left: 2px solid #4caf50; padding-left: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
         .card-title.danger { border-left-color: #c0392b; color: #c0392b; }
         .card-title.photo { border-left-color: #ffaa44; color: #ffaa44; }
+        .card-title .title-left { display: flex; align-items: center; gap: 8px; }
+        .card-title .title-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         
         /* v1.25: Apply Photo button */
         .btn-photo-apply {
@@ -64,6 +68,52 @@ STATUS: Ready for integration
         }
         .btn-photo-apply:hover:not(:disabled) {
             background: rgba(139, 92, 246, 0.2);
+        }
+        
+        /* Log buttons */
+        .btn-log-sm {
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4a8af4;
+            background: rgba(74, 138, 244, 0.1);
+            color: #4a8af4;
+            transition: all 0.2s ease;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+        .btn-log-sm:hover {
+            background: rgba(74, 138, 244, 0.2);
+        }
+        .btn-log-sm:active {
+            transform: scale(0.95);
+        }
+        .btn-log-sm.download {
+            border-color: #4caf50;
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+        .btn-log-sm.download:hover {
+            background: rgba(76, 175, 80, 0.2);
+        }
+        .btn-log-sm.clear {
+            border-color: #c0392b;
+            color: #c0392b;
+            background: rgba(192, 57, 43, 0.1);
+        }
+        .btn-log-sm.clear:hover {
+            background: rgba(192, 57, 43, 0.2);
+        }
+        .log-count-badge {
+            font-size: 0.55rem;
+            color: #888;
+            background: #1a1a1a;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid #2a2a2a;
+            font-family: monospace;
         }
         
         /* Tab Navigation */
@@ -162,7 +212,7 @@ STATUS: Ready for integration
         .existing-hint strong { color: #ffaa44; }
         
         /* Log */
-        .log { background: #0a0a0a; border-radius: 12px; padding: 12px; margin-top: 16px; font-size: 0.7rem; font-family: monospace; max-height: 300px; overflow-y: auto; word-break: break-all; }
+        .log { background: #0a0a0a; border-radius: 12px; padding: 12px; margin-top: 12px; font-size: 0.7rem; font-family: monospace; max-height: 300px; overflow-y: auto; word-break: break-all; }
         .log-entry { padding: 4px 0; border-bottom: 1px solid #1a1a1a; }
         .log-error { color: #c0392b; }
         .log-success { color: #4caf50; }
@@ -864,21 +914,29 @@ STATUS: Ready for integration
     
     <!-- Log -->
     <div class="card">
-        <div class="card-title">📜 LOG</div>
+        <div class="card-title">
+            <span class="title-left">📜 LOG</span>
+            <span class="title-right">
+                <span class="log-count-badge" id="logCountBadge">0 entries</span>
+                <button class="btn-log-sm" onclick="copyLogToClipboard()" title="Copy latest 100 logs to clipboard">📋 Copy</button>
+                <button class="btn-log-sm download" onclick="downloadLogFile()" title="Download all logs to SRC-YYMMDD-HHMM.log">💾 Download</button>
+                <button class="btn-log-sm clear" onclick="if(confirm('Clear all logs?')){clearLogs();}" title="Clear all logs">🧹 Clear</button>
+            </span>
+        </div>
         <div id="log" class="log">Ready. Select environments for each tab.</div>
     </div>
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.29</div>
+<div class="version-tag">v1.30</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.29
+// VERSION: 1.30
 // ============================================================
 
-var APP_VERSION = "1.29";
+var APP_VERSION = "1.30";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -956,10 +1014,36 @@ function checkWrvAvailability() {
 }
 
 // ============================================================
+// LOG COUNT BADGE UPDATE
+// ============================================================
+
+function updateLogCountBadge() {
+    var badge = document.getElementById('logCountBadge');
+    if (!badge) return;
+    
+    var count = 0;
+    try {
+        var logs = JSON.parse(localStorage.getItem('appLogs') || '[]');
+        count = logs.length;
+    } catch(e) {
+        // Fallback: count LOG card entries
+        var logDiv = document.getElementById('log');
+        if (logDiv) {
+            count = logDiv.querySelectorAll('.log-entry').length;
+        }
+    }
+    
+    badge.textContent = count + ' entry' + (count !== 1 ? 's' : '');
+}
+
+// Update log count badge every 2 seconds
+setInterval(updateLogCountBadge, 2000);
+
+// ============================================================
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.29...');
+console.log('[REC-MGMT] Initializing v1.30...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1033,6 +1117,7 @@ setInterval(function() {
 setTimeout(function() {
     renderVersionBadges();
     checkWrvAvailability();
+    updateLogCountBadge();
 }, 300);
 
 // Pre-load records using functions from .js files
@@ -1046,7 +1131,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.29 ready', 'success');
+    log('Record Management v1.30 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1055,9 +1140,10 @@ if (typeof log === 'function') {
     log('🖼️ PHOTO   - Load, upload, and save photo references', 'info');
     log('🗑️ DELETE  - Delete records from Firestore OR photos from Storage', 'info');
     log('🛡️ WRV     - Write & Verify protection for all database writes', 'info');
+    log('📋 LOG     - Copy, download, or clear logs', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.29 ready');
+    console.log('[REC-MGMT] Record Management v1.30 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1067,11 +1153,13 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - ADDED: wrv.js to script dependencies (Write & Verify support)
-   - ADDED: WRV availability check on load
-   - PRESERVED: All existing functionality from v1.28
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - ADDED: Copy Log button to LOG card header
+   - ADDED: Download Log button to LOG card header
+   - ADDED: Log count badge showing total stored logs
+   - ADDED: Auto-refresh of log count badge
+   - PRESERVED: All existing functionality from v1.29
 DEPENDS ON: game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js
 STATUS: Ready for integration
 -->
