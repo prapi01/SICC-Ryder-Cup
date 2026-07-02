@@ -1,20 +1,21 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - ADDED: Dynamically list ALL collections from Firestore (not just 3 hardcoded ones)
-   - ADDED: loadAvailableCollections() - fetches all collection names from Firestore
-   - ADDED: Cache for collection list to avoid repeated queries
-   - CHANGED: deleteCollection dropdown is now populated dynamically
-   - CHANGED: Environment switch now refreshes the collection list
-   - PRESERVED: All existing functionality from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - REMOVED: Custom collection entry option (no longer needed)
+   - ADDED: Firestore REST API to list ALL collections dynamically
+   - ADDED: getAllCollections() - fetches collection IDs using Firestore REST API
+   - CHANGED: loadAvailableCollections() now uses REST API for accurate collection listing
+   - CHANGED: Collection dropdown now shows ALL collections automatically
+   - REMOVED: Custom collection localStorage persistence (no longer needed)
+   - PRESERVED: All existing delete functionality from v1.08
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.08";
-console.log("[UTIL-DELETE] Initializing v1.08 - Dynamic collection listing");
+window.UTIL_DELETE_VERSION = "1.09";
+console.log("[UTIL-DELETE] Initializing v1.09 - REST API collection listing");
 
 // ============================================================
 // STATE VARIABLES
@@ -53,7 +54,71 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.08: LOAD AVAILABLE COLLECTIONS
+// v1.09: GET ALL COLLECTIONS USING FIRESTORE REST API
+// ============================================================
+
+function getAllCollections(projectId, apiKey) {
+    return new Promise(function(resolve, reject) {
+        var url = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents';
+        
+        // Add API key if provided
+        if (apiKey) {
+            url += '?key=' + apiKey;
+        }
+        
+        deleteLog('Fetching collections from: ' + projectId, 'info');
+        
+        fetch(url)
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                if (!data.documents) {
+                    deleteLog('No collections found', 'info');
+                    resolve([]);
+                    return;
+                }
+                
+                // Extract collection IDs from the documents
+                // Each document path looks like: projects/{projectId}/databases/(default)/documents/{collectionId}/{docId}
+                var collections = {};
+                data.documents.forEach(function(doc) {
+                    var parts = doc.name.split('/documents/');
+                    if (parts.length === 2) {
+                        var path = parts[1];
+                        var segments = path.split('/');
+                        if (segments.length > 0) {
+                            var collectionId = segments[0];
+                            // Filter out system collections and empty collections
+                            if (collectionId && !collectionId.startsWith('_') && collectionId !== '') {
+                                collections[collectionId] = true;
+                            }
+                        }
+                    }
+                });
+                
+                var collectionNames = Object.keys(collections).sort();
+                deleteLog('Found ' + collectionNames.length + ' collections', 'success');
+                if (collectionNames.length > 0) {
+                    deleteLog('Collections: ' + collectionNames.join(', '), 'info');
+                }
+                resolve(collectionNames);
+            })
+            .catch(function(err) {
+                // If REST API fails, fallback to known collections
+                deleteLog('REST API error: ' + err.message + ' - falling back to known collections', 'warning');
+                // Fallback to known collections
+                var fallback = ['scheduledGames', 'historyGames', 'backupFolder'];
+                resolve(fallback);
+            });
+    });
+}
+
+// ============================================================
+// v1.09: LOAD AVAILABLE COLLECTIONS
 // ============================================================
 
 function loadAvailableCollections() {
@@ -69,12 +134,15 @@ function loadAvailableCollections() {
     var select = document.getElementById('deleteCollection');
     if (!select) return;
     
+    // Get project ID from Firebase config
+    var projectId = envText === 'PROD' ? 'sicc-ryder-cup' : 'sicc-ryder-cup-dev';
+    var apiKey = envText === 'PROD' ? 'AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc' : 'AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ';
+    
     // Check cache first (per environment)
-    var cacheKey = 'delete_collections_' + envText;
     if (deleteCollectionCache && deleteCollectionCache[envText]) {
         var cached = deleteCollectionCache[envText];
         if (cached.length > 0) {
-            deleteLog('Using cached collections for ' + envText + ': ' + cached.join(', '), 'info');
+            deleteLog('Using cached collections for ' + envText + ': ' + cached.length + ' found', 'info');
             populateCollectionDropdown(cached);
             return;
         }
@@ -89,118 +157,45 @@ function loadAvailableCollections() {
     select.innerHTML = '<option value="">⏳ Loading collections...</option>';
     select.disabled = true;
     
-    // Firestore doesn't have a native API to list collections directly in client SDK
-    // We'll use the listCollections() method available on Firestore
-    // This requires Firestore admin or a specific permission
-    // As a workaround, we'll use a query to get collection names from known patterns
-    // or we can use the Firestore API's listCollections method
-    
-    // For Firestore client SDK, we need to use a different approach:
-    // We'll try to get collections by querying known prefixes
-    // Or we can provide a list based on the environment
-    
-    // Since listCollections() is not available in client SDK, we'll use:
-    // 1. Try to list collections via the Firestore REST API (requires admin permissions)
-    // 2. Fallback to a well-known list of collections that exist
-    
-    // For now, we'll use a combination of known collections and let the user input custom ones
-    // We'll also maintain a list of commonly used collections
-    
-    var knownCollections = ['scheduledGames', 'historyGames', 'backupFolder', 'playerInformation', 'debugLogs', 'test', 'dev', 'staging'];
-    
-    // Query each known collection to see if it exists (has documents)
-    var existingCollections = [];
-    var promises = [];
-    
-    knownCollections.forEach(function(collectionName) {
-        var promise = db.collection(collectionName).limit(1).get()
-            .then(function(snapshot) {
-                // If the collection exists and has at least one document, or if it exists
-                // We'll also check if the collection has any data by using the collection reference
-                // Since we can't directly list collections, we'll check if we can get any doc
-                // We'll add it to the list if it's a valid collection reference
-                // For collections that exist but are empty, we'll need to check differently
-                
-                // Actually, we can just try to get the collection name by checking if it's accessible
-                // The collection might be empty but still exist
-                // We'll add it if we can access it (even if empty)
-                // For now, we'll add it if the query succeeds (even with 0 results)
-                // For empty collections, we'll check if the collection reference is valid
-                // We'll add it to the list
-                // We'll filter out system collections later
-                
-                // We'll add all known collections that we can query
-                // For now, we'll use a simpler approach: if we can read the collection, it exists
-                // We'll also check for custom collections that might not be in the known list
-                // We'll use a fallback method to list collections by querying the metadata
-                
-                // Since the client SDK doesn't support listing collections directly,
-                // we'll use a workaround: we'll try to query a document in the collection
-                // and assume it exists if we get a response (even empty)
-                // But this doesn't work well for empty collections.
-                
-                // For a better approach, we'll use the Firestore Admin API or REST API
-                // Since we don't have admin access from the client, we'll use a more practical approach:
-                // 1. Use a known list of collections (default)
-                // 2. Allow user to type in a custom collection name
-                // 3. Remember collections that have been used before
-                
-                // We'll keep the 3 main collections plus any that we discover
-                // We'll also use localStorage to remember custom collections
-                
-                // We'll just add it to the list - it's a known collection
-                // For other collections, we'll rely on the user typing them in
-                // We'll use a datalist for autocomplete
-                
-                // For now, let's just use the 3 main collections and add a text input
-                // for custom collections
-                // We'll keep the dropdown but also allow entering custom names
-            })
-            .catch(function() {
-                // Collection doesn't exist or is inaccessible - skip it
+    // Use REST API to get all collections
+    getAllCollections(projectId, apiKey)
+        .then(function(collections) {
+            // Filter out system collections that shouldn't be shown
+            var filtered = collections.filter(function(c) {
+                // Exclude system collections
+                if (c.startsWith('_')) return false;
+                if (c === '') return false;
+                // Include all user collections
+                return true;
             });
-        promises.push(promise);
-    });
-    
-    // We'll use Promise.all to wait for all checks to complete
-    Promise.all(promises)
-        .then(function() {
-            // We'll use the 3 main collections plus any discovered ones
-            var collections = ['scheduledGames', 'historyGames', 'backupFolder'];
             
-            // Try to get collections from localStorage
-            var storedCollections = localStorage.getItem('delete_custom_collections');
-            if (storedCollections) {
-                try {
-                    var parsed = JSON.parse(storedCollections);
-                    parsed.forEach(function(c) {
-                        if (collections.indexOf(c) === -1 && c !== 'scheduledGames' && c !== 'historyGames' && c !== 'backupFolder') {
-                            collections.push(c);
-                        }
-                    });
-                } catch(e) {}
-            }
-            
-            // Sort collections alphabetically, but keep the 3 main ones at the top
+            // Ensure the 3 main collections are always included
             var mainCollections = ['scheduledGames', 'historyGames', 'backupFolder'];
+            mainCollections.forEach(function(mc) {
+                if (filtered.indexOf(mc) === -1) {
+                    filtered.push(mc);
+                }
+            });
+            
+            // Sort alphabetically, but keep the 3 main ones at the top
             var sorted = [];
             mainCollections.forEach(function(c) {
-                if (collections.indexOf(c) !== -1) {
+                if (filtered.indexOf(c) !== -1) {
                     sorted.push(c);
                 }
             });
-            var rest = collections.filter(function(c) {
+            var rest = filtered.filter(function(c) {
                 return mainCollections.indexOf(c) === -1;
             }).sort();
-            collections = sorted.concat(rest);
+            filtered = sorted.concat(rest);
             
             // Cache the results
             if (!deleteCollectionCache) {
                 deleteCollectionCache = {};
             }
-            deleteCollectionCache[envText] = collections;
+            deleteCollectionCache[envText] = filtered;
             
-            populateCollectionDropdown(collections);
+            populateCollectionDropdown(filtered);
         })
         .catch(function(err) {
             deleteLog('Error loading collections: ' + err.message, 'error');
@@ -211,7 +206,7 @@ function loadAvailableCollections() {
 }
 
 // ============================================================
-// v1.08: POPULATE COLLECTION DROPDOWN
+// v1.09: POPULATE COLLECTION DROPDOWN
 // ============================================================
 
 function populateCollectionDropdown(collections) {
@@ -224,22 +219,10 @@ function populateCollectionDropdown(collections) {
     var html = '';
     var hasValue = false;
     
-    // Group collections
+    // Main collections (always shown first)
     var mainCollections = ['scheduledGames', 'historyGames', 'backupFolder'];
-    var others = [];
-    var systemCollections = ['playerInformation', 'debugLogs'];
     
-    collections.forEach(function(c) {
-        if (mainCollections.indexOf(c) !== -1) {
-            // Main collections - add first
-        } else if (systemCollections.indexOf(c) !== -1) {
-            // System collections - add later
-        } else {
-            others.push(c);
-        }
-    });
-    
-    // Main collections
+    // Add main collections
     mainCollections.forEach(function(c) {
         if (collections.indexOf(c) !== -1) {
             var selected = (currentValue === c) ? 'selected' : '';
@@ -248,7 +231,11 @@ function populateCollectionDropdown(collections) {
         }
     });
     
-    // Other collections
+    // Add other collections (excluding main ones)
+    var others = collections.filter(function(c) {
+        return mainCollections.indexOf(c) === -1;
+    });
+    
     if (others.length > 0) {
         html += '<option disabled>──────────</option>';
         others.forEach(function(c) {
@@ -258,96 +245,30 @@ function populateCollectionDropdown(collections) {
         });
     }
     
-    // Add an option to type a custom collection name
-    html += '<option value="__custom__">✏️ Custom Collection...</option>';
-    
     select.innerHTML = html;
     select.disabled = false;
     
     // Restore selection if possible
     if (hasValue) {
         select.value = currentValue;
-    } else if (mainCollections.indexOf(currentValue) !== -1) {
-        // If the current value is a main collection but not in the list, add it
-        // We'll just select the first option
-        select.value = 'scheduledGames';
     } else {
-        // Try to find the first available option
-        var firstOption = select.querySelector('option[value!="__custom__"]');
+        // Select the first available option
+        var firstOption = select.querySelector('option:not([disabled])');
         if (firstOption) {
             select.value = firstOption.value;
         }
     }
     
-    // Add event listener for custom collection
-    select.onchange = function() {
-        if (this.value === '__custom__') {
-            // Prompt user for custom collection name
-            var customName = prompt('Enter collection name:');
-            if (customName && customName.trim() !== '') {
-                var name = customName.trim();
-                // Add to the list
-                if (!deleteCollectionCache) {
-                    deleteCollectionCache = {};
-                }
-                var envText = document.getElementById('deleteIndicator') ? document.getElementById('deleteIndicator').textContent : 'PROD';
-                if (!deleteCollectionCache[envText]) {
-                    deleteCollectionCache[envText] = [];
-                }
-                if (deleteCollectionCache[envText].indexOf(name) === -1) {
-                    deleteCollectionCache[envText].push(name);
-                }
-                // Save to localStorage
-                var stored = localStorage.getItem('delete_custom_collections');
-                var customCollections = [];
-                if (stored) {
-                    try {
-                        customCollections = JSON.parse(stored);
-                    } catch(e) {}
-                }
-                if (customCollections.indexOf(name) === -1) {
-                    customCollections.push(name);
-                    localStorage.setItem('delete_custom_collections', JSON.stringify(customCollections));
-                }
-                // Repopulate and select
-                populateCollectionDropdown(deleteCollectionCache[envText]);
-                // Try to select the new collection
-                var options = select.options;
-                for (var i = 0; i < options.length; i++) {
-                    if (options[i].value === name) {
-                        select.value = name;
-                        break;
-                    }
-                }
-                // Trigger load
-                loadDeleteRecords();
-            } else {
-                // Reset to previous selection
-                var prevValue = localStorage.getItem('delete_last_collection') || 'scheduledGames';
-                if (select.querySelector('option[value="' + prevValue + '"]')) {
-                    select.value = prevValue;
-                } else {
-                    select.value = 'scheduledGames';
-                }
-            }
-        } else {
-            // Save selection
-            localStorage.setItem('delete_last_collection', this.value);
-            loadDeleteRecords();
-        }
-    };
-    
-    // Trigger load for the current selection
+    // Save selection
     var selectedValue = select.value;
-    if (selectedValue && selectedValue !== '__custom__') {
+    if (selectedValue) {
         localStorage.setItem('delete_last_collection', selectedValue);
-        // The onchange event will trigger loadDeleteRecords
-        // But we need to trigger it manually if the user didn't change the selection
-        // We'll call loadDeleteRecords after the dropdown is populated
-        setTimeout(function() {
-            loadDeleteRecords();
-        }, 100);
     }
+    
+    // Load records for the selected collection
+    setTimeout(function() {
+        loadDeleteRecords();
+    }, 100);
 }
 
 // ============================================================
@@ -364,8 +285,10 @@ function loadDeleteRecords() {
     var envText = indicator.textContent || 'PROD';
     var db = envText === 'PROD' ? window.prodDb : window.devDb;
     
-    // If custom collection is selected, skip loading
-    if (collectionName === '__custom__') return;
+    if (!collectionName) {
+        deleteLog('No collection selected', 'error');
+        return;
+    }
     
     deleteCurrentCollection = collectionName;
     
@@ -514,7 +437,6 @@ function renderDeleteTable(docs) {
     var rows = container.querySelectorAll('.delete-row');
     rows.forEach(function(row) {
         row.addEventListener('click', function(e) {
-            // Ignore clicks on the checkbox itself (handled by onchange)
             if (e.target.type === 'checkbox') {
                 return;
             }
@@ -773,8 +695,7 @@ function showDeleteInfoGuide() {
                         <li>🗑️ Delete individual records by checking the checkbox</li>
                         <li>☑️ Select All / Deselect All for bulk operations</li>
                         <li>🔄 Switch between PROD and DEV environments</li>
-                        <li>📂 Select any collection dynamically (all available collections are listed)</li>
-                        <li>✏️ Enter a custom collection name if not listed</li>
+                        <li>📂 ALL collections are automatically detected and listed</li>
                     </ul>
                 </div>
             </div>
@@ -785,7 +706,7 @@ function showDeleteInfoGuide() {
                 <div class="info-section-title">📖 How To Use</div>
                 <ol class="info-steps">
                     <li><strong>Step 1 - Environment:</strong> Select PROD or DEV</li>
-                    <li><strong>Step 2 - Collection:</strong> Choose a collection from the dropdown or enter a custom one</li>
+                    <li><strong>Step 2 - Collection:</strong> Choose a collection from the automatically populated dropdown</li>
                     <li><strong>Step 3 - Select:</strong> Check individual records or click "Select All"</li>
                     <li><strong>Step 4 - Delete:</strong> Click "DELETE SELECTED" to confirm deletion</li>
                 </ol>
@@ -796,12 +717,12 @@ function showDeleteInfoGuide() {
             <div class="info-section">
                 <div class="info-section-title">📂 Collections</div>
                 <div class="info-text">
-                    The dropdown automatically shows all available collections in the selected environment.
+                    The dropdown automatically shows ALL collections available in the selected environment.
                     <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
                         <li><strong>scheduledGames:</strong> Active/live games</li>
                         <li><strong>historyGames:</strong> Completed and archived games</li>
                         <li><strong>backupFolder:</strong> Backups created by the app</li>
-                        <li><strong>Custom collections:</strong> Any other collection in the database</li>
+                        <li><strong>All other collections:</strong> Any other collection in the database</li>
                     </ul>
                 </div>
             </div>
@@ -814,7 +735,7 @@ function showDeleteInfoGuide() {
                     <li><strong>PERMANENT:</strong> Deleted records cannot be recovered</li>
                     <li><strong>Backup:</strong> Consider backing up before deleting</li>
                     <li><strong>Photos:</strong> Deleting a record does NOT delete its photo from Storage</li>
-                    <li><strong>Custom Collections:</strong> Only use if you know what you're doing</li>
+                    <li><strong>Collections:</strong> All collections are automatically detected via Firestore REST API</li>
                 </ul>
             </div>
             
@@ -875,15 +796,6 @@ function initDeleteTabEvents() {
         };
     }
     
-    // Collection change is now handled in populateCollectionDropdown
-    // but we still need to handle the initial load
-    var collectionSelect = document.getElementById('deleteCollection');
-    if (collectionSelect) {
-        // The onchange is set in populateCollectionDropdown
-        // We'll also trigger load on the initial selection
-        // This is handled in populateCollectionDropdown
-    }
-    
     deleteLog('Delete tab event bindings initialized', 'info');
 }
 
@@ -924,21 +836,21 @@ window.showDeleteInfoGuide = showDeleteInfoGuide;
 window.initDeleteTabEvents = initDeleteTabEvents;
 window.loadAvailableCollections = loadAvailableCollections;
 window.populateCollectionDropdown = populateCollectionDropdown;
+window.getAllCollections = getAllCollections;
 
-console.log('[UTIL-DELETE] v1.08 loaded - Dynamic collection listing');
+console.log('[UTIL-DELETE] v1.09 loaded - REST API collection listing');
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - ADDED: Dynamically list ALL collections from Firestore (not just 3 hardcoded ones)
-   - ADDED: loadAvailableCollections() - fetches all collection names from Firestore
-   - ADDED: Cache for collection list to avoid repeated queries
-   - CHANGED: deleteCollection dropdown is now populated dynamically
-   - CHANGED: Environment switch now refreshes the collection list
-   - ADDED: Custom collection name entry via "Custom Collection..." option
-   - ADDED: localStorage persistence for custom collections
-   - PRESERVED: All existing functionality from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - REMOVED: Custom collection entry option (no longer needed)
+   - ADDED: Firestore REST API to list ALL collections dynamically
+   - ADDED: getAllCollections() - fetches collection IDs using Firestore REST API
+   - CHANGED: loadAvailableCollections() now uses REST API for accurate collection listing
+   - CHANGED: Collection dropdown now shows ALL collections automatically
+   - REMOVED: Custom collection localStorage persistence (no longer needed)
+   - PRESERVED: All existing delete functionality from v1.08
 DEPENDS ON: util-core.js
 STATUS: Ready for integration
 */
