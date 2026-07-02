@@ -1,19 +1,18 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: executeRebuildUsedLabels() now uses RMW (Read-Modify-Write) pattern
-   - CHANGED: Reads full document, updates usedLabels, writes full document back
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: executeRebuildUsedLabels() now MERGES usedLabels instead of REPLACING
+   - CHANGED: Rebuild now reads existing usedLabels and merges (preserves existing, adds new)
    - FIXED: WRV verification now passes because payload matches document structure
-   - FIXED: Preserves all fields (players, labelHistory, etc.) when rebuilding usedLabels
-   - PRESERVED: All existing functionality from v1.05
+   - PRESERVED: All existing functionality from v1.06
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.06";
-console.log("[UTIL-PLAYERS] Initializing v1.06 - RMW for executeRebuildUsedLabels");
+window.UTIL_PLAYERS_VERSION = "1.07";
+console.log("[UTIL-PLAYERS] Initializing v1.07 - Merge usedLabels (not replace)");
 
 // ============================================================
 // STATE
@@ -389,7 +388,7 @@ function viewLabelHistory() {
 }
 
 // ============================================================
-// REBUILD usedLabels
+// REBUILD usedLabels (v1.07: MERGE instead of REPLACE)
 // ============================================================
 
 function rebuildUsedLabels() {
@@ -398,7 +397,7 @@ function rebuildUsedLabels() {
         return;
     }
     
-    playersLogStep(1, '=== REBUILD usedLabels START ===', 'info');
+    playersLogStep(1, '=== REBUILD usedLabels START (MERGE MODE) ===', 'info');
     playersLogStep(1, 'Environment: ' + playersEnv, 'info');
     
     var badge = document.getElementById('usedLabelsStatusBadge');
@@ -443,7 +442,7 @@ function rebuildUsedLabels() {
             var labelArray = Object.keys(labelSet).sort();
             
             playersLogStep(2, 'Scanned ' + gameCount + ' games, ' + playerCount + ' players', 'info');
-            playersLogStep(2, 'Found ' + labelArray.length + ' unique labels', 'info');
+            playersLogStep(2, 'Found ' + labelArray.length + ' unique labels from history', 'info');
             
             if (labelArray.length === 0) {
                 playersLogStep(2, 'No labels found in historyGames', 'warning');
@@ -456,7 +455,8 @@ function rebuildUsedLabels() {
                 return;
             }
             
-            var html = '';
+            // v1.07: Show preview of labels that will be MERGED
+            var html = '<div class="entry" style="color:#888; font-size:0.65rem; padding:4px 0;">Labels from history (will be merged with existing):</div>';
             for (var i = 0; i < labelArray.length; i++) {
                 html += '<div class="entry"><span class="old">' + escapeHtml(labelArray[i]) + '</span></div>';
             }
@@ -470,24 +470,24 @@ function rebuildUsedLabels() {
             };
             
             if (badge) {
-                badge.textContent = '📋 ' + labelArray.length + ' labels to write';
+                badge.textContent = '📋 ' + labelArray.length + ' labels to merge';
                 badge.className = 'status-badge-large warning';
             }
             if (info) {
-                info.innerHTML = '📋 <strong>' + labelArray.length + '</strong> labels found. Review below and confirm to write to playerInformation.usedLabels.';
+                info.innerHTML = '📋 <strong>' + labelArray.length + '</strong> labels found in history. These will be <strong>merged</strong> with existing usedLabels (preserving all existing labels).';
             }
             
             if (confirmSection) {
                 confirmSection.style.display = 'block';
                 var confirmBtn = document.getElementById('usedLabelsConfirmBtn');
                 if (confirmBtn) {
-                    confirmBtn.textContent = '✅ CONFIRM & UPDATE (' + labelArray.length + ' labels)';
+                    confirmBtn.textContent = '✅ CONFIRM & MERGE (' + labelArray.length + ' labels)';
                 }
             }
             
             if (rebuildBtn) rebuildBtn.disabled = false;
             
-            playersLogStep(2, 'Ready to write ' + labelArray.length + ' labels to playerInformation', 'success');
+            playersLogStep(2, 'Ready to merge ' + labelArray.length + ' labels with existing usedLabels', 'success');
         })
         .catch(function(err) {
             playersLogStep(2, 'Error scanning historyGames: ' + err.message, 'error');
@@ -501,7 +501,7 @@ function rebuildUsedLabels() {
 }
 
 // ============================================================
-// v1.06: executeRebuildUsedLabels - RMW (Read-Modify-Write)
+// v1.07: executeRebuildUsedLabels - MERGE usedLabels (not replace)
 // ============================================================
 
 function executeRebuildUsedLabels() {
@@ -519,8 +519,8 @@ function executeRebuildUsedLabels() {
         return;
     }
     
-    playersLogStep(3, '=== EXECUTING REBUILD usedLabels (RMW) ===', 'info');
-    playersLogStep(3, 'Writing ' + count + ' labels to playerInformation.usedLabels', 'info');
+    playersLogStep(3, '=== EXECUTING usedLabels MERGE ===', 'info');
+    playersLogStep(3, 'Merging ' + count + ' labels from history with existing usedLabels', 'info');
     
     var badge = document.getElementById('usedLabelsStatusBadge');
     var info = document.getElementById('usedLabelsStatusInfo');
@@ -530,15 +530,15 @@ function executeRebuildUsedLabels() {
     var rebuildBtn = document.getElementById('usedLabelsRebuildBtn');
     
     if (badge) {
-        badge.textContent = '⏳ Writing...';
+        badge.textContent = '⏳ Merging...';
         badge.className = 'status-badge-large warning';
     }
-    if (info) info.textContent = 'Reading document, updating usedLabels, writing back...';
+    if (info) info.textContent = 'Reading current document, merging usedLabels...';
     if (confirmBtn) confirmBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
     if (rebuildBtn) rebuildBtn.disabled = true;
     
-    // v1.06: RMW - Read the full document first
+    // v1.07: RMW - Read the full document first
     playersLogStep(3, 'Step 1: Reading current document...', 'info');
     
     playersDb.collection('playerInformation').doc('players').get()
@@ -549,10 +549,51 @@ function executeRebuildUsedLabels() {
             
             var data = doc.data();
             
-            // v1.06: Step 2 - Modify the usedLabels in memory
-            playersLogStep(3, 'Step 2: Modifying usedLabels in memory...', 'info');
+            // v1.07: Step 2 - MERGE usedLabels (preserve existing, add new)
+            playersLogStep(3, 'Step 2: Merging usedLabels...', 'info');
             
-            // Build the full document payload
+            var existingUsedLabels = data.usedLabels || {};
+            var existingCount = Object.keys(existingUsedLabels).length;
+            
+            // Build the merged usedLabels
+            var mergedLabels = {};
+            
+            // Copy existing
+            for (var key in existingUsedLabels) {
+                mergedLabels[key] = existingUsedLabels[key];
+            }
+            
+            // Add new labels from history
+            var addedCount = 0;
+            for (var key in labelSet) {
+                if (!mergedLabels[key]) {
+                    mergedLabels[key] = labelSet[key];
+                    addedCount++;
+                    playersLogStep(3, '  • Adding new label from history: ' + key, 'info');
+                }
+            }
+            
+            var newTotalCount = Object.keys(mergedLabels).length;
+            
+            playersLogStep(3, '  • Existing labels: ' + existingCount, 'info');
+            playersLogStep(3, '  • New labels added: ' + addedCount, 'info');
+            playersLogStep(3, '  • Total after merge: ' + newTotalCount, 'info');
+            
+            if (addedCount === 0) {
+                playersLogStep(3, 'No new labels to add - usedLabels already up to date', 'info');
+                if (badge) {
+                    badge.textContent = '✅ Up to date (' + newTotalCount + ' labels)';
+                    badge.className = 'status-badge-large exists';
+                }
+                if (info) info.innerHTML = '📋 <strong>' + newTotalCount + '</strong> labels. No new labels to add.';
+                if (confirmBtn) confirmBtn.disabled = false;
+                if (cancelBtn) cancelBtn.disabled = false;
+                if (rebuildBtn) rebuildBtn.disabled = false;
+                if (confirmSection) confirmSection.style.display = 'none';
+                return;
+            }
+            
+            // Build the full document payload with merged usedLabels
             var payload = {};
             
             // Preserve all existing fields
@@ -563,20 +604,17 @@ function executeRebuildUsedLabels() {
                 payload.labelHistory = data.labelHistory;
             }
             
-            // Update usedLabels with the new set
-            payload.usedLabels = labelSet;
+            // Use the merged usedLabels
+            payload.usedLabels = mergedLabels;
             
             // Update timestamp
             payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             
-            // Log what's being written
-            var labelKeys = Object.keys(labelSet);
-            playersLogStep(3, '  • Labels to write: ' + labelKeys.length + ' labels', 'info');
             playersLogStep(3, '  • Players preserved: ' + (data.players ? data.players.length : 0), 'info');
             playersLogStep(3, '  • labelHistory preserved: ' + (data.labelHistory ? Object.keys(data.labelHistory).length : 0), 'info');
             
-            // v1.06: Step 3 - Write the full document
-            playersLogStep(3, 'Step 3: Writing full document with WRV...', 'info');
+            // v1.07: Step 3 - Write the full document with merged usedLabels
+            playersLogStep(3, 'Step 3: Writing full document with merged usedLabels (WRV)...', 'info');
             
             if (typeof WRV !== 'undefined' && WRV.write) {
                 return new Promise(function(resolve, reject) {
@@ -594,13 +632,13 @@ function executeRebuildUsedLabels() {
             }
         })
         .then(function() {
-            playersLogStep(3, '✅ usedLabels rebuild successful', 'success');
-            handleRebuildSuccess(count);
+            playersLogStep(3, '✅ usedLabels merge successful', 'success');
+            handleRebuildSuccess();
         })
         .catch(function(err) {
-            playersLogStep(3, '❌ Rebuild failed: ' + err.message, 'error');
+            playersLogStep(3, '❌ Merge failed: ' + err.message, 'error');
             if (badge) {
-                badge.textContent = '❌ Write failed';
+                badge.textContent = '❌ Merge failed';
                 badge.className = 'status-badge-large missing';
             }
             if (info) info.textContent = 'Error: ' + err.message;
@@ -611,18 +649,21 @@ function executeRebuildUsedLabels() {
         });
 }
 
-function handleRebuildSuccess(count) {
+function handleRebuildSuccess() {
     var badge = document.getElementById('usedLabelsStatusBadge');
     var info = document.getElementById('usedLabelsStatusInfo');
     var confirmSection = document.getElementById('usedLabelsConfirmSection');
     var viewBtn = document.getElementById('usedLabelsViewBtn');
     var rebuildBtn = document.getElementById('usedLabelsRebuildBtn');
     
+    // Reload the status to get accurate count
+    loadUsedLabelsStatus();
+    
     if (badge) {
-        badge.textContent = '✅ Exists (' + count + ' labels)';
-        badge.className = 'status-badge-large exists';
+        badge.textContent = '✅ Merge complete';
+        badge.className = 'status-badge-large success';
     }
-    if (info) info.innerHTML = '📋 <strong>' + count + '</strong> labels written to playerInformation successfully.';
+    if (info) info.innerHTML = '📋 usedLabels merged successfully with history labels.';
     if (viewBtn) viewBtn.disabled = false;
     if (rebuildBtn) rebuildBtn.disabled = false;
     if (confirmSection) confirmSection.style.display = 'none';
@@ -630,7 +671,7 @@ function handleRebuildSuccess(count) {
     document.getElementById('usedLabelsPreview').style.display = 'none';
     stagedUsedLabels = null;
     
-    playersLogStep(3, '=== REBUILD usedLabels COMPLETE ===', 'success');
+    playersLogStep(3, '=== usedLabels MERGE COMPLETE ===', 'success');
 }
 
 // ============================================================
@@ -937,7 +978,7 @@ function cancelUsedLabels() {
     
     loadUsedLabelsStatus();
     
-    playersLog('usedLabels rebuild cancelled', 'info');
+    playersLog('usedLabels merge cancelled', 'info');
 }
 
 function cancelLabelHistory() {
@@ -966,7 +1007,7 @@ function cancelLabelHistory() {
 }
 
 // ============================================================
-// PLAYER EDITOR FUNCTIONS
+// PLAYER EDITOR FUNCTIONS (unchanged from v1.06)
 // ============================================================
 
 function loadPlayerEditorDropdown() {
@@ -1283,7 +1324,6 @@ function savePlayerEdit() {
         updatedPlayer[key] = updateResult.changes[key];
     }
     
-    // RMW - Read the full document first
     playersLogStep(2, 'Step 1: Reading current document...', 'info');
     
     playersDb.collection('playerInformation').doc('players').get()
@@ -1295,7 +1335,6 @@ function savePlayerEdit() {
             var data = doc.data();
             var players = data.players || [];
             
-            // Ensure the player index exists
             if (editorCurrentIndex >= players.length) {
                 playersLogStep(2, '⚠️ Player index out of range, extending array', 'warning');
                 while (players.length <= editorCurrentIndex) {
@@ -1303,29 +1342,23 @@ function savePlayerEdit() {
                 }
             }
             
-            // Step 2: Modify the player in memory
             playersLogStep(2, 'Step 2: Modifying player in memory...', 'info');
             players[editorCurrentIndex] = updatedPlayer;
             
-            // Step 3: Build full payload
             var payload = {
                 players: players,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
             
-            // Preserve usedLabels if it exists
             if (data.usedLabels) {
                 payload.usedLabels = data.usedLabels;
             }
-            
-            // Preserve labelHistory if it exists
             if (data.labelHistory) {
                 payload.labelHistory = data.labelHistory;
             }
             
             playersLogStep(2, 'Step 3: Writing full document with WRV...', 'info');
             
-            // Use WRV.write with the full payload
             if (typeof WRV !== 'undefined' && WRV.write) {
                 return new Promise(function(resolve, reject) {
                     WRV.write('playerInformation', 'players', payload, function(err, result) {
@@ -1467,11 +1500,11 @@ function showPlayersInfoGuide() {
                     <strong>How to use:</strong>
                     <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
                         <li>Click <span class="highlight">"View Labels"</span> to see all labels in the index</li>
-                        <li>Click <span class="highlight">"Rebuild from History"</span> to scan all completed games and rebuild the index</li>
-                        <li>Review the preview, then <span class="highlight">"CONFIRM & UPDATE"</span> to write to Firestore</li>
+                        <li>Click <span class="highlight">"Rebuild from History"</span> to scan all completed games and <strong>merge</strong> missing labels</li>
+                        <li>Review the preview, then <span class="highlight">"CONFIRM & MERGE"</span> to write to Firestore</li>
                     </ul>
                     <br>
-                    <strong>The rebuild uses RMW + WRV for verification.</strong>
+                    <strong>The rebuild uses MERGE (not replace) to preserve all existing labels.</strong>
                 </div>
             </div>
             
@@ -1499,7 +1532,7 @@ function showPlayersInfoGuide() {
                 <div class="info-section-title">⚠️ Important Notes</div>
                 <ul class="info-warnings">
                     <li><strong>Player Editor:</strong> Changes are immediate. Always double-check before saving.</li>
-                    <li><strong>usedLabels Rebuild:</strong> This REPLACES the entire usedLabels field in playerInformation.</li>
+                    <li><strong>usedLabels Rebuild:</strong> This MERGES labels from history with existing usedLabels. No labels are ever removed.</li>
                     <li><strong>labelHistory Sync:</strong> This MERGES mappings. Existing mappings are preserved, new ones are added.</li>
                     <li><strong>RMW + WRV Protection:</strong> All writes use Read-Modify-Write with WRV verification.</li>
                     <li><strong>PROD/DEV:</strong> Always double-check which environment you're working on before confirming.</li>
@@ -1638,19 +1671,18 @@ window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
 
-window.UTIL_PLAYERS_VERSION = "1.06";
+window.UTIL_PLAYERS_VERSION = "1.07";
 
-console.log("[UTIL-PLAYERS] v1.06 loaded - RMW for executeRebuildUsedLabels");
+console.log("[UTIL-PLAYERS] v1.07 loaded - Merge usedLabels (not replace)");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: executeRebuildUsedLabels() now uses RMW (Read-Modify-Write) pattern
-   - CHANGED: Reads full document, updates usedLabels, writes full document back
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: executeRebuildUsedLabels() now MERGES usedLabels instead of REPLACING
+   - CHANGED: Rebuild now reads existing usedLabels and merges (preserves existing, adds new)
    - FIXED: WRV verification now passes because payload matches document structure
-   - FIXED: Preserves all fields (players, labelHistory, etc.) when rebuilding usedLabels
-   - PRESERVED: All existing functionality from v1.05
+   - PRESERVED: All existing functionality from v1.06
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
