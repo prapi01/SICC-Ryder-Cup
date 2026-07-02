@@ -1,15 +1,13 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - ADDED: Player Editor card as first card in PLAYERS tab
-   - ADDED: Player dropdown to select any player from playerInformation
-   - ADDED: Editable fields: name, label, handicap, defaultTeam, flight, isDefault, lastLabelChange
-   - ADDED: Save Changes button with WRV integration
-   - ADDED: Reset button to revert form
-   - ADDED: Status display for save operations
-   - ADDED: Full logging to LOG for all actions
-   - PRESERVED: All existing functionality from v1.33
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - CHANGED: usedLabels card now reads from playerInformation document (not separate collection)
+   - CHANGED: labelHistory card now reads from playerInformation document
+   - CHANGED: usedLabelsRebuild() now writes to playerInformation.usedLabels
+   - CHANGED: labelHistorySync() now reads/writes to playerInformation.labelHistory
+   - CHANGED: Status badges and previews now reflect the unified data source
+   - PRESERVED: All existing functionality from v1.34
 DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js, util-players.js
 STATUS: Ready for integration
 -->
@@ -908,7 +906,7 @@ STATUS: Ready for integration
     </div>
     
     <!-- ============================================================ -->
-    <!-- TAB: PLAYERS (v1.34) -->
+    <!-- TAB: PLAYERS (v1.35) -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabPlayers">
         <div class="tab-header-with-info">
@@ -1014,7 +1012,7 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- Card 2: usedLabels -->
+        <!-- Card 2: usedLabels (v1.35: Reads from playerInformation) -->
         <div class="card" style="border-color: #4caf50;">
             <div class="card-title" style="border-left-color: #4caf50; color: #4caf50;">
                 <span class="title-left">🏷️ usedLabels</span>
@@ -1043,7 +1041,7 @@ STATUS: Ready for integration
             <!-- Confirm & Update (hidden until Rebuild is clicked) -->
             <div id="usedLabelsConfirmSection" style="display:none; margin-top:12px; padding:12px; background: #0a0a0a; border-radius:12px; border:1px solid #ffaa44;">
                 <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">
-                    ⚠️ This will REPLACE the entire usedLabels document with the labels extracted from all historyGames.
+                    ⚠️ This will REPLACE the entire usedLabels field in the playerInformation document.
                     <br><strong>This action cannot be undone.</strong>
                 </div>
                 <div style="display:flex; gap:12px;">
@@ -1053,7 +1051,7 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- Card 3: labelHistory -->
+        <!-- Card 3: labelHistory (v1.35: Reads from playerInformation) -->
         <div class="card" style="border-color: #8b5cf6;">
             <div class="card-title" style="border-left-color: #8b5cf6; color: #8b5cf6;">
                 <span class="title-left">📜 labelHistory</span>
@@ -1290,15 +1288,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.34</div>
+<div class="version-tag">v1.35</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.34
+// VERSION: 1.35
 // ============================================================
 
-var APP_VERSION = "1.34";
+var APP_VERSION = "1.35";
 
 // ============================================================
 // VERSION BADGE RENDERER
@@ -1414,7 +1412,7 @@ setInterval(updateLogCountBadge, 2000);
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.34...');
+console.log('[REC-MGMT] Initializing v1.35...');
 
 // Set default environments
 document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
@@ -1517,7 +1515,7 @@ setTimeout(function() {
 
 // Log using the core logger
 if (typeof log === 'function') {
-    log('Record Management v1.34 ready', 'success');
+    log('Record Management v1.35 ready', 'success');
     log('=== TABS ===', 'info');
     log('📝 COPY    - Copy records between collections/environments', 'info');
     log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1531,7 +1529,7 @@ if (typeof log === 'function') {
     log('📋 LOG     - Copy, download, or clear logs', 'info');
     log('=====================================', 'info');
 } else {
-    console.log('[REC-MGMT] Record Management v1.34 ready');
+    console.log('[REC-MGMT] Record Management v1.35 ready');
 }
 
 console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only structure and event bindings.');
@@ -1541,16 +1539,14 @@ console.log('[REC-MGMT] All logic delegated to .js files. HTML now contains only
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - ADDED: Player Editor card as first card in PLAYERS tab
-   - ADDED: Player dropdown to select any player from playerInformation
-   - ADDED: Editable fields: name, label, handicap, defaultTeam, flight, isDefault, lastLabelChange
-   - ADDED: Save Changes button with WRV integration
-   - ADDED: Reset button to revert form
-   - ADDED: Status display for save operations
-   - ADDED: Full logging to LOG for all actions
-   - PRESERVED: All existing functionality from v1.33
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - CHANGED: usedLabels card now reads from playerInformation document (not separate collection)
+   - CHANGED: labelHistory card now reads from playerInformation document
+   - CHANGED: usedLabelsRebuild() now writes to playerInformation.usedLabels
+   - CHANGED: labelHistorySync() now reads/writes to playerInformation.labelHistory
+   - CHANGED: Status badges and previews now reflect the unified data source
+   - PRESERVED: All existing functionality from v1.34
 DEPENDS ON: firebase-config.js, game-data.js, game-order.js, game-loader.js, hcp-adjust.js, wrv.js, util-core.js, util-validate-record.js, util-validate-ui.js, util-validate-app.js, util-copy-record.js, util-compare-record.js, util-delete-record.js, util-photo.js, util-players.js
 STATUS: Ready for integration
 -->
