@@ -1,15 +1,16 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.59
-KEY CHANGES from v1.58:
-   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
-     - matchResults: {} (was new Array(18).fill(null))
-     - f1IntraMatches: {} (was new Array(18).fill(null))
-     - f2IntraMatches: {} (was new Array(18).fill(null))
-   - This eliminates nested arrays that Firestore does NOT support
-   - Access pattern remains identical: results.matchResults[0] works the same way
-   - PRESERVED: All UI styling and layout from v1.58 unchanged
-   - PRESERVED: All functionality from v1.58 unchanged
+VERSION: 1.60
+KEY CHANGES from v1.59:
+   - ADDED: label-based handicap loading from historyGames
+   - ADDED: getLatestHandicapForLabel(label) - queries historyGames for most recent finalHcp
+   - ADDED: loadLatestHandicapsFromHistory(players) - bulk updates handicaps from history
+   - MODIFIED: loadPlayerList() now calls loadLatestHandicapsFromHistory() after loading
+   - FALLBACK: If no history found, uses playerInformation.handicap
+   - FALLBACK: If no playerInformation, uses 0
+   - PRESERVED: All UI styling and layout from v1.59 unchanged
+   - PRESERVED: All edit mode functionality unchanged
+   - PRESERVED: All existing form handling unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -626,11 +627,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.59</div>
+<div class="version-tag">v1.60</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.59
+// VERSION: 1.60
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -638,8 +639,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.59";
-var CACHE_KEY = "setup_game_version_v159";
+var VERSION = "1.60";
+var CACHE_KEY = "setup_game_version_v160";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -666,6 +667,133 @@ var beforeUnloadHandlerAttached = false;
 // ============================================================
 var playerList = [];
 
+// ============================================================
+// v1.60: Get latest handicap for a player from historyGames
+// Queries the most recent completed game where the player's label appears
+// Returns the finalHcp from adjustedHandicaps, or null if not found
+// ============================================================
+function getLatestHandicapForLabel(label) {
+    return new Promise(function(resolve) {
+        if (!label || label === '') {
+            resolve(null);
+            return;
+        }
+        
+        console.log("[SETUP-GAME] Querying history for label:", label);
+        
+        db.collection("historyGames")
+            .where("players.label", "==", label)
+            .orderBy("date", "desc")
+            .limit(1)
+            .get()
+            .then(function(snapshot) {
+                if (snapshot.empty) {
+                    console.log("[SETUP-GAME] No history found for label:", label);
+                    resolve(null);
+                    return;
+                }
+                
+                var doc = snapshot.docs[0];
+                var data = doc.data();
+                console.log("[SETUP-GAME] Found history record for", label, "date:", data.date);
+                
+                // Extract finalHcp from adjustedHandicaps
+                if (data.adjustedHandicaps && data.adjustedHandicaps.players) {
+                    var players = data.adjustedHandicaps.players;
+                    for (var i = 0; i < players.length; i++) {
+                        if (players[i].label === label) {
+                            var finalHcp = players[i].finalHcp;
+                            console.log("[SETUP-GAME] Found finalHcp for", label, ":", finalHcp);
+                            resolve(finalHcp);
+                            return;
+                        }
+                    }
+                }
+                
+                // Fallback: look in main players array for handicap
+                if (data.players) {
+                    for (var i = 0; i < data.players.length; i++) {
+                        if (data.players[i].label === label) {
+                            var hcp = data.players[i].handicap;
+                            console.log("[SETUP-GAME] Fallback: using handicap from players array for", label, ":", hcp);
+                            resolve(hcp);
+                            return;
+                        }
+                    }
+                }
+                
+                console.log("[SETUP-GAME] No handicap found for label:", label, "in history record");
+                resolve(null);
+            })
+            .catch(function(err) {
+                console.warn("[SETUP-GAME] Error querying history for label", label, ":", err);
+                resolve(null);
+            });
+    });
+}
+
+// ============================================================
+// v1.60: Bulk load latest handicaps for all players
+// Updates playerList in place with handicaps from history
+// ============================================================
+function loadLatestHandicapsFromHistory(players) {
+    return new Promise(function(resolve) {
+        if (!players || players.length === 0) {
+            resolve(players);
+            return;
+        }
+        
+        console.log("[SETUP-GAME] Loading latest handicaps for", players.length, "players");
+        
+        // Build list of promises for each player with a label
+        var promises = [];
+        var playerIndices = [];
+        
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            if (p.label && p.label !== '') {
+                promises.push(getLatestHandicapForLabel(p.label));
+                playerIndices.push(i);
+            } else {
+                // No label - cannot query history
+                promises.push(Promise.resolve(null));
+                playerIndices.push(i);
+            }
+        }
+        
+        Promise.all(promises)
+            .then(function(results) {
+                var updatedCount = 0;
+                var historyCount = 0;
+                
+                for (var i = 0; i < results.length; i++) {
+                    var idx = playerIndices[i];
+                    var historyHcp = results[i];
+                    
+                    if (historyHcp !== null && historyHcp !== undefined) {
+                        // Found in history - use it
+                        players[idx].handicap = historyHcp;
+                        players[idx]._handicapSource = 'history';
+                        historyCount++;
+                    } else {
+                        // No history - keep existing handicap (from playerInformation)
+                        // Mark source as playerInformation
+                        players[idx]._handicapSource = 'playerInformation';
+                    }
+                    updatedCount++;
+                }
+                
+                console.log("[SETUP-GAME] Handicap loading complete. History:", historyCount, "PlayerInfo:", (updatedCount - historyCount));
+                resolve(players);
+            })
+            .catch(function(err) {
+                console.warn("[SETUP-GAME] Error loading history handicaps:", err);
+                // On error, keep existing handicaps
+                resolve(players);
+            });
+    });
+}
+
 function loadPlayerList(callback) {
     if (!firestoreReady) {
         if (callback) callback();
@@ -679,10 +807,23 @@ function loadPlayerList(callback) {
                 playerList.sort(function(a, b) {
                     return a.name.localeCompare(b.name);
                 });
-                console.log("[SETUP-GAME] Loaded", playerList.length, "players");
+                console.log("[SETUP-GAME] Loaded", playerList.length, "players from playerInformation");
+                
+                // v1.60: Now load latest handicaps from history for each player
+                return loadLatestHandicapsFromHistory(playerList);
             } else {
                 playerList = [];
                 console.warn("[SETUP-GAME] No players found in playerInformation");
+                if (callback) callback();
+                return;
+            }
+        })
+        .then(function(updatedPlayers) {
+            if (updatedPlayers) {
+                playerList = updatedPlayers;
+                // Log which players got handicaps from history
+                var historyCount = playerList.filter(function(p) { return p._handicapSource === 'history'; }).length;
+                console.log("[SETUP-GAME] History handicaps applied to", historyCount, "players");
             }
             if (callback) callback();
         })
@@ -1979,16 +2120,17 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.59
-KEY CHANGES from v1.58:
-   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
-     - matchResults: {} (was new Array(18).fill(null))
-     - f1IntraMatches: {} (was new Array(18).fill(null))
-     - f2IntraMatches: {} (was new Array(18).fill(null))
-   - This eliminates nested arrays that Firestore does NOT support
-   - Access pattern remains identical: results.matchResults[0] works the same way
-   - PRESERVED: All UI styling and layout from v1.58 unchanged
-   - PRESERVED: All functionality from v1.58 unchanged
+VERSION: 1.60
+KEY CHANGES from v1.59:
+   - ADDED: label-based handicap loading from historyGames
+   - ADDED: getLatestHandicapForLabel(label) - queries historyGames for most recent finalHcp
+   - ADDED: loadLatestHandicapsFromHistory(players) - bulk updates handicaps from history
+   - MODIFIED: loadPlayerList() now calls loadLatestHandicapsFromHistory() after loading
+   - FALLBACK: If no history found, uses playerInformation.handicap
+   - FALLBACK: If no playerInformation, uses 0
+   - PRESERVED: All UI styling and layout from v1.59 unchanged
+   - PRESERVED: All edit mode functionality unchanged
+   - PRESERVED: All existing form handling unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
