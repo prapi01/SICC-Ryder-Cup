@@ -1,19 +1,19 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: savePlayerEdit() now uses read-modify-write approach to avoid dot notation issues
-   - CHANGED: Reads the full document, modifies the player in the players array, writes back
-   - FIXED: No more top-level "players.7.*" fields being created
-   - FIXED: Preserves usedLabels and labelHistory when writing back
-   - PRESERVED: All existing functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: executeRebuildUsedLabels() now uses RMW (Read-Modify-Write) pattern
+   - CHANGED: Reads full document, updates usedLabels, writes full document back
+   - FIXED: WRV verification now passes because payload matches document structure
+   - FIXED: Preserves all fields (players, labelHistory, etc.) when rebuilding usedLabels
+   - PRESERVED: All existing functionality from v1.05
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.05";
-console.log("[UTIL-PLAYERS] Initializing v1.05 - Read-modify-write for savePlayerEdit");
+window.UTIL_PLAYERS_VERSION = "1.06";
+console.log("[UTIL-PLAYERS] Initializing v1.06 - RMW for executeRebuildUsedLabels");
 
 // ============================================================
 // STATE
@@ -500,6 +500,10 @@ function rebuildUsedLabels() {
         });
 }
 
+// ============================================================
+// v1.06: executeRebuildUsedLabels - RMW (Read-Modify-Write)
+// ============================================================
+
 function executeRebuildUsedLabels() {
     if (!playersDb || !stagedUsedLabels) {
         playersLog("No staged data to write", "error");
@@ -515,7 +519,7 @@ function executeRebuildUsedLabels() {
         return;
     }
     
-    playersLogStep(3, '=== EXECUTING REBUILD usedLabels ===', 'info');
+    playersLogStep(3, '=== EXECUTING REBUILD usedLabels (RMW) ===', 'info');
     playersLogStep(3, 'Writing ' + count + ' labels to playerInformation.usedLabels', 'info');
     
     var badge = document.getElementById('usedLabelsStatusBadge');
@@ -529,56 +533,82 @@ function executeRebuildUsedLabels() {
         badge.textContent = '⏳ Writing...';
         badge.className = 'status-badge-large warning';
     }
-    if (info) info.textContent = 'Writing to playerInformation...';
+    if (info) info.textContent = 'Reading document, updating usedLabels, writing back...';
     if (confirmBtn) confirmBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
     if (rebuildBtn) rebuildBtn.disabled = true;
     
-    var payload = {
-        usedLabels: labelSet,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
+    // v1.06: RMW - Read the full document first
+    playersLogStep(3, 'Step 1: Reading current document...', 'info');
     
-    if (typeof WRV !== 'undefined' && WRV.write) {
-        playersLogStep(3, 'Using WRV for write', 'info');
-        WRV.write('playerInformation', 'players', payload, function(err, result) {
-            if (err) {
-                playersLogStep(3, '❌ WRV write failed: ' + err.message, 'error');
-                if (badge) {
-                    badge.textContent = '❌ Write failed';
-                    badge.className = 'status-badge-large missing';
-                }
-                if (info) info.textContent = 'Error: ' + err.message;
-                if (confirmBtn) confirmBtn.disabled = false;
-                if (cancelBtn) cancelBtn.disabled = false;
-                if (rebuildBtn) rebuildBtn.disabled = false;
-                if (confirmSection) confirmSection.style.display = 'none';
-                return;
+    playersDb.collection('playerInformation').doc('players').get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                throw new Error('Document not found');
             }
             
-            playersLogStep(3, '✅ usedLabels write successful', 'success');
+            var data = doc.data();
+            
+            // v1.06: Step 2 - Modify the usedLabels in memory
+            playersLogStep(3, 'Step 2: Modifying usedLabels in memory...', 'info');
+            
+            // Build the full document payload
+            var payload = {};
+            
+            // Preserve all existing fields
+            if (data.players) {
+                payload.players = data.players;
+            }
+            if (data.labelHistory) {
+                payload.labelHistory = data.labelHistory;
+            }
+            
+            // Update usedLabels with the new set
+            payload.usedLabels = labelSet;
+            
+            // Update timestamp
+            payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+            
+            // Log what's being written
+            var labelKeys = Object.keys(labelSet);
+            playersLogStep(3, '  • Labels to write: ' + labelKeys.length + ' labels', 'info');
+            playersLogStep(3, '  • Players preserved: ' + (data.players ? data.players.length : 0), 'info');
+            playersLogStep(3, '  • labelHistory preserved: ' + (data.labelHistory ? Object.keys(data.labelHistory).length : 0), 'info');
+            
+            // v1.06: Step 3 - Write the full document
+            playersLogStep(3, 'Step 3: Writing full document with WRV...', 'info');
+            
+            if (typeof WRV !== 'undefined' && WRV.write) {
+                return new Promise(function(resolve, reject) {
+                    WRV.write('playerInformation', 'players', payload, function(err, result) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+            } else {
+                playersLogStep(3, 'WRV not available, using direct write', 'warning');
+                return playersDb.collection('playerInformation').doc('players').set(payload, { merge: true });
+            }
+        })
+        .then(function() {
+            playersLogStep(3, '✅ usedLabels rebuild successful', 'success');
             handleRebuildSuccess(count);
+        })
+        .catch(function(err) {
+            playersLogStep(3, '❌ Rebuild failed: ' + err.message, 'error');
+            if (badge) {
+                badge.textContent = '❌ Write failed';
+                badge.className = 'status-badge-large missing';
+            }
+            if (info) info.textContent = 'Error: ' + err.message;
+            if (confirmBtn) confirmBtn.disabled = false;
+            if (cancelBtn) cancelBtn.disabled = false;
+            if (rebuildBtn) rebuildBtn.disabled = false;
+            if (confirmSection) confirmSection.style.display = 'none';
         });
-    } else {
-        playersLogStep(3, 'WRV not available, using direct write', 'warning');
-        playersDb.collection('playerInformation').doc('players').set(payload, { merge: true })
-            .then(function() {
-                playersLogStep(3, '✅ usedLabels write successful', 'success');
-                handleRebuildSuccess(count);
-            })
-            .catch(function(err) {
-                playersLogStep(3, '❌ Direct write failed: ' + err.message, 'error');
-                if (badge) {
-                    badge.textContent = '❌ Write failed';
-                    badge.className = 'status-badge-large missing';
-                }
-                if (info) info.textContent = 'Error: ' + err.message;
-                if (confirmBtn) confirmBtn.disabled = false;
-                if (cancelBtn) cancelBtn.disabled = false;
-                if (rebuildBtn) rebuildBtn.disabled = false;
-                if (confirmSection) confirmSection.style.display = 'none';
-            });
-    }
 }
 
 function handleRebuildSuccess(count) {
@@ -1199,7 +1229,7 @@ function buildUpdateObject(original, updated) {
 }
 
 // ============================================================
-// v1.05: savePlayerEdit - Read-modify-write approach
+// savePlayerEdit - RMW (Read-Modify-Write)
 // ============================================================
 
 function savePlayerEdit() {
@@ -1244,7 +1274,7 @@ function savePlayerEdit() {
     if (saveBtn) saveBtn.disabled = true;
     if (resetBtn) resetBtn.disabled = true;
     
-    playersLogStep(1, '=== SAVING PLAYER EDIT ===', 'info');
+    playersLogStep(1, '=== SAVING PLAYER EDIT (RMW) ===', 'info');
     playersLogStep(1, 'Player: ' + editorCurrentPlayer.name, 'info');
     playersLogStep(1, 'Changes: ' + updateResult.changeLog.length + ' field(s)', 'info');
     
@@ -1253,8 +1283,8 @@ function savePlayerEdit() {
         updatedPlayer[key] = updateResult.changes[key];
     }
     
-    // v1.05: Read-modify-write approach - read the full document first
-    playersLogStep(2, 'Reading current document...', 'info');
+    // RMW - Read the full document first
+    playersLogStep(2, 'Step 1: Reading current document...', 'info');
     
     playersDb.collection('playerInformation').doc('players').get()
         .then(function(doc) {
@@ -1268,16 +1298,16 @@ function savePlayerEdit() {
             // Ensure the player index exists
             if (editorCurrentIndex >= players.length) {
                 playersLogStep(2, '⚠️ Player index out of range, extending array', 'warning');
-                // Extend array if needed
                 while (players.length <= editorCurrentIndex) {
                     players.push({});
                 }
             }
             
-            // Update the player
+            // Step 2: Modify the player in memory
+            playersLogStep(2, 'Step 2: Modifying player in memory...', 'info');
             players[editorCurrentIndex] = updatedPlayer;
             
-            // Build payload with all fields preserved
+            // Step 3: Build full payload
             var payload = {
                 players: players,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1293,7 +1323,7 @@ function savePlayerEdit() {
                 payload.labelHistory = data.labelHistory;
             }
             
-            playersLogStep(2, 'Writing updated document with WRV...', 'info');
+            playersLogStep(2, 'Step 3: Writing full document with WRV...', 'info');
             
             // Use WRV.write with the full payload
             if (typeof WRV !== 'undefined' && WRV.write) {
@@ -1307,7 +1337,6 @@ function savePlayerEdit() {
                     });
                 });
             } else {
-                // Fallback: direct write
                 playersLogStep(2, 'WRV not available, using direct write', 'warning');
                 return playersDb.collection('playerInformation').doc('players').set(payload, { merge: true });
             }
@@ -1319,14 +1348,12 @@ function savePlayerEdit() {
                 playersLogStep(2, '  • ' + updateResult.changeLog[i], 'info');
             }
             
-            // Update original data to reflect saved state
             editorOriginalData = JSON.parse(JSON.stringify(updatedPlayer));
             showEditorStatus('✅ Player saved successfully!\n' + updateResult.changeLog.length + ' field(s) updated.', 'success');
             
             if (saveBtn) saveBtn.disabled = false;
             if (resetBtn) resetBtn.disabled = false;
             
-            // Reload status for other cards
             loadPlayersStatus();
             playersLogStep(2, '=== SAVE COMPLETE ===', 'success');
         })
@@ -1424,7 +1451,7 @@ function showPlayersInfoGuide() {
                         <li><strong>lastLabelChange:</strong> ISO timestamp (admin editable)</li>
                     </ul>
                     <br>
-                    <strong>All changes use WRV for verification.</strong>
+                    <strong>All changes use RMW + WRV for verification.</strong>
                 </div>
             </div>
             
@@ -1443,6 +1470,8 @@ function showPlayersInfoGuide() {
                         <li>Click <span class="highlight">"Rebuild from History"</span> to scan all completed games and rebuild the index</li>
                         <li>Review the preview, then <span class="highlight">"CONFIRM & UPDATE"</span> to write to Firestore</li>
                     </ul>
+                    <br>
+                    <strong>The rebuild uses RMW + WRV for verification.</strong>
                 </div>
             </div>
             
@@ -1472,7 +1501,7 @@ function showPlayersInfoGuide() {
                     <li><strong>Player Editor:</strong> Changes are immediate. Always double-check before saving.</li>
                     <li><strong>usedLabels Rebuild:</strong> This REPLACES the entire usedLabels field in playerInformation.</li>
                     <li><strong>labelHistory Sync:</strong> This MERGES mappings. Existing mappings are preserved, new ones are added.</li>
-                    <li><strong>WRV Protection:</strong> All writes use WRV for verification and retry.</li>
+                    <li><strong>RMW + WRV Protection:</strong> All writes use Read-Modify-Write with WRV verification.</li>
                     <li><strong>PROD/DEV:</strong> Always double-check which environment you're working on before confirming.</li>
                 </ul>
             </div>
@@ -1609,19 +1638,19 @@ window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
 
-window.UTIL_PLAYERS_VERSION = "1.05";
+window.UTIL_PLAYERS_VERSION = "1.06";
 
-console.log("[UTIL-PLAYERS] v1.05 loaded - Read-modify-write for savePlayerEdit");
+console.log("[UTIL-PLAYERS] v1.06 loaded - RMW for executeRebuildUsedLabels");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: savePlayerEdit() now uses read-modify-write approach to avoid dot notation issues
-   - CHANGED: Reads the full document, modifies the player in the players array, writes back
-   - FIXED: No more top-level "players.7.*" fields being created
-   - FIXED: Preserves usedLabels and labelHistory when writing back
-   - PRESERVED: All existing functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: executeRebuildUsedLabels() now uses RMW (Read-Modify-Write) pattern
+   - CHANGED: Reads full document, updates usedLabels, writes full document back
+   - FIXED: WRV verification now passes because payload matches document structure
+   - FIXED: Preserves all fields (players, labelHistory, etc.) when rebuilding usedLabels
+   - PRESERVED: All existing functionality from v1.05
 DEPENDS ON: util-core.js, wrv.js
 STATUS: Ready for integration
 */
