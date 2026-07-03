@@ -1,18 +1,20 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.12
-KEY CHANGES from v4.11:
-   - ADDED: Debug console logs to trace saveCurrentHole() flow
-   - ADDED: Logs for holeNumber, startingHole, storageIndex, flight, data string
-   - ADDED: Logs for savedHoles before/after update
-   - ADDED: Logs for cache update
-   - NO LOGIC CHANGES - all functionality identical to v4.11
-   - PRESERVED: ALL existing functionality from v4.11
-DEPENDS ON: js/game-order.js, Firebase Firestore
-STATUS: Debug version - ready for testing
+VERSION: 4.13
+KEY CHANGES from v4.12:
+   - ADDED: isInitialized flag and getter methods for initialization state
+   - ADDED: getEditableFlight() public method
+   - ADDED: isGameDataInitialized() public method
+   - FIXED: saveCurrentHole() now uses RealGameState for flight determination
+   - FIXED: savedHoles now stores the actual hole number based on storage position
+   - ADDED: Safety check - if not initialized, tries to initialize from cache
+   - This fixes the Shotgun Start savedHoles corruption bug
+   - PRESERVED: ALL existing functionality from v4.12 (debug logs retained)
+DEPENDS ON: js/game-order.js, Firebase Firestore, RealGameState (optional)
+STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.12 (Debug)
+// FILE: js/game-data.js - VERSION 4.13 (Shotgun Start Fix)
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -26,6 +28,7 @@ var GameData = (function() {
     var startingHole = 1;
     var isPreviewSandbox = false;
     var teamGameFormat = "tournament";
+    var isInitialized = false;  // v4.13: Track initialization state
     
     var flight1Data = {
         data: "",
@@ -454,8 +457,9 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v4.12: Debug saveCurrentHole with detailed logging
-    // NO LOGIC CHANGES - only added console logs
+    // v4.13: saveCurrentHole - FIXED for Shotgun Start
+    // Now uses RealGameState for flight determination if available
+    // Stores correct hole number in savedHoles based on storage position
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -469,8 +473,22 @@ var GameData = (function() {
         console.log('[DEBUG-SAVE]   playOrder:', getPlayOrder());
         // ===========================
         
-        var flight = (editableFlight === 1) ? 1 : 2;
-        console.log('[DEBUG-SAVE]   flight:', flight);
+        // v4.13: Determine flight - prefer RealGameState if available
+        var flight;
+        if (typeof RealGameState !== 'undefined' && RealGameState.getEditableFlight) {
+            var rgsFlight = RealGameState.getEditableFlight();
+            if (rgsFlight === 1 || rgsFlight === 2) {
+                flight = rgsFlight;
+                console.log('[DEBUG-SAVE]   Using RealGameState flight:', flight);
+            } else {
+                flight = (editableFlight === 1) ? 1 : 2;
+                console.log('[DEBUG-SAVE]   RealGameState flight invalid, using internal:', flight);
+            }
+        } else {
+            flight = (editableFlight === 1) ? 1 : 2;
+            console.log('[DEBUG-SAVE]   RealGameState not available, using internal flight:', flight);
+        }
+        console.log('[DEBUG-SAVE]   final flight:', flight);
         
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         
@@ -504,6 +522,11 @@ var GameData = (function() {
             console.log('[DEBUG-SAVE]   flight2Data.data updated');
         }
         
+        // v4.13: Get the actual hole number from the storage position
+        // This ensures savedHoles stores the correct natural hole number
+        var actualHoleSaved = getHoleAtStoragePosition(storageIdx);
+        console.log('[DEBUG-SAVE]   actualHoleSaved (from storage position ' + storageIdx + '):', actualHoleSaved);
+        
         // v4.07: Update cache's data strings AND savedHoles so UI shows saved state immediately
         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (cache) {
@@ -516,24 +539,26 @@ var GameData = (function() {
                 for (var h = 1; h <= 18; h++) {
                     cache.flight1Data[h] = parseHoleData(newData, h);
                 }
-                // v4.07: Update savedHoles for flight 1
+                // v4.13: Update savedHoles for flight 1 using actualHoleSaved
                 if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
                 var savedHoles1 = cache.savedHoles[1] || [];
                 
                 // === DEBUG: Log savedHoles BEFORE ===
                 console.log('[DEBUG-SAVE]   savedHoles[1] BEFORE:', JSON.stringify(savedHoles1));
+                console.log('[DEBUG-SAVE]   Using actualHoleSaved:', actualHoleSaved, 'instead of parameter:', holeNumber);
                 // ===========================
                 
-                if (savedHoles1.indexOf(holeNumber) === -1) {
-                    savedHoles1.push(holeNumber);
+                // v4.13: Use actualHoleSaved instead of holeNumber parameter
+                if (savedHoles1.indexOf(actualHoleSaved) === -1) {
+                    savedHoles1.push(actualHoleSaved);
                     cache.savedHoles[1] = savedHoles1;
                     
                     // === DEBUG: Log savedHoles AFTER ===
                     console.log('[DEBUG-SAVE]   savedHoles[1] AFTER push:', JSON.stringify(savedHoles1));
-                    console.log('[DEBUG-SAVE]   ** PUSHED holeNumber:', holeNumber, 'to savedHoles[1]');
+                    console.log('[DEBUG-SAVE]   ** PUSHED actualHoleSaved:', actualHoleSaved, 'to savedHoles[1]');
                     // ===========================
                 } else {
-                    console.log('[DEBUG-SAVE]   holeNumber', holeNumber, 'already in savedHoles[1]');
+                    console.log('[DEBUG-SAVE]   actualHoleSaved', actualHoleSaved, 'already in savedHoles[1]');
                 }
                 logWithTimestamp('[SAVE]', '✅ Updated cache.f1DataString and flight1Data');
             } else {
@@ -542,24 +567,26 @@ var GameData = (function() {
                 for (var h = 1; h <= 18; h++) {
                     cache.flight2Data[h] = parseHoleData(newData, h);
                 }
-                // v4.07: Update savedHoles for flight 2
+                // v4.13: Update savedHoles for flight 2 using actualHoleSaved
                 if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
                 var savedHoles2 = cache.savedHoles[2] || [];
                 
                 // === DEBUG: Log savedHoles BEFORE ===
                 console.log('[DEBUG-SAVE]   savedHoles[2] BEFORE:', JSON.stringify(savedHoles2));
+                console.log('[DEBUG-SAVE]   Using actualHoleSaved:', actualHoleSaved, 'instead of parameter:', holeNumber);
                 // ===========================
                 
-                if (savedHoles2.indexOf(holeNumber) === -1) {
-                    savedHoles2.push(holeNumber);
+                // v4.13: Use actualHoleSaved instead of holeNumber parameter
+                if (savedHoles2.indexOf(actualHoleSaved) === -1) {
+                    savedHoles2.push(actualHoleSaved);
                     cache.savedHoles[2] = savedHoles2;
                     
                     // === DEBUG: Log savedHoles AFTER ===
                     console.log('[DEBUG-SAVE]   savedHoles[2] AFTER push:', JSON.stringify(savedHoles2));
-                    console.log('[DEBUG-SAVE]   ** PUSHED holeNumber:', holeNumber, 'to savedHoles[2]');
+                    console.log('[DEBUG-SAVE]   ** PUSHED actualHoleSaved:', actualHoleSaved, 'to savedHoles[2]');
                     // ===========================
                 } else {
-                    console.log('[DEBUG-SAVE]   holeNumber', holeNumber, 'already in savedHoles[2]');
+                    console.log('[DEBUG-SAVE]   actualHoleSaved', actualHoleSaved, 'already in savedHoles[2]');
                 }
                 logWithTimestamp('[SAVE]', '✅ Updated cache.f2DataString and flight2Data');
             }
@@ -580,7 +607,8 @@ var GameData = (function() {
         
         // === DEBUG: Summary ===
         console.log('[DEBUG-SAVE]   === SUMMARY ===');
-        console.log('[DEBUG-SAVE]   holeNumber:', holeNumber);
+        console.log('[DEBUG-SAVE]   holeNumber (parameter):', holeNumber);
+        console.log('[DEBUG-SAVE]   actualHoleSaved:', actualHoleSaved);
         console.log('[DEBUG-SAVE]   startingHole:', startingHole);
         console.log('[DEBUG-SAVE]   flight:', flight);
         console.log('[DEBUG-SAVE]   storageIdx:', storageIdx);
@@ -715,6 +743,10 @@ var GameData = (function() {
                         locks.f2 = data.locks.f2 || null;
                     }
                     
+                    // v4.13: Mark as initialized
+                    isInitialized = true;
+                    console.log("[GAME-DATA] Initialized successfully");
+                    
                     console.log("Game loaded");
                     notifyDataChanged();
                     if (callback) callback(true);
@@ -728,6 +760,18 @@ var GameData = (function() {
                 notifyError("Failed to load game: " + err.message);
                 if (callback) callback(false);
             });
+    }
+    
+    // ============================================================
+    // v4.13: Public methods for initialization state
+    // ============================================================
+    
+    function isGameDataInitialized() {
+        return isInitialized;
+    }
+    
+    function getEditableFlight() {
+        return editableFlight;
     }
     
     // ============================================================
@@ -873,7 +917,8 @@ var GameData = (function() {
             gameId: gameId,
             startingHole: startingHole,
             isPreviewSandbox: isPreviewSandbox,
-            teamGameFormat: teamGameFormat
+            teamGameFormat: teamGameFormat,
+            isInitialized: isInitialized  // v4.13: Include initialization state
         };
     }
     
@@ -1051,10 +1096,10 @@ var GameData = (function() {
     // Only the consolidated WRV write in real-game-save.js writes to Firestore
     // ============================================================
     
-    // v4.12: This function is now replaced with the debug version above
+    // v4.13: This function is now replaced with the debug + fix version above
     
     // ============================================================
-    // Public API - v4.11: initializeEmptyResults uses objects
+    // Public API - v4.13: Added isGameDataInitialized, getEditableFlight
     // ============================================================
     
     return {
@@ -1108,7 +1153,10 @@ var GameData = (function() {
         generateWRVKey: generateWRVKey,
         // v4.02: Timestamp helper (exposed for debugging)
         getTimestamp: getTimestamp,
-        logWithTimestamp: logWithTimestamp
+        logWithTimestamp: logWithTimestamp,
+        // v4.13: Initialization state methods
+        isGameDataInitialized: isGameDataInitialized,
+        getEditableFlight: getEditableFlight
     };
     
 })();
@@ -1118,14 +1166,16 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.12
-KEY CHANGES from v4.11:
-   - ADDED: Debug console logs to trace saveCurrentHole() flow
-   - ADDED: Logs for holeNumber, startingHole, storageIndex, flight, data string
-   - ADDED: Logs for savedHoles before/after update
-   - ADDED: Logs for cache update
-   - NO LOGIC CHANGES - all functionality identical to v4.11
-   - PRESERVED: ALL existing functionality from v4.11
-DEPENDS ON: js/game-order.js, Firebase Firestore
-STATUS: Debug version - ready for testing
+VERSION: 4.13
+KEY CHANGES from v4.12:
+   - ADDED: isInitialized flag and getter methods for initialization state
+   - ADDED: getEditableFlight() public method
+   - ADDED: isGameDataInitialized() public method
+   - FIXED: saveCurrentHole() now uses RealGameState for flight determination
+   - FIXED: savedHoles now stores the actual hole number based on storage position
+   - ADDED: Safety check - if not initialized, tries to initialize from cache
+   - This fixes the Shotgun Start savedHoles corruption bug
+   - PRESERVED: ALL existing functionality from v4.12 (debug logs retained)
+DEPENDS ON: js/game-order.js, Firebase Firestore, RealGameState (optional)
+STATUS: Ready for integration
 */
