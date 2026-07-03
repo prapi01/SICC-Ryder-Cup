@@ -1,13 +1,11 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: getBubbleClass() now calculates lastSyncedValue based on the flight being viewed
-   - CHANGED: Flight 1 uses global lastSyncedPosition (preserves original behavior)
-   - CHANGED: Flight 2 calculates lastSyncedValue from F2's saved holes
-   - FIXED: F2 cross-flight bubbles no longer 1 hole off (uses F2's own sync position)
-   - REMOVED: isOtherFlightHoleSaved parameter (not needed for this fix)
-   - PRESERVED: All v1.04 functionality unchanged
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: TR display now shows "-" instead of "0" for unsaved holes
+   - CHANGED: Added check for tr.teamA === 0 and tr.teamB === 0
+   - CHANGED: Added check for tr.teamAGreen and tr.teamBGreen when data exists
+   - PRESERVED: All v1.05 functionality unchanged (cross-flight bubbles fixed)
    - PRESERVED: WRV button state management unchanged
    - PRESERVED: All render functions unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
@@ -15,11 +13,11 @@ STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.05";
+window.REAL_GAME_UI_VERSION = "1.06";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.05 - Flight-specific lastSyncedValue for F2");
+    console.log("[REAL-GAME-UI] Initializing v1.06 - TR display shows - for unsaved holes");
     
     // ============================================================
     // Private Helpers
@@ -347,13 +345,11 @@ var RealGameUI = (function() {
             lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
                 ? cache.lastSyncedPosition 
                 : -1;
-            console.log(`[DEBUG-UI] F1 lastSyncedValue=${lastSyncedValue}`);
         } else {
             // Flight 2: calculate based on F2 saved holes
             var f2SavedHoles = cache.savedHoles && cache.savedHoles[2] ? cache.savedHoles[2] : [];
             if (f2SavedHoles.length === 0) {
                 lastSyncedValue = -1;
-                console.log(`[DEBUG-UI] F2: no saved holes, lastSyncedValue=-1`);
             } else {
                 // Find the highest play position that is saved for F2
                 var maxPos = -1;
@@ -364,13 +360,7 @@ var RealGameUI = (function() {
                     if (pos > maxPos) maxPos = pos;
                 }
                 lastSyncedValue = maxPos;
-                console.log(`[DEBUG-UI] F2: ${f2SavedHoles.length} saved holes, lastSyncedValue=${lastSyncedValue}`);
             }
-        }
-        
-        // Debug logging for cross-flight
-        if (player.flight !== opponent.flight) {
-            console.log(`[DEBUG-UI] getBubbleClass CROSS: ${player.label} vs ${opponent.label}, lastSyncedValue=${lastSyncedValue}, currentHole=${currentHole}`);
         }
         
         if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
@@ -545,10 +535,14 @@ var RealGameUI = (function() {
         if (typeof GameUI !== 'undefined') {
             GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
             
-            var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamA : "-";
-            var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamB : "-";
-            var displayTeamAGreen = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamAGreen : false;
-            var displayTeamBGreen = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamBGreen : false;
+            // v1.06: FIXED - TR display shows "-" for unsaved holes (0 value)
+            var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined && tr.teamA !== 0) ? tr.teamA : "-";
+            var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined && tr.teamB !== 0) ? tr.teamB : "-";
+            
+            // Only set green indicators if data exists
+            var hasData = (displayTeamA !== "-" || displayTeamB !== "-");
+            var displayTeamAGreen = hasData ? tr.teamAGreen : false;
+            var displayTeamBGreen = hasData ? tr.teamBGreen : false;
             
             GameUI.updateTR("trDisplay", displayTeamA, displayTeamB, displayTeamAGreen, displayTeamBGreen);
         }
@@ -758,14 +752,12 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: getBubbleClass() now calculates lastSyncedValue based on the flight being viewed
-   - CHANGED: Flight 1 uses global lastSyncedPosition (preserves original behavior)
-   - CHANGED: Flight 2 calculates lastSyncedValue from F2's saved holes
-   - FIXED: F2 cross-flight bubbles no longer 1 hole off (uses F2's own sync position)
-   - REMOVED: isOtherFlightHoleSaved parameter (not needed for this fix)
-   - PRESERVED: All v1.04 functionality unchanged
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: TR display now shows "-" instead of "0" for unsaved holes
+   - CHANGED: Added check for tr.teamA === 0 and tr.teamB === 0
+   - CHANGED: Added check for tr.teamAGreen and tr.teamBGreen when data exists
+   - PRESERVED: All v1.05 functionality unchanged (cross-flight bubbles fixed)
    - PRESERVED: WRV button state management unchanged
    - PRESERVED: All render functions unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
