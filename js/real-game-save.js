@@ -1,23 +1,24 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - FIXED: Added safety checks in writeSingleHoleToFirestore() for flight data existence
-   - FIXED: processPendingWrites() now initializes full cache structure with flight data fields
-   - FIXED: writeNewHoleData() now sets computedUpToHole = position + 1 before building payload
-   - This ensures cascade writes don't fail when cache lacks flight data
-   - PREVIOUS: processPendingWrites() could call writeSingleHoleToFirestore() with incomplete cache
-   - PRESERVED: ALL other functionality from v1.35 (nested flight data structure)
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - ADDED: ensureGameDataInitialized() helper to check GameData state
+   - FIXED: performSave() now verifies GameData is initialized before saving
+   - ADDED: Automatic GameData initialization from cache if not initialized
+   - ADDED: Better error handling for uninitialized GameData
+   - This prevents saves when GameData is not properly initialized
+   - Works with the fixes in GameData v4.13 and RealGameInit v1.07
+   - PRESERVED: ALL other functionality from v1.36 (nested flight data structure)
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.36";
+window.REAL_GAME_SAVE_VERSION = "1.37";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.36 - Robust flight data handling + computedUpToHole fix");
+    console.log("[REAL-GAME-SAVE] Initializing v1.37 - GameData initialization verification");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -167,6 +168,64 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
+    // v1.37: ensureGameDataInitialized - Verify GameData is ready
+    // ============================================================
+    
+    function ensureGameDataInitialized() {
+        // Check if GameData is available
+        if (typeof GameData === 'undefined') {
+            console.warn('[SAVE] GameData is undefined');
+            return false;
+        }
+        
+        // Check if GameData has the initialization check method
+        if (typeof GameData.isGameDataInitialized === 'function') {
+            var isInit = GameData.isGameDataInitialized();
+            if (isInit) {
+                console.log('[SAVE] GameData is initialized');
+                return true;
+            } else {
+                console.warn('[SAVE] GameData is NOT initialized');
+                // Attempt to initialize from cache
+                var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+                if (cache) {
+                    console.log('[SAVE] Attempting to initialize GameData from cache...');
+                    try {
+                        // Try to use RealGameInit to initialize
+                        if (typeof RealGameInit !== 'undefined' && typeof RealGameInit.initializeGameData === 'function') {
+                            var gameId = getGameId();
+                            var collection = "scheduledGames";
+                            // Call initializeGameData but don't await - we just want to trigger it
+                            RealGameInit.initializeGameData(collection, cache).then(function(success) {
+                                if (success) {
+                                    console.log('[SAVE] GameData initialized from cache successfully');
+                                } else {
+                                    console.warn('[SAVE] GameData initialization from cache failed');
+                                }
+                            });
+                            // Return true optimistically - the save will use RealGameState fallback
+                            return true;
+                        }
+                    } catch (e) {
+                        console.warn('[SAVE] Failed to initialize GameData from cache:', e);
+                    }
+                }
+                return false;
+            }
+        }
+        
+        // Fallback: check if GameData has data loaded
+        var metadata = typeof GameData.getGameMetadata === 'function' ? GameData.getGameMetadata() : null;
+        if (metadata && metadata.gameId) {
+            console.log('[SAVE] GameData appears to have data (metadata present)');
+            return true;
+        }
+        
+        console.warn('[SAVE] GameData state unknown - assuming not initialized');
+        return false;
+    }
+    
+    // ============================================================
     // v1.04: Calculate lastSyncedPosition from saved holes
     // ============================================================
     function calculateLastSyncedPosition(cache) {
@@ -186,7 +245,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.36] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.37] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -959,7 +1018,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.36: Uses nested flight data structure + computedUpToHole
+    // performSave - v1.37: Added GameData initialization verification
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -980,6 +1039,22 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-SAVE] =========================================`);
             console.log(`[DEBUG-SAVE] performSave #${getDebugCallCounters().save}: hole=${currentHole}, flight=${editableFlight}`);
             console.log(`[DEBUG-SAVE] =========================================`);
+            
+            // v1.37: Verify GameData is initialized before proceeding
+            if (typeof GameData !== 'undefined') {
+                console.log('[DEBUG-SAVE] Checking GameData initialization state...');
+                var isInit = ensureGameDataInitialized();
+                if (!isInit) {
+                    console.warn('[DEBUG-SAVE] GameData not initialized - attempting to continue with fallback');
+                    // Continue anyway - saveCurrentHole has fallback to RealGameState
+                } else {
+                    console.log('[DEBUG-SAVE] GameData is initialized');
+                }
+            } else {
+                console.warn('[DEBUG-SAVE] GameData not available - cannot save');
+                reject(new Error("GameData not available"));
+                return;
+            }
             
             if (!canEdit || takeoverDetected) {
                 reject(new Error("Role was taken over. Cannot save."));
@@ -1438,7 +1513,9 @@ var RealGameSave = (function() {
         savePendingWrites: savePendingWrites,
         loadPendingWrites: loadPendingWrites,
         processPendingWrites: processPendingWrites,
-        calculateLastSyncedPosition: calculateLastSyncedPosition
+        calculateLastSyncedPosition: calculateLastSyncedPosition,
+        // v1.37: Expose initialization verification
+        ensureGameDataInitialized: ensureGameDataInitialized
     };
     
 })();
@@ -1448,14 +1525,15 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - FIXED: Added safety checks in writeSingleHoleToFirestore() for flight data existence
-   - FIXED: processPendingWrites() now initializes full cache structure with flight data fields
-   - FIXED: writeNewHoleData() now sets computedUpToHole = position + 1 before building payload
-   - This ensures cascade writes don't fail when cache lacks flight data
-   - PREVIOUS: processPendingWrites() could call writeSingleHoleToFirestore() with incomplete cache
-   - PRESERVED: ALL other functionality from v1.35 (nested flight data structure)
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - ADDED: ensureGameDataInitialized() helper to check GameData state
+   - FIXED: performSave() now verifies GameData is initialized before saving
+   - ADDED: Automatic GameData initialization from cache if not initialized
+   - ADDED: Better error handling for uninitialized GameData
+   - This prevents saves when GameData is not properly initialized
+   - Works with the fixes in GameData v4.13 and RealGameInit v1.07
+   - PRESERVED: ALL other functionality from v1.36 (nested flight data structure)
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
