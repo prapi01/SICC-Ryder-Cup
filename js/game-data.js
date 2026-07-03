@@ -1,19 +1,18 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.11
-KEY CHANGES from v4.10:
-   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
-     - matchResults: {} (was new Array(18))
-     - f1IntraMatches: {} (was new Array(18))
-     - f2IntraMatches: {} (was new Array(18))
-   - This eliminates nested arrays that Firestore does NOT support
-   - Access pattern remains identical: results.matchResults[0] works the same way
-   - PRESERVED: ALL other functionality from v4.10 unchanged
+VERSION: 4.12
+KEY CHANGES from v4.11:
+   - ADDED: Debug console logs to trace saveCurrentHole() flow
+   - ADDED: Logs for holeNumber, startingHole, storageIndex, flight, data string
+   - ADDED: Logs for savedHoles before/after update
+   - ADDED: Logs for cache update
+   - NO LOGIC CHANGES - all functionality identical to v4.11
+   - PRESERVED: ALL existing functionality from v4.11
 DEPENDS ON: js/game-order.js, Firebase Firestore
-STATUS: Ready for integration
+STATUS: Debug version - ready for testing
 */
 
-// FILE: js/game-data.js - VERSION 4.11
+// FILE: js/game-data.js - VERSION 4.12 (Debug)
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -455,6 +454,283 @@ var GameData = (function() {
     }
     
     // ============================================================
+    // v4.12: Debug saveCurrentHole with detailed logging
+    // NO LOGIC CHANGES - only added console logs
+    // ============================================================
+    
+    function saveCurrentHole(holeNumber, scores, parArray, callback) {
+        // === DEBUG LOGGING v4.12 ===
+        console.log('[DEBUG-SAVE] =========================================');
+        console.log('[DEBUG-SAVE] saveCurrentHole CALLED');
+        console.log('[DEBUG-SAVE]   holeNumber (parameter):', holeNumber);
+        console.log('[DEBUG-SAVE]   startingHole (state):', startingHole);
+        console.log('[DEBUG-SAVE]   editableFlight:', editableFlight);
+        console.log('[DEBUG-SAVE]   getStorageIndexForHole(' + holeNumber + '):', getStorageIndexForHole(holeNumber));
+        console.log('[DEBUG-SAVE]   playOrder:', getPlayOrder());
+        // ===========================
+        
+        var flight = (editableFlight === 1) ? 1 : 2;
+        console.log('[DEBUG-SAVE]   flight:', flight);
+        
+        var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
+        
+        // === DEBUG: Show first 50 chars of current data ===
+        console.log('[DEBUG-SAVE]   flightData (first 50 chars):', flightData ? flightData.substring(0, 50) + '...' : 'null');
+        // ===========================
+        
+        var newData = updateHoleData(flightData, holeNumber, scores, true);
+        
+        // === DEBUG: Show what changed ===
+        console.log('[DEBUG-SAVE]   newData (first 50 chars):', newData ? newData.substring(0, 50) + '...' : 'null');
+        // Find which position changed
+        var storageIdx = getStorageIndexForHole(holeNumber);
+        var oldSegment = flightData ? flightData.substr(storageIdx * 9, 9) : 'null';
+        var newSegment = newData ? newData.substr(storageIdx * 9, 9) : 'null';
+        console.log('[DEBUG-SAVE]   storageIdx:', storageIdx);
+        console.log('[DEBUG-SAVE]   old segment at position ' + storageIdx + ':', oldSegment);
+        console.log('[DEBUG-SAVE]   new segment at position ' + storageIdx + ':', newSegment);
+        // ===========================
+        
+        // Update local data IMMEDIATELY (user sees success)
+        if (flight === 1) {
+            flight1Data.data = newData;
+            flight1Data.saveEvent = true;
+            flight2Data.crossEvent = true;
+            console.log('[DEBUG-SAVE]   flight1Data.data updated');
+        } else {
+            flight2Data.data = newData;
+            flight2Data.saveEvent = true;
+            flight1Data.crossEvent = true;
+            console.log('[DEBUG-SAVE]   flight2Data.data updated');
+        }
+        
+        // v4.07: Update cache's data strings AND savedHoles so UI shows saved state immediately
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (cache) {
+            console.log('[DEBUG-SAVE]   cache exists - updating...');
+            
+            if (flight === 1) {
+                cache.f1DataString = newData;
+                // Rebuild flight1Data from the new data string
+                if (!cache.flight1Data) cache.flight1Data = {};
+                for (var h = 1; h <= 18; h++) {
+                    cache.flight1Data[h] = parseHoleData(newData, h);
+                }
+                // v4.07: Update savedHoles for flight 1
+                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
+                var savedHoles1 = cache.savedHoles[1] || [];
+                
+                // === DEBUG: Log savedHoles BEFORE ===
+                console.log('[DEBUG-SAVE]   savedHoles[1] BEFORE:', JSON.stringify(savedHoles1));
+                // ===========================
+                
+                if (savedHoles1.indexOf(holeNumber) === -1) {
+                    savedHoles1.push(holeNumber);
+                    cache.savedHoles[1] = savedHoles1;
+                    
+                    // === DEBUG: Log savedHoles AFTER ===
+                    console.log('[DEBUG-SAVE]   savedHoles[1] AFTER push:', JSON.stringify(savedHoles1));
+                    console.log('[DEBUG-SAVE]   ** PUSHED holeNumber:', holeNumber, 'to savedHoles[1]');
+                    // ===========================
+                } else {
+                    console.log('[DEBUG-SAVE]   holeNumber', holeNumber, 'already in savedHoles[1]');
+                }
+                logWithTimestamp('[SAVE]', '✅ Updated cache.f1DataString and flight1Data');
+            } else {
+                cache.f2DataString = newData;
+                if (!cache.flight2Data) cache.flight2Data = {};
+                for (var h = 1; h <= 18; h++) {
+                    cache.flight2Data[h] = parseHoleData(newData, h);
+                }
+                // v4.07: Update savedHoles for flight 2
+                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
+                var savedHoles2 = cache.savedHoles[2] || [];
+                
+                // === DEBUG: Log savedHoles BEFORE ===
+                console.log('[DEBUG-SAVE]   savedHoles[2] BEFORE:', JSON.stringify(savedHoles2));
+                // ===========================
+                
+                if (savedHoles2.indexOf(holeNumber) === -1) {
+                    savedHoles2.push(holeNumber);
+                    cache.savedHoles[2] = savedHoles2;
+                    
+                    // === DEBUG: Log savedHoles AFTER ===
+                    console.log('[DEBUG-SAVE]   savedHoles[2] AFTER push:', JSON.stringify(savedHoles2));
+                    console.log('[DEBUG-SAVE]   ** PUSHED holeNumber:', holeNumber, 'to savedHoles[2]');
+                    // ===========================
+                } else {
+                    console.log('[DEBUG-SAVE]   holeNumber', holeNumber, 'already in savedHoles[2]');
+                }
+                logWithTimestamp('[SAVE]', '✅ Updated cache.f2DataString and flight2Data');
+            }
+            
+            // === DEBUG: Log final savedHoles state ===
+            console.log('[DEBUG-SAVE]   FINAL cache.savedHoles:', JSON.stringify(cache.savedHoles));
+            // ===========================
+        } else {
+            console.log('[DEBUG-SAVE]   cache is null - skipping cache update');
+        }
+        
+        logWithTimestamp('[SAVE]', 'Local data updated - flight ' + flight + ' data: ' + newData.substring(0, 50) + '...');
+        logWithTimestamp('[SAVE]', '⚠️ WRV write SKIPPED - consolidated write in real-game-save.js handles Firestore');
+        
+        // Notify UI immediately (user sees match, T-1, Next button)
+        notifyDataChanged();
+        logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
+        
+        // === DEBUG: Summary ===
+        console.log('[DEBUG-SAVE]   === SUMMARY ===');
+        console.log('[DEBUG-SAVE]   holeNumber:', holeNumber);
+        console.log('[DEBUG-SAVE]   startingHole:', startingHole);
+        console.log('[DEBUG-SAVE]   flight:', flight);
+        console.log('[DEBUG-SAVE]   storageIdx:', storageIdx);
+        console.log('[DEBUG-SAVE]   savedHoles[1]:', cache && cache.savedHoles ? JSON.stringify(cache.savedHoles[1]) : 'null');
+        console.log('[DEBUG-SAVE]   savedHoles[2]:', cache && cache.savedHoles ? JSON.stringify(cache.savedHoles[2]) : 'null');
+        console.log('[DEBUG-SAVE] =========================================');
+        // ===========================
+        
+        // Return IMMEDIATELY - user never waits
+        // The consolidated write in real-game-save.js will handle Firestore persistence
+        logWithTimestamp('[SAVE]', '✅ Callback returning immediately - user continues');
+        if (callback) callback(true);
+    }
+    
+    function forceRefresh() {
+        if (!gameId) return;
+        
+        var collection = getCollectionName();
+        firebase.firestore().collection(collection).doc(gameId).get()
+            .then(function(doc) {
+                if (doc.exists) {
+                    var data = doc.data();
+                    
+                    if (data.f1) {
+                        flight1Data.data = data.f1.d || flight1Data.data;
+                        flight1Data.saveEvent = data.f1.se || false;
+                        flight1Data.crossEvent = data.f1.x || false;
+                    }
+                    if (data.f2) {
+                        flight2Data.data = data.f2.d || flight2Data.data;
+                        flight2Data.saveEvent = data.f2.se || false;
+                        flight2Data.crossEvent = data.f2.x || false;
+                    }
+                    
+                    if (data.locks) {
+                        locks.f1 = data.locks.f1 || null;
+                        locks.f2 = data.locks.f2 || null;
+                    }
+                    
+                    if (data.startingHole) {
+                        setStartingHole(data.startingHole);
+                    } else {
+                        setStartingHole(1);
+                    }
+                    
+                    if (data.teamGameFormat) {
+                        teamGameFormat = data.teamGameFormat;
+                    } else {
+                        teamGameFormat = "tournament";
+                    }
+                    
+                    console.log("Refresh completed");
+                    notifyDataChanged();
+                }
+            })
+            .catch(function(err) {
+                console.error("Refresh error:", err);
+            });
+    }
+    
+    function loadGameFromSession(session, callback) {
+        var activeGame = session.activeGame;
+        if (!activeGame || !activeGame.gameId) {
+            notifyError("No active game in session");
+            if (callback) callback(false);
+            return;
+        }
+        
+        gameId = activeGame.gameId;
+        gameMode = activeGame.gameMode || activeGame.gameType || "real";
+        editableFlight = null;
+        
+        isPreviewSandbox = (activeGame.collection === "previewSandboxes");
+        
+        var userRole = session.userRole || activeGame.role;
+        
+        if (userRole === "update1") {
+            editableFlight = 1;
+        } else if (userRole === "update2") {
+            editableFlight = 2;
+        } else if (userRole === "view") {
+            editableFlight = null;
+        } else {
+            if (gameMode === "preview") {
+                editableFlight = 1;
+            } else {
+                editableFlight = null;
+            }
+        }
+        
+        var collection = getCollectionName();
+        
+        firebase.firestore().collection(collection).doc(gameId).get()
+            .then(function(doc) {
+                if (doc.exists) {
+                    var data = doc.data();
+                    
+                    if (data.startingHole) {
+                        setStartingHole(data.startingHole);
+                    } else {
+                        setStartingHole(1);
+                    }
+                    
+                    if (data.teamGameFormat) {
+                        teamGameFormat = data.teamGameFormat;
+                    } else {
+                        teamGameFormat = "tournament";
+                    }
+                    
+                    if (data.f1) {
+                        flight1Data.data = data.f1.d || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight1Data.saveEvent = data.f1.se || false;
+                        flight1Data.crossEvent = data.f1.x || false;
+                    } else if (data.flight1) {
+                        flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight1Data.saveEvent = data.flight1.saveEvent || false;
+                        flight1Data.crossEvent = data.flight1.crossEvent || false;
+                    }
+                    
+                    if (data.f2) {
+                        flight2Data.data = data.f2.d || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight2Data.saveEvent = data.f2.se || false;
+                        flight2Data.crossEvent = data.f2.x || false;
+                    } else if (data.flight2) {
+                        flight2Data.data = data.flight2.data || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight2Data.saveEvent = data.flight2.saveEvent || false;
+                        flight2Data.crossEvent = data.flight2.crossEvent || false;
+                    }
+                    
+                    if (data.locks) {
+                        locks.f1 = data.locks.f1 || null;
+                        locks.f2 = data.locks.f2 || null;
+                    }
+                    
+                    console.log("Game loaded");
+                    notifyDataChanged();
+                    if (callback) callback(true);
+                } else {
+                    notifyError("Game document not found");
+                    if (callback) callback(false);
+                }
+            })
+            .catch(function(err) {
+                console.error("Load game error:", err);
+                notifyError("Failed to load game: " + err.message);
+                if (callback) callback(false);
+            });
+    }
+    
+    // ============================================================
     // v4.11: initializeEmptyResults - OBJECTS instead of ARRAYS
     // Firestore does NOT support nested arrays (arrays inside arrays)
     // Using objects: matchResults[0] works the same as array[0]
@@ -775,207 +1051,7 @@ var GameData = (function() {
     // Only the consolidated WRV write in real-game-save.js writes to Firestore
     // ============================================================
     
-    function saveCurrentHole(holeNumber, scores, parArray, callback) {
-        var flight = (editableFlight === 1) ? 1 : 2;
-        
-        var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
-        var newData = updateHoleData(flightData, holeNumber, scores, true);
-        
-        // Update local data IMMEDIATELY (user sees success)
-        if (flight === 1) {
-            flight1Data.data = newData;
-            flight1Data.saveEvent = true;
-            flight2Data.crossEvent = true;
-        } else {
-            flight2Data.data = newData;
-            flight2Data.saveEvent = true;
-            flight1Data.crossEvent = true;
-        }
-        
-        // v4.07: Update cache's data strings AND savedHoles so UI shows saved state immediately
-        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-        if (cache) {
-            if (flight === 1) {
-                cache.f1DataString = newData;
-                // Rebuild flight1Data from the new data string
-                if (!cache.flight1Data) cache.flight1Data = {};
-                for (var h = 1; h <= 18; h++) {
-                    cache.flight1Data[h] = parseHoleData(newData, h);
-                }
-                // v4.07: Update savedHoles for flight 1
-                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
-                var savedHoles1 = cache.savedHoles[1] || [];
-                if (savedHoles1.indexOf(holeNumber) === -1) {
-                    savedHoles1.push(holeNumber);
-                    cache.savedHoles[1] = savedHoles1;
-                    logWithTimestamp('[SAVE]', '✅ Updated cache.savedHoles[1] with hole ' + holeNumber);
-                }
-                logWithTimestamp('[SAVE]', '✅ Updated cache.f1DataString and flight1Data');
-            } else {
-                cache.f2DataString = newData;
-                if (!cache.flight2Data) cache.flight2Data = {};
-                for (var h = 1; h <= 18; h++) {
-                    cache.flight2Data[h] = parseHoleData(newData, h);
-                }
-                // v4.07: Update savedHoles for flight 2
-                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
-                var savedHoles2 = cache.savedHoles[2] || [];
-                if (savedHoles2.indexOf(holeNumber) === -1) {
-                    savedHoles2.push(holeNumber);
-                    cache.savedHoles[2] = savedHoles2;
-                    logWithTimestamp('[SAVE]', '✅ Updated cache.savedHoles[2] with hole ' + holeNumber);
-                }
-                logWithTimestamp('[SAVE]', '✅ Updated cache.f2DataString and flight2Data');
-            }
-        }
-        
-        logWithTimestamp('[SAVE]', 'Local data updated - flight ' + flight + ' data: ' + newData.substring(0, 50) + '...');
-        logWithTimestamp('[SAVE]', '⚠️ WRV write SKIPPED - consolidated write in real-game-save.js handles Firestore');
-        
-        // Notify UI immediately (user sees match, T-1, Next button)
-        notifyDataChanged();
-        logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
-        
-        // Return IMMEDIATELY - user never waits
-        // The consolidated write in real-game-save.js will handle Firestore persistence
-        logWithTimestamp('[SAVE]', '✅ Callback returning immediately - user continues');
-        if (callback) callback(true);
-    }
-    
-    function forceRefresh() {
-        if (!gameId) return;
-        
-        var collection = getCollectionName();
-        firebase.firestore().collection(collection).doc(gameId).get()
-            .then(function(doc) {
-                if (doc.exists) {
-                    var data = doc.data();
-                    
-                    if (data.f1) {
-                        flight1Data.data = data.f1.d || flight1Data.data;
-                        flight1Data.saveEvent = data.f1.se || false;
-                        flight1Data.crossEvent = data.f1.x || false;
-                    }
-                    if (data.f2) {
-                        flight2Data.data = data.f2.d || flight2Data.data;
-                        flight2Data.saveEvent = data.f2.se || false;
-                        flight2Data.crossEvent = data.f2.x || false;
-                    }
-                    
-                    if (data.locks) {
-                        locks.f1 = data.locks.f1 || null;
-                        locks.f2 = data.locks.f2 || null;
-                    }
-                    
-                    if (data.startingHole) {
-                        setStartingHole(data.startingHole);
-                    } else {
-                        setStartingHole(1);
-                    }
-                    
-                    if (data.teamGameFormat) {
-                        teamGameFormat = data.teamGameFormat;
-                    } else {
-                        teamGameFormat = "tournament";
-                    }
-                    
-                    console.log("Refresh completed");
-                    notifyDataChanged();
-                }
-            })
-            .catch(function(err) {
-                console.error("Refresh error:", err);
-            });
-    }
-    
-    function loadGameFromSession(session, callback) {
-        var activeGame = session.activeGame;
-        if (!activeGame || !activeGame.gameId) {
-            notifyError("No active game in session");
-            if (callback) callback(false);
-            return;
-        }
-        
-        gameId = activeGame.gameId;
-        gameMode = activeGame.gameMode || activeGame.gameType || "real";
-        editableFlight = null;
-        
-        isPreviewSandbox = (activeGame.collection === "previewSandboxes");
-        
-        var userRole = session.userRole || activeGame.role;
-        
-        if (userRole === "update1") {
-            editableFlight = 1;
-        } else if (userRole === "update2") {
-            editableFlight = 2;
-        } else if (userRole === "view") {
-            editableFlight = null;
-        } else {
-            if (gameMode === "preview") {
-                editableFlight = 1;
-            } else {
-                editableFlight = null;
-            }
-        }
-        
-        var collection = getCollectionName();
-        
-        firebase.firestore().collection(collection).doc(gameId).get()
-            .then(function(doc) {
-                if (doc.exists) {
-                    var data = doc.data();
-                    
-                    if (data.startingHole) {
-                        setStartingHole(data.startingHole);
-                    } else {
-                        setStartingHole(1);
-                    }
-                    
-                    if (data.teamGameFormat) {
-                        teamGameFormat = data.teamGameFormat;
-                    } else {
-                        teamGameFormat = "tournament";
-                    }
-                    
-                    if (data.f1) {
-                        flight1Data.data = data.f1.d || generateDefaultData(currentCourse ? currentCourse.par : null);
-                        flight1Data.saveEvent = data.f1.se || false;
-                        flight1Data.crossEvent = data.f1.x || false;
-                    } else if (data.flight1) {
-                        flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
-                        flight1Data.saveEvent = data.flight1.saveEvent || false;
-                        flight1Data.crossEvent = data.flight1.crossEvent || false;
-                    }
-                    
-                    if (data.f2) {
-                        flight2Data.data = data.f2.d || generateDefaultData(currentCourse ? currentCourse.par : null);
-                        flight2Data.saveEvent = data.f2.se || false;
-                        flight2Data.crossEvent = data.f2.x || false;
-                    } else if (data.flight2) {
-                        flight2Data.data = data.flight2.data || generateDefaultData(currentCourse ? currentCourse.par : null);
-                        flight2Data.saveEvent = data.flight2.saveEvent || false;
-                        flight2Data.crossEvent = data.flight2.crossEvent || false;
-                    }
-                    
-                    if (data.locks) {
-                        locks.f1 = data.locks.f1 || null;
-                        locks.f2 = data.locks.f2 || null;
-                    }
-                    
-                    console.log("Game loaded");
-                    notifyDataChanged();
-                    if (callback) callback(true);
-                } else {
-                    notifyError("Game document not found");
-                    if (callback) callback(false);
-                }
-            })
-            .catch(function(err) {
-                console.error("Load game error:", err);
-                notifyError("Failed to load game: " + err.message);
-                if (callback) callback(false);
-            });
-    }
+    // v4.12: This function is now replaced with the debug version above
     
     // ============================================================
     // Public API - v4.11: initializeEmptyResults uses objects
@@ -1042,15 +1118,14 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.11
-KEY CHANGES from v4.10:
-   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
-     - matchResults: {} (was new Array(18))
-     - f1IntraMatches: {} (was new Array(18))
-     - f2IntraMatches: {} (was new Array(18))
-   - This eliminates nested arrays that Firestore does NOT support
-   - Access pattern remains identical: results.matchResults[0] works the same way
-   - PRESERVED: ALL other functionality from v4.10 unchanged
+VERSION: 4.12
+KEY CHANGES from v4.11:
+   - ADDED: Debug console logs to trace saveCurrentHole() flow
+   - ADDED: Logs for holeNumber, startingHole, storageIndex, flight, data string
+   - ADDED: Logs for savedHoles before/after update
+   - ADDED: Logs for cache update
+   - NO LOGIC CHANGES - all functionality identical to v4.11
+   - PRESERVED: ALL existing functionality from v4.11
 DEPENDS ON: js/game-order.js, Firebase Firestore
-STATUS: Ready for integration
+STATUS: Debug version - ready for testing
 */
