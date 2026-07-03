@@ -1,13 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.42
-KEY CHANGES from v8.41:
-   - CHANGED: labelHistory now read from playerInformation document (consistent with new design)
-   - CHANGED: loadLabelHistory() now reads playerInformation/players.labelHistory
-   - CHANGED: renderLabelResolutionCard() uses players array from playerInformation
-   - PRESERVED: All v8.41 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.41 unchanged
-   - PRESERVED: Label Resolution Card only appears if there are changes
+VERSION: 8.43
+KEY CHANGES from v8.42:
+   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
+   - CHANGED: In history view, isOtherFlightHoleSaved is always true (all data already saved)
+   - FIXED: Cross-flight bubbles now show correct colors since both flights have data in history
+   - PRESERVED: All v8.42 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.42 unchanged
+   - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -486,7 +486,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.42</div>
+<div class="version-tag">v8.43</div>
 
 <script>
 // ============================================================
@@ -499,10 +499,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.42: labelHistory from playerInformation
+// VERSION CACHE-BUSTING - v8.43: Cross-flight with isOtherFlightHoleSaved
 // ============================================================
-var APP_VERSION = "8.42";
-var CACHE_KEY = "view_history_version_v842";
+var APP_VERSION = "8.43";
+var CACHE_KEY = "view_history_version_v843";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -520,8 +520,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.42";
-console.log("[VIEW-HISTORY] Initializing v8.42 - labelHistory from playerInformation");
+window.VIEW_HISTORY_VERSION = "8.43";
+console.log("[VIEW-HISTORY] Initializing v8.43 - Cross-flight with isOtherFlightHoleSaved");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -943,18 +943,25 @@ function renderScorecardView(game) {
         return 'AS';
     }
     
+    // ============================================================
+    // v8.43: FIXED getBubbleClass - Pass isOtherFlightHoleSaved as 10th parameter
+    // ============================================================
     function getBubbleClass(player, opponent) {
         var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
         var clinchedAt = resultsCache?.clinchedAt || {};
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var lastSyncedHole = resultsCache?.computedUpToHole || 18;
         
+        // v8.43: In history view, ALL data is already saved, so isOtherFlightHoleSaved is always true
+        // This ensures cross-flight bubbles show correct colors
+        var isOtherFlightHoleSaved = true;
+        
         // Use stored clinchedAt for history view
         // GameMatch is a DISPLAY HELPER ONLY - it reads stored data
         return GameMatch.getMatchBubbleClass(
             matchValue, clinchedAt, player, opponent, currentHole,
             isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole,
-            startingHole
+            startingHole, isOtherFlightHoleSaved  // v8.43: 10th parameter
         );
     }
     
@@ -1581,14 +1588,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.42
-KEY CHANGES from v8.41:
-   - CHANGED: labelHistory now read from playerInformation document (consistent with new design)
-   - CHANGED: loadLabelHistory() now reads playerInformation/players.labelHistory
-   - CHANGED: renderLabelResolutionCard() uses players array from playerInformation
-   - PRESERVED: All v8.41 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.41 unchanged
-   - PRESERVED: Label Resolution Card only appears if there are changes
+VERSION: 8.43
+KEY CHANGES from v8.42:
+   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
+   - CHANGED: In history view, isOtherFlightHoleSaved is always true (all data already saved)
+   - FIXED: Cross-flight bubbles now show correct colors since both flights have data in history
+   - PRESERVED: All v8.42 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.42 unchanged
+   - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
