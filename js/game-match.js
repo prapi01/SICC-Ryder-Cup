@@ -1,25 +1,24 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.29
-KEY CHANGES from v2.28:
-   - FIXED: Cross-flight match bubbles now use isHoleSavedForFlight instead of lastSyncedValue
-   - CHANGED: Cross-flight now behaves identically to intra-flight for visibility
-   - FIXED: F2 cross-flight bubbles now show GREEN/RED immediately when hole is saved
-   - REMOVED: lastSyncedValue dependency for cross-flight display (only used for saves)
-   - PRESERVED: All debug logging from v2.28
-   - PRESERVED: All other functionality unchanged
+VERSION: 2.28
+KEY CHANGES from v2.27:
+   - FIXED: Cross-flight matches now correctly show grey AS when no data exists
+   - CHANGED: Added check for lastSyncedValue === undefined || lastSyncedValue === null || lastSyncedValue < 0
+   - CHANGED: Now handles undefined lastSyncedValue at game start (H1)
+   - PRESERVED: All debug logging from v2.27
+   - PRESERVED: All functionality from v2.27
 DEPENDS ON: GameData, GameOrder
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.29";
+window.GAME_MATCH_VERSION = "2.28";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.29 - Cross-flight uses isHoleSavedForFlight");
+    console.log("[GAME-MATCH] Initializing v2.28 - FIXED undefined lastSyncedValue handling");
     console.log("[GAME-MATCH] ===================================================");
-    console.log("[GAME-MATCH] Cross-flight now uses same visibility logic as intra-flight");
+    console.log("[GAME-MATCH] Cross-flight now checks undefined, null, OR < 0 for no data");
     console.log("[GAME-MATCH] ===================================================");
     
     // ============================================================
@@ -461,7 +460,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.29"
+                        cascadeVersion: cascadeVersion || "2.28"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-CROSS]   Clinch data: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -505,7 +504,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.29"
+                    cascadeVersion: cascadeVersion || "2.28"
                 }
             };
         }
@@ -685,7 +684,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.29: getMatchBubbleClass - FIXED cross-flight visibility
+    // v2.28: getMatchBubbleClass with FIX for undefined lastSyncedValue
     // ============================================================
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedValue, getClinchHoleFunc, startingHole) {
@@ -709,11 +708,24 @@ var GameMatch = (function() {
         console.log(`${logPrefix}   clinchHole=${clinchHole}`);
         console.log(`${logPrefix}   clinchPlayPosition=${clinchPlayPosition}`);
         
-        // v2.29: CROSS-FLIGHT now uses isHoleSavedForFlight (same as intra-flight)
-        // The data for cross-flight matches is available if the hole is saved for this flight
-        if (!isHoleSavedForFlight) {
-            console.log(`${logPrefix}   -> GREY (hole not saved for this flight)`);
-            return 'bubble-grey';
+        if (isCrossFlight) {
+            // v2.28: FIXED - Check for undefined, null, OR < 0 (no data exists yet)
+            if (lastSyncedValue === undefined || lastSyncedValue === null || lastSyncedValue < 0) {
+                console.log(`${logPrefix}   -> GREY (no data - lastSyncedValue=${lastSyncedValue})`);
+                return 'bubble-grey';
+            }
+            var isSynced = (lastSyncedValue >= currentPlayPosition);
+            console.log(`${logPrefix}   CROSS-FLIGHT: isSynced = ${lastSyncedValue} >= ${currentPlayPosition} = ${isSynced}`);
+            if (!isSynced) {
+                console.log(`${logPrefix}   -> GREY (not synced)`);
+                return 'bubble-grey';
+            }
+        } else {
+            console.log(`${logPrefix}   INTRA-FLIGHT: isHoleSaved=${isHoleSavedForFlight}`);
+            if (!isHoleSavedForFlight) {
+                console.log(`${logPrefix}   -> GREY (hole not saved)`);
+                return 'bubble-grey';
+            }
         }
         
         // Only log if matchValue is non-zero or we're at a clinch hole
@@ -833,18 +845,17 @@ var GameMatch = (function() {
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.29";
+window.GAME_MATCH_VERSION = "2.28";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.29
-KEY CHANGES from v2.28:
-   - FIXED: Cross-flight match bubbles now use isHoleSavedForFlight instead of lastSyncedValue
-   - CHANGED: Cross-flight now behaves identically to intra-flight for visibility
-   - FIXED: F2 cross-flight bubbles now show GREEN/RED immediately when hole is saved
-   - REMOVED: lastSyncedValue dependency for cross-flight display (only used for saves)
-   - PRESERVED: All debug logging from v2.28
-   - PRESERVED: All other functionality unchanged
+VERSION: 2.28
+KEY CHANGES from v2.27:
+   - FIXED: Cross-flight matches now correctly show grey AS when no data exists
+   - CHANGED: Added check for lastSyncedValue === undefined || lastSyncedValue === null || lastSyncedValue < 0
+   - CHANGED: Now handles undefined lastSyncedValue at game start (H1)
+   - PRESERVED: All debug logging from v2.27
+   - PRESERVED: All functionality from v2.27
 DEPENDS ON: GameData, GameOrder
 STATUS: Ready for integration
 */
