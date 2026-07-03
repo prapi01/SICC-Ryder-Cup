@@ -1,21 +1,24 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: getBubbleClass() now correctly passes -1 instead of cache.lastSyncedHole when no holes are synced
-   - This ensures cross-flight bubbles show grey AS at game start (H1)
-   - Now properly handles lastSyncedPosition = -1 (no data) state
-   - All existing functionality preserved from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
+   - CHANGED: Calculates isOtherFlightHoleSaved by checking if the other flight has the hole saved
+   - FIXED: Cross-flight bubbles now correctly show GREY until BOTH flights have saved the hole
+   - FIXED: Cross-flight bubbles now show GREEN/RED only when both flights have data
+   - PRESERVED: All v1.03 functionality unchanged
+   - PRESERVED: WRV button state management unchanged
+   - PRESERVED: All render functions unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.03";
+window.REAL_GAME_UI_VERSION = "1.04";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.03 - Fixed cross-flight grey AS at H1");
+    console.log("[REAL-GAME-UI] Initializing v1.04 - Cross-flight requires BOTH flights");
     
     // ============================================================
     // Private Helpers
@@ -323,7 +326,7 @@ var RealGameUI = (function() {
     }
     
     // ============================================================
-    // v1.03: FIXED - getBubbleClass now correctly passes -1 when no data
+    // v1.04: FIXED - getBubbleClass now passes isOtherFlightHoleSaved
     // ============================================================
     
     function getBubbleClass(player, opponent) {
@@ -336,23 +339,26 @@ var RealGameUI = (function() {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var startingHole = getStartingHole();
         
-        // v1.03: FIXED - Always pass -1 when no holes are synced
-        // Previously this fell back to cache.lastSyncedHole (which was 0)
-        // Now we explicitly check lastSyncedPosition and use -1 if < 0
+        // v1.04: Calculate if the OTHER flight has the hole saved
+        var otherFlight = player.flight === 1 ? 2 : 1;
+        var isOtherFlightHoleSaved = isHoleSaved(otherFlight, currentHole);
+        
+        // v1.03: Always pass -1 when no holes are synced
         var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
             ? cache.lastSyncedPosition 
-            : -1;  // FIXED: Use -1 instead of cache.lastSyncedHole
+            : -1;
         
-        // Debug logging for initial state
-        if (cache.lastSyncedPosition === -1) {
-            console.log(`[DEBUG-UI] getBubbleClass: No holes synced, lastSyncedValue=${lastSyncedValue} (should be -1)`);
+        // Debug logging for cross-flight
+        if (player.flight !== opponent.flight) {
+            console.log(`[DEBUG-UI] getBubbleClass CROSS: ${player.label} vs ${opponent.label}, F1 saved=${isHoleSaved(1, currentHole)}, F2 saved=${isHoleSaved(2, currentHole)}, otherFlight=${otherFlight}, isOtherFlightHoleSaved=${isOtherFlightHoleSaved}`);
         }
         
         if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
+            // v1.04: Pass isOtherFlightHoleSaved as the 10th parameter
             return GameMatch.getMatchBubbleClass(
                 matchValue, clinchedAt, player, opponent, currentHole,
                 isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
-                startingHole
+                startingHole, isOtherFlightHoleSaved  // v1.04: 10th parameter
             );
         }
         
@@ -732,12 +738,15 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: getBubbleClass() now correctly passes -1 instead of cache.lastSyncedHole when no holes are synced
-   - This ensures cross-flight bubbles show grey AS at game start (H1)
-   - Now properly handles lastSyncedPosition = -1 (no data) state
-   - All existing functionality preserved from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
+   - CHANGED: Calculates isOtherFlightHoleSaved by checking if the other flight has the hole saved
+   - FIXED: Cross-flight bubbles now correctly show GREY until BOTH flights have saved the hole
+   - FIXED: Cross-flight bubbles now show GREEN/RED only when both flights have data
+   - PRESERVED: All v1.03 functionality unchanged
+   - PRESERVED: WRV button state management unchanged
+   - PRESERVED: All render functions unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
