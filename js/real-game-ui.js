@@ -1,23 +1,21 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: TR display now shows "-" instead of "0" for unsaved holes
-   - CHANGED: Added check for tr.teamA === 0 and tr.teamB === 0
-   - CHANGED: Added check for tr.teamAGreen and tr.teamBGreen when data exists
-   - PRESERVED: All v1.05 functionality unchanged (cross-flight bubbles fixed)
-   - PRESERVED: WRV button state management unchanged
-   - PRESERVED: All render functions unchanged
-DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: Flight toggle now updates cache.lastSyncedPosition before rendering
+   - This ensures F1 bubbles show correctly when toggling from F2 screen
+   - The stale lastSyncedPosition was causing F1 holes to show as grey
+   - PRESERVED: ALL other functionality from v1.06 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch, RealGameSave
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.06";
+window.REAL_GAME_UI_VERSION = "1.07";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.06 - TR display shows - for unsaved holes");
+    console.log("[REAL-GAME-UI] Initializing v1.07 - Fixed flight toggle lastSyncedPosition update");
     
     // ============================================================
     // Private Helpers
@@ -464,8 +462,20 @@ var RealGameUI = (function() {
         
         var flightToggleBtn = document.getElementById('compactFlightToggleBtn');
         if (flightToggleBtn) {
+            // v1.07: FIX - Update lastSyncedPosition before rendering
             flightToggleBtn.onclick = function() {
                 RealGameState.setViewOtherFlight(!RealGameState.isViewOtherFlight());
+                
+                // v1.07: Recalculate and update lastSyncedPosition before rendering
+                var cache = GameLoader.getLocalCache();
+                if (cache && cache.savedHoles && typeof RealGameSave !== 'undefined' && typeof RealGameSave.calculateLastSyncedPosition === 'function') {
+                    var newLastSyncedPos = RealGameSave.calculateLastSyncedPosition(cache);
+                    if (newLastSyncedPos !== cache.lastSyncedPosition) {
+                        cache.lastSyncedPosition = newLastSyncedPos;
+                        console.log('[FIX] Updated lastSyncedPosition from', cache.lastSyncedPosition, 'to', newLastSyncedPos);
+                    }
+                }
+                
                 console.log(`[REAL-GAME] Toggle flight view: viewOtherFlight = ${RealGameState.isViewOtherFlight()}`);
                 if (typeof RealGameUI !== 'undefined' && RealGameUI.renderAll) {
                     RealGameUI.renderAll();
@@ -752,14 +762,12 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: TR display now shows "-" instead of "0" for unsaved holes
-   - CHANGED: Added check for tr.teamA === 0 and tr.teamB === 0
-   - CHANGED: Added check for tr.teamAGreen and tr.teamBGreen when data exists
-   - PRESERVED: All v1.05 functionality unchanged (cross-flight bubbles fixed)
-   - PRESERVED: WRV button state management unchanged
-   - PRESERVED: All render functions unchanged
-DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: Flight toggle now updates cache.lastSyncedPosition before rendering
+   - This ensures F1 bubbles show correctly when toggling from F2 screen
+   - The stale lastSyncedPosition was causing F1 holes to show as grey
+   - PRESERVED: ALL other functionality from v1.06 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch, RealGameSave
 STATUS: Ready for integration
 */
