@@ -1,12 +1,13 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
-   - CHANGED: Calculates isOtherFlightHoleSaved by checking if the other flight has the hole saved
-   - FIXED: Cross-flight bubbles now correctly show GREY until BOTH flights have saved the hole
-   - FIXED: Cross-flight bubbles now show GREEN/RED only when both flights have data
-   - PRESERVED: All v1.03 functionality unchanged
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: getBubbleClass() now calculates lastSyncedValue based on the flight being viewed
+   - CHANGED: Flight 1 uses global lastSyncedPosition (preserves original behavior)
+   - CHANGED: Flight 2 calculates lastSyncedValue from F2's saved holes
+   - FIXED: F2 cross-flight bubbles no longer 1 hole off (uses F2's own sync position)
+   - REMOVED: isOtherFlightHoleSaved parameter (not needed for this fix)
+   - PRESERVED: All v1.04 functionality unchanged
    - PRESERVED: WRV button state management unchanged
    - PRESERVED: All render functions unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
@@ -14,11 +15,11 @@ STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.04";
+window.REAL_GAME_UI_VERSION = "1.05";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.04 - Cross-flight requires BOTH flights");
+    console.log("[REAL-GAME-UI] Initializing v1.05 - Flight-specific lastSyncedValue for F2");
     
     // ============================================================
     // Private Helpers
@@ -326,7 +327,7 @@ var RealGameUI = (function() {
     }
     
     // ============================================================
-    // v1.04: FIXED - getBubbleClass now passes isOtherFlightHoleSaved
+    // v1.05: FIXED - getBubbleClass with flight-specific lastSyncedValue
     // ============================================================
     
     function getBubbleClass(player, opponent) {
@@ -339,26 +340,45 @@ var RealGameUI = (function() {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var startingHole = getStartingHole();
         
-        // v1.04: Calculate if the OTHER flight has the hole saved
-        var otherFlight = player.flight === 1 ? 2 : 1;
-        var isOtherFlightHoleSaved = isHoleSaved(otherFlight, currentHole);
-        
-        // v1.03: Always pass -1 when no holes are synced
-        var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
-            ? cache.lastSyncedPosition 
-            : -1;
+        // v1.05: Calculate lastSyncedValue based on the flight being viewed
+        var lastSyncedValue;
+        if (player.flight === 1) {
+            // Flight 1: use global lastSyncedPosition (preserves original behavior)
+            lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
+                ? cache.lastSyncedPosition 
+                : -1;
+            console.log(`[DEBUG-UI] F1 lastSyncedValue=${lastSyncedValue}`);
+        } else {
+            // Flight 2: calculate based on F2 saved holes
+            var f2SavedHoles = cache.savedHoles && cache.savedHoles[2] ? cache.savedHoles[2] : [];
+            if (f2SavedHoles.length === 0) {
+                lastSyncedValue = -1;
+                console.log(`[DEBUG-UI] F2: no saved holes, lastSyncedValue=-1`);
+            } else {
+                // Find the highest play position that is saved for F2
+                var maxPos = -1;
+                var playOrder = RealGameUtils.getPlayOrder();
+                for (var i = 0; i < f2SavedHoles.length; i++) {
+                    var hole = f2SavedHoles[i];
+                    var pos = playOrder.indexOf(hole);
+                    if (pos > maxPos) maxPos = pos;
+                }
+                lastSyncedValue = maxPos;
+                console.log(`[DEBUG-UI] F2: ${f2SavedHoles.length} saved holes, lastSyncedValue=${lastSyncedValue}`);
+            }
+        }
         
         // Debug logging for cross-flight
         if (player.flight !== opponent.flight) {
-            console.log(`[DEBUG-UI] getBubbleClass CROSS: ${player.label} vs ${opponent.label}, F1 saved=${isHoleSaved(1, currentHole)}, F2 saved=${isHoleSaved(2, currentHole)}, otherFlight=${otherFlight}, isOtherFlightHoleSaved=${isOtherFlightHoleSaved}`);
+            console.log(`[DEBUG-UI] getBubbleClass CROSS: ${player.label} vs ${opponent.label}, lastSyncedValue=${lastSyncedValue}, currentHole=${currentHole}`);
         }
         
         if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
-            // v1.04: Pass isOtherFlightHoleSaved as the 10th parameter
+            // Use the original 9-parameter signature (no isOtherFlightHoleSaved)
             return GameMatch.getMatchBubbleClass(
                 matchValue, clinchedAt, player, opponent, currentHole,
                 isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
-                startingHole, isOtherFlightHoleSaved  // v1.04: 10th parameter
+                startingHole
             );
         }
         
@@ -738,13 +758,14 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
-   - CHANGED: Calculates isOtherFlightHoleSaved by checking if the other flight has the hole saved
-   - FIXED: Cross-flight bubbles now correctly show GREY until BOTH flights have saved the hole
-   - FIXED: Cross-flight bubbles now show GREEN/RED only when both flights have data
-   - PRESERVED: All v1.03 functionality unchanged
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: getBubbleClass() now calculates lastSyncedValue based on the flight being viewed
+   - CHANGED: Flight 1 uses global lastSyncedPosition (preserves original behavior)
+   - CHANGED: Flight 2 calculates lastSyncedValue from F2's saved holes
+   - FIXED: F2 cross-flight bubbles no longer 1 hole off (uses F2's own sync position)
+   - REMOVED: isOtherFlightHoleSaved parameter (not needed for this fix)
+   - PRESERVED: All v1.04 functionality unchanged
    - PRESERVED: WRV button state management unchanged
    - PRESERVED: All render functions unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
