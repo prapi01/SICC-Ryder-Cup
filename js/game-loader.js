@@ -1,10 +1,13 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - EXPOSED: buildCacheFromDoc() in public API
-   - This allows VALIDATE tab to build cache from record data
-   - All existing functionality preserved from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - FIXED: GameData.startingHole is now set BEFORE parsing saved holes in buildCacheFromDoc()
+   - This ensures getSavedHolesFromString() uses the correct play order mapping
+   - Previously, GameData.startingHole was still 1 (default) when savedHoles were parsed
+   - This caused savedHoles to be stored in natural order (1-12) instead of play order (10-18,1-9)
+   - Result: Scorecard showed H1 as first hole instead of H10 for shotgun start
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -169,9 +172,7 @@ var GameLoader = (function() {
     
     // ============================================================
     // Helper: Build cache from Firestore document
-    // v1.10: Converts sparse Firestore objects to arrays
-    // v1.12: FIXED - lastSyncedHole now null when no holes synced
-    // v1.13: EXPOSED via public API
+    // v1.14: CRITICAL FIX - Set GameData.startingHole BEFORE parsing saved holes
     // ============================================================
     function buildCacheFromDoc(docData) {
         var course = docData.course || {};
@@ -187,6 +188,13 @@ var GameLoader = (function() {
         var gameStarted = docData.gameStarted || false;
         var gameComplete = (signatures.f1 && signatures.f2) || false;
         
+        // v1.14: CRITICAL - Set GameData.startingHole BEFORE parsing saved holes
+        // This ensures getSavedHolesFromString() uses the correct play order mapping
+        if (typeof GameData !== 'undefined' && GameData.setStartingHole) {
+            GameData.setStartingHole(startingHole);
+            console.log('[GAME-LOADER] buildCacheFromDoc: Set GameData.startingHole to', startingHole);
+        }
+        
         if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
             GameOrder.setStartingHole(startingHole);
         }
@@ -198,10 +206,13 @@ var GameLoader = (function() {
             flight2Data[h] = GameData.parseHoleData(f2DataString, h);
         }
         
+        // v1.14: Now GameData.startingHole is correctly set, so getSavedHolesFromString works
         var savedHoles = {
             1: getSavedHolesFromString(f1DataString),
             2: getSavedHolesFromString(f2DataString)
         };
+        
+        console.log('[GAME-LOADER] buildCacheFromDoc: savedHoles parsed:', JSON.stringify(savedHoles));
         
         var lastSyncedPosition = calculateLastSyncedPosition(savedHoles[1], savedHoles[2], startingHole);
         // v1.12: FIXED - return null instead of 0 when no holes are synced
@@ -528,11 +539,14 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - EXPOSED: buildCacheFromDoc() in public API
-   - This allows VALIDATE tab to build cache from record data
-   - All existing functionality preserved from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - FIXED: GameData.startingHole is now set BEFORE parsing saved holes in buildCacheFromDoc()
+   - This ensures getSavedHolesFromString() uses the correct play order mapping
+   - Previously, GameData.startingHole was still 1 (default) when savedHoles were parsed
+   - This caused savedHoles to be stored in natural order (1-12) instead of play order (10-18,1-9)
+   - Result: Scorecard showed H1 as first hole instead of H10 for shotgun start
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
