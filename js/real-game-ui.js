@@ -1,21 +1,21 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: Flight toggle now updates cache.lastSyncedPosition before rendering
-   - This ensures F1 bubbles show correctly when toggling from F2 screen
-   - The stale lastSyncedPosition was causing F1 holes to show as grey
-   - PRESERVED: ALL other functionality from v1.06 unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: getBubbleClass now uses cache.results.clinchedAt instead of cache.clinchedAt
+   - The cache.clinchedAt was empty while cache.results.clinchedAt had the data
+   - This fixes cross-flight clinch display (GOLD bubbles) on F2 screen
+   - PRESERVED: ALL other functionality from v1.07 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch, RealGameSave
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.07";
+window.REAL_GAME_UI_VERSION = "1.08";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.07 - Fixed flight toggle lastSyncedPosition update");
+    console.log("[REAL-GAME-UI] Initializing v1.08 - Fixed clinchedAt source for cross-flight clinches");
     
     // ============================================================
     // Private Helpers
@@ -323,7 +323,7 @@ var RealGameUI = (function() {
     }
     
     // ============================================================
-    // v1.05: FIXED - getBubbleClass with flight-specific lastSyncedValue
+    // v1.08: FIXED - getBubbleClass uses results.clinchedAt for cross-flight clinches
     // ============================================================
     
     function getBubbleClass(player, opponent) {
@@ -332,7 +332,8 @@ var RealGameUI = (function() {
         
         var currentHole = getCurrentHole();
         var matchValue = getMatchValueForPlayer(player, opponent);
-        var clinchedAt = cache.clinchedAt || {};
+        // v1.08: FIX - Use results.clinchedAt first (has data), fallback to cache.clinchedAt
+        var clinchedAt = cache.results?.clinchedAt || cache.clinchedAt || {};
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var startingHole = getStartingHole();
         
@@ -762,12 +763,12 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: Flight toggle now updates cache.lastSyncedPosition before rendering
-   - This ensures F1 bubbles show correctly when toggling from F2 screen
-   - The stale lastSyncedPosition was causing F1 holes to show as grey
-   - PRESERVED: ALL other functionality from v1.06 unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: getBubbleClass now uses cache.results.clinchedAt instead of cache.clinchedAt
+   - The cache.clinchedAt was empty while cache.results.clinchedAt had the data
+   - This fixes cross-flight clinch display (GOLD bubbles) on F2 screen
+   - PRESERVED: ALL other functionality from v1.07 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch, RealGameSave
 STATUS: Ready for integration
 */
