@@ -6,8 +6,8 @@ KEY CHANGES from v1.60:
    - FIXED: This matches the schema and eliminates mixed structure issues
    - REMOVED: submitted field (no longer used, was causing confusion)
    - ADDED: Label display field next to player name (white on green, 3 chars)
-   - ADDED: Labels shown in dropdown as "(LABEL)" next to player name
-   - CHANGED: Player name field reduced to fit label display
+   - CHANGED: Player name field font size increased to 0.75rem
+   - CHANGED: Removed label from dropdown (labels are shown in badge field)
    - PRESERVED: All UI styling and layout from v1.60
    - PRESERVED: All edit mode functionality unchanged
    - PRESERVED: All existing form handling unchanged
@@ -282,7 +282,7 @@ STATUS: Ready for integration
         .player-name-select {
             width: 100%;
             height: 24px;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             padding: 2px 18px 2px 4px;
             border: 1px solid #2a5a2a;
             border-radius: 3px;
@@ -303,7 +303,7 @@ STATUS: Ready for integration
         .player-name-select option {
             background: #0a0a0a;
             color: #e0e0e0;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
         }
         
         /* Column 2: Label - 3 chars, white on green, minimal padding */
@@ -1911,13 +1911,12 @@ function render() {
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        // v1.61: Show labels in dropdown options
+        // v1.61: Show just the name in dropdown (label is in its own badge field)
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
             var isSelected = (pl.name === p.name) ? ' selected' : '';
-            var displayName = pl.name + (pl.label ? ' (' + pl.label + ')' : '');
-            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(displayName) + '</option>';
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
         var flightVal = p.flight !== null && p.flight !== undefined ? p.flight : '';
@@ -2176,8 +2175,8 @@ KEY CHANGES from v1.60:
    - FIXED: This matches the schema and eliminates mixed structure issues
    - REMOVED: submitted field (no longer used, was causing confusion)
    - ADDED: Label display field next to player name (white on green, 3 chars)
-   - ADDED: Labels shown in dropdown as "(LABEL)" next to player name
-   - CHANGED: Player name field reduced to fit label display
+   - CHANGED: Player name field font size increased to 0.75rem
+   - CHANGED: Removed label from dropdown (labels are shown in badge field)
    - PRESERVED: All UI styling and layout from v1.60
    - PRESERVED: All edit mode functionality unchanged
    - PRESERVED: All existing form handling unchanged
