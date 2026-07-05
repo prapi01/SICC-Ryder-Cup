@@ -1,13 +1,13 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - FIXED: buildCacheFromDoc() now correctly reads signatures from BOTH sources:
-     - Flat fields: docData['signatures.f1'] (v1.20 writes these)
-     - Nested fields: docData.signatures?.f1?.signed (v1.21 writes these)
-   - This ensures cache.signatures is correctly built regardless of which version wrote the data
-   - Eliminates the mismatch between cache and Firestore that prevented game completion
-   - PRESERVED: ALL other functionality from v1.14 unchanged
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - FIXED: buildCacheFromDoc() now reads nested signatures structure
+   - CHANGED: Reads signatures.f1.signed and signatures.f2.signed
+   - CHANGED: Normalizes flat fields to nested structure
+   - CHANGED: Adds compatibility for both flat and nested during transition
+   - PRESERVED: ALL other functionality from v1.15 unchanged
+   - This matches the nested structure written by sign-card.js v1.22
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -172,7 +172,7 @@ var GameLoader = (function() {
     
     // ============================================================
     // Helper: Build cache from Firestore document
-    // v1.15: FIXED - Read signatures from both flat fields and nested object
+    // v1.16: Read nested signatures, normalize flat fields
     // ============================================================
     function buildCacheFromDoc(docData) {
         var course = docData.course || {};
@@ -183,36 +183,95 @@ var GameLoader = (function() {
         var f2DataString = docData.f2?.d || "";
         var results = docData.results || null;
         
-        // v1.15: Build signatures from BOTH sources to handle mixed structure
-        // Check flat fields (v1.20 writes these) AND nested .signed (v1.21 writes these)
+        // v1.16: Build signatures from nested structure
+        // Check both flat and nested for backward compatibility
         var f1Signed = false;
         var f2Signed = false;
         
-        // Check flat fields at document root
+        // Check flat fields at document root (old v1.20 writes these)
         if (docData['signatures.f1'] === true) f1Signed = true;
         if (docData['signatures.f2'] === true) f2Signed = true;
         
-        // Check nested signatures object
+        // Check flat fields inside signatures object (setup-game.html writes these)
         if (docData.signatures) {
-            // Check flat booleans inside signatures object
             if (docData.signatures.f1 === true) f1Signed = true;
             if (docData.signatures.f2 === true) f2Signed = true;
-            // Check nested .signed structure (v1.21)
+            // Check nested .signed structure (v1.22 writes these)
             if (docData.signatures.f1 && docData.signatures.f1.signed === true) f1Signed = true;
             if (docData.signatures.f2 && docData.signatures.f2.signed === true) f2Signed = true;
         }
         
         var signatures = {
-            f1: f1Signed,
-            f2: f2Signed
+            f1: { signed: f1Signed, signedAt: null, captainName: null },
+            f2: { signed: f2Signed, signedAt: null, captainName: null }
         };
         
+        // Preserve timestamps if they exist (from either flat or nested)
+        if (docData['signatures.f1_at']) {
+            signatures.f1.signedAt = docData['signatures.f1_at'];
+        } else if (docData.signatures?.f1?.signedAt) {
+            signatures.f1.signedAt = docData.signatures.f1.signedAt;
+        }
+        if (docData['signatures.f2_at']) {
+            signatures.f2.signedAt = docData['signatures.f2_at'];
+        } else if (docData.signatures?.f2?.signedAt) {
+            signatures.f2.signedAt = docData.signatures.f2.signedAt;
+        }
+        
+        // Preserve captain names if they exist
+        if (docData['signatures.f1_captain']) {
+            signatures.f1.captainName = docData['signatures.f1_captain'];
+        } else if (docData.signatures?.f1?.captainName) {
+            signatures.f1.captainName = docData.signatures.f1.captainName;
+        }
+        if (docData['signatures.f2_captain']) {
+            signatures.f2.captainName = docData['signatures.f2_captain'];
+        } else if (docData.signatures?.f2?.captainName) {
+            signatures.f2.captainName = docData.signatures.f2.captainName;
+        }
+        
         console.log('[GAME-LOADER] buildCacheFromDoc: signatures built:', JSON.stringify(signatures));
+        
+        // v1.16: Clean up flat fields in the background if they exist
+        var needsCleanup = false;
+        var cleanupPayload = {};
+        if (docData['signatures.f1'] !== undefined) {
+            cleanupPayload['signatures.f1'] = firebase.firestore.FieldValue.delete();
+            needsCleanup = true;
+        }
+        if (docData['signatures.f2'] !== undefined) {
+            cleanupPayload['signatures.f2'] = firebase.firestore.FieldValue.delete();
+            needsCleanup = true;
+        }
+        if (docData['signatures.f1_at'] !== undefined) {
+            cleanupPayload['signatures.f1_at'] = firebase.firestore.FieldValue.delete();
+            needsCleanup = true;
+        }
+        if (docData['signatures.f2_at'] !== undefined) {
+            cleanupPayload['signatures.f2_at'] = firebase.firestore.FieldValue.delete();
+            needsCleanup = true;
+        }
+        if (docData['signatures.f1_captain'] !== undefined) {
+            cleanupPayload['signatures.f1_captain'] = firebase.firestore.FieldValue.delete();
+            needsCleanup = true;
+        }
+        if (docData['signatures.f2_captain'] !== undefined) {
+            cleanupPayload['signatures.f2_captain'] = firebase.firestore.FieldValue.delete();
+            needsCleanup = true;
+        }
+        
+        if (needsCleanup && currentGameId && currentCollection) {
+            var db = getDb();
+            db.collection(currentCollection).doc(currentGameId).update(cleanupPayload).catch(function(e) {
+                console.warn('[GAME-LOADER] Failed to clean up flat signature fields:', e);
+            });
+            console.log('[GAME-LOADER] Cleanup of flat signature fields initiated');
+        }
         
         var submitted = docData.submitted || { f1: false, f2: false };
         var locks = docData.locks || { f1: null, f2: null };
         var gameStarted = docData.gameStarted || false;
-        var gameComplete = (signatures.f1 && signatures.f2) || false;
+        var gameComplete = (signatures.f1.signed && signatures.f2.signed) || false;
         
         // v1.14: CRITICAL - Set GameData.startingHole BEFORE parsing saved holes
         // This ensures getSavedHolesFromString() uses the correct play order mapping
@@ -565,14 +624,14 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - FIXED: buildCacheFromDoc() now correctly reads signatures from BOTH sources:
-     - Flat fields: docData['signatures.f1'] (v1.20 writes these)
-     - Nested fields: docData.signatures?.f1?.signed (v1.21 writes these)
-   - This ensures cache.signatures is correctly built regardless of which version wrote the data
-   - Eliminates the mismatch between cache and Firestore that prevented game completion
-   - PRESERVED: ALL other functionality from v1.14 unchanged
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - FIXED: buildCacheFromDoc() now reads nested signatures structure
+   - CHANGED: Reads signatures.f1.signed and signatures.f2.signed
+   - CHANGED: Normalizes flat fields to nested structure
+   - CHANGED: Adds compatibility for both flat and nested during transition
+   - PRESERVED: ALL other functionality from v1.15 unchanged
+   - This matches the nested structure written by sign-card.js v1.22
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
