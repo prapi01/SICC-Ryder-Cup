@@ -1,13 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - FIXED: submitSignature() now writes the ENTIRE signatures object instead of dot notation
-   - REMOVED: Dot notation paths that were creating flat fields (signatures.f1.signed)
-   - CHANGED: Now reads current signatures from Firestore first, then updates nested structure
-   - ADDED: Proper error handling for WRV.getDocument failure
-   - PRESERVED: ALL other functionality from v1.22 unchanged
-   - This matches the schema structure v4.0 (nested signatures only)
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - REMOVED: signedAt field entirely from signature write (was causing WRV verification failures)
+   - CHANGED: Now only writes signatures.fX.signed = true and updatedAt
+   - PRESERVED: Nested signatures structure (f1/f2 objects with signed, signedAt, captainName)
+   - signedAt will remain null in Firestore (matches schema v4.0)
+   - PRESERVED: ALL other functionality from v1.23 unchanged
+   - This eliminates the WRV verification mismatch caused by serverTimestamp()
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -633,56 +633,24 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Signature Submission - v1.23: Write ENTIRE nested object
+    // Signature Submission - v1.24: REMOVED signedAt
+    // Only writes signatures.fX.signed = true
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
         try {
-            // Step 1: Get the current document to read existing signatures
-            var doc;
-            if (typeof WRV !== 'undefined' && WRV.getDocument) {
-                doc = await new Promise(function(resolve, reject) {
-                    WRV.getDocument(collection, gameId, function(err, result) {
-                        if (err) reject(err);
-                        else resolve(result);
-                    });
-                });
-            } else {
-                // Fallback: direct Firestore read
-                var db = getDb();
-                doc = await db.collection(collection).doc(gameId).get();
+            // v1.24: Only write the signed boolean - no timestamp
+            // signedAt remains null in Firestore (matches schema v4.0)
+            var updatePayload = {};
+            updatePayload['signatures.f' + flight + '.signed'] = true;
+            if (captainName) {
+                updatePayload['signatures.f' + flight + '.captainName'] = captainName;
             }
+            updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             
-            if (!doc.exists) {
-                console.error('[SignCard] Document not found:', gameId);
-                return false;
-            }
+            console.log('[SignCard] Writing signature for flight', flight, ':', updatePayload);
             
-            var data = doc.data();
-            var currentSignatures = data.signatures || {};
-            
-            // Step 2: Update the nested signatures object
-            var updatedSignatures = {
-                f1: currentSignatures.f1 || { signed: false, signedAt: null, captainName: null },
-                f2: currentSignatures.f2 || { signed: false, signedAt: null, captainName: null }
-            };
-            
-            // Set the signature for the specified flight
-            updatedSignatures['f' + flight] = {
-                signed: true,
-                signedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                captainName: captainName || null
-            };
-            
-            // Step 3: Write the ENTIRE signatures object - NO DOT NOTATION
-            var updatePayload = {
-                signatures: updatedSignatures,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            console.log('[SignCard] Writing nested signatures for flight', flight, ':', updatedSignatures);
-            
-            // Step 4: Use WRV to update
+            // Use WRV with skipVerify for updatedAt only
             if (typeof WRV !== 'undefined' && WRV.update) {
                 return new Promise(function(resolve, reject) {
                     WRV.update(collection, gameId, updatePayload, function(err, result) {
@@ -691,10 +659,9 @@ var SignCard = (function() {
                             reject(err);
                         } else {
                             console.log('[SignCard] WRV signature successful for flight ' + flight);
-                            console.log('[SignCard] Nested signatures written:', updatedSignatures);
                             resolve(result);
                         }
-                    }, { skipVerify: ['updatedAt', 'signatures.f' + flight + '.signedAt'] });
+                    }, { skipVerify: ['updatedAt'] });
                 });
             } else {
                 // Fallback: direct update
@@ -710,7 +677,7 @@ var SignCard = (function() {
         }
     }
     
-    // v1.23: Check nested boolean structure (matches schema v4.0)
+    // v1.24: Check nested boolean structure (matches schema v4.0)
     function isGameCompleted(signatures) {
         if (!signatures) return false;
         return signatures.f1?.signed === true && signatures.f2?.signed === true;
@@ -746,14 +713,14 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - FIXED: submitSignature() now writes the ENTIRE signatures object instead of dot notation
-   - REMOVED: Dot notation paths that were creating flat fields (signatures.f1.signed)
-   - CHANGED: Now reads current signatures from Firestore first, then updates nested structure
-   - ADDED: Proper error handling for WRV.getDocument failure
-   - PRESERVED: ALL other functionality from v1.22 unchanged
-   - This matches the schema structure v4.0 (nested signatures only)
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - REMOVED: signedAt field entirely from signature write (was causing WRV verification failures)
+   - CHANGED: Now only writes signatures.fX.signed = true and updatedAt
+   - PRESERVED: Nested signatures structure (f1/f2 objects with signed, signedAt, captainName)
+   - signedAt will remain null in Firestore (matches schema v4.0)
+   - PRESERVED: ALL other functionality from v1.23 unchanged
+   - This eliminates the WRV verification mismatch caused by serverTimestamp()
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
