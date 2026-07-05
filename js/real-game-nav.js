@@ -1,21 +1,22 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
-   - Updated Modal.confirmGameComplete() call uses updated modal title
-   - Updated fallback modal title text
-   - All existing functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: showSignCardModal() now updates cache with nested signatures structure
+   - CHANGED: Uses nested path cache.signatures.f1.signed = true
+   - CHANGED: Uses nested path cache.signatures.f2.signed = true
+   - PRESERVED: ALL other functionality from v1.11 unchanged
+   - This matches the nested structure written by sign-card.js v1.22
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.11";
+window.REAL_GAME_NAV_VERSION = "1.12";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.11 - Updated to GAME COMPLETED");
+    console.log("[REAL-GAME-NAV] Initializing v1.12 - Nested signatures cache update");
     
     // ============================================================
     // Private Helpers
@@ -238,7 +239,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showSignCardModal
+    // showSignCardModal - v1.12: Nested signatures cache update
     // ============================================================
     
     function showSignCardModal() {
@@ -275,9 +276,14 @@ var RealGameNav = (function() {
                 if (success) {
                     var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
                     if (cache) {
-                        if (editableFlight === 1) cache.signatures.f1 = true;
-                        else cache.signatures.f2 = true;
-                        if (cache.signatures.f1 && cache.signatures.f2) {
+                        // v1.12: Update nested signatures structure
+                        if (editableFlight === 1) {
+                            cache.signatures.f1.signed = true;
+                        } else {
+                            cache.signatures.f2.signed = true;
+                        }
+                        // Check if both flights are signed using nested structure
+                        if (cache.signatures.f1.signed && cache.signatures.f2.signed) {
                             await createHistoryRecord();
                             setGameComplete(true);
                             setCelebrationTriggered(false);
@@ -536,12 +542,13 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
-   - Updated Modal.confirmGameComplete() call uses updated modal title
-   - Updated fallback modal title text
-   - All existing functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: showSignCardModal() now updates cache with nested signatures structure
+   - CHANGED: Uses nested path cache.signatures.f1.signed = true
+   - CHANGED: Uses nested path cache.signatures.f2.signed = true
+   - PRESERVED: ALL other functionality from v1.11 unchanged
+   - This matches the nested structure written by sign-card.js v1.22
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
