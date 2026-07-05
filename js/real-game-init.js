@@ -1,23 +1,22 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - REMOVED: Cache refresh for myFlightChanged events (was causing UI reset)
-   - REMOVED: Cache refresh for resultsChanged events (cache already has correct data)
-   - PRESERVED: Cache refresh for otherFlightChanged events (needed for multi-device sync)
-   - This prevents the cache from being overwritten with stale data from Firestore
-   - The cache already has the correct data from the local save operation
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: onCacheUpdate() signature check now requires signed === true
+   - Previously the condition triggered when cache.signatures.f1 and f2 were objects
+   - Now properly checks f1.signed === true and f2.signed === true
+   - This prevents premature game completion redirect on initial load
+   - PRESERVED: ALL other functionality from v1.06 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.06";
+window.REAL_GAME_INIT_VERSION = "1.07";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.06 - Skip cache refresh for own changes");
+    console.log("[REAL-GAME-INIT] Initializing v1.07 - Fixed signature check to require signed === true");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -572,7 +571,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // onCacheUpdate
+    // onCacheUpdate - v1.07: FIXED signature check
     // ============================================================
     
     function onCacheUpdate(cache, renderAllCallback) {
@@ -590,7 +589,12 @@ var RealGameInit = (function() {
             Ticker.setPlayers(getAllPlayers());
         }
         
-        if (cache.signatures && cache.signatures.f1 && cache.signatures.f2 &&
+        // v1.07: FIXED - Check signed === true, not just object existence
+        // Previously: cache.signatures.f1 && cache.signatures.f2 would pass for objects
+        // Now: requires f1.signed === true AND f2.signed === true
+        if (cache.signatures && 
+            cache.signatures.f1 && cache.signatures.f1.signed === true &&
+            cache.signatures.f2 && cache.signatures.f2.signed === true &&
             !isGameComplete() && !isCelebrationTriggered()) {
             
             if (typeof RealGameNav !== 'undefined' && RealGameNav.createHistoryRecord) {
@@ -931,14 +935,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - REMOVED: Cache refresh for myFlightChanged events (was causing UI reset)
-   - REMOVED: Cache refresh for resultsChanged events (cache already has correct data)
-   - PRESERVED: Cache refresh for otherFlightChanged events (needed for multi-device sync)
-   - This prevents the cache from being overwritten with stale data from Firestore
-   - The cache already has the correct data from the local save operation
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: onCacheUpdate() signature check now requires signed === true
+   - Previously the condition triggered when cache.signatures.f1 and f2 were objects
+   - Now properly checks f1.signed === true and f2.signed === true
+   - This prevents premature game completion redirect on initial load
+   - PRESERVED: ALL other functionality from v1.06 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
