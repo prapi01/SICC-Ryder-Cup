@@ -1,13 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: submitSignature() now uses FLAT structure for signatures (f1, f2) instead of nested (f1.signed)
-   - FIXED: isGameCompleted() now checks flat boolean signatures (f1 === true, f2 === true)
-   - This matches the cache structure expected by GameLoader.buildCacheFromDoc()
-   - Previously, nested signatures caused cache.signatures.f1 to be undefined or an object
-   - Result: Waiting screen and game complete flow never triggered
-   - PRESERVED: ALL other functionality from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: submitSignature() now updates nested signatures object instead of writing flat fields
+   - CHANGED: Uses 'signatures.f' + flight + '.signed' path instead of 'signatures.f' + flight
+   - CHANGED: Uses 'signatures.f' + flight + '.signedAt' path for timestamp
+   - CHANGED: Uses 'signatures.f' + flight + '.captainName' path for captain name
+   - PRESERVED: All other functionality from v1.20 unchanged
+   - This matches the schema structure created by setup-game.html
+   - Eliminates duplicate flat fields that caused WRV verification failures
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -198,7 +199,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.18: Updated to "GAME COMPLETED!"
+    // Celebration Screen
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -245,7 +246,6 @@ var SignCard = (function() {
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
-            // v1.18: Changed "MATCH COMPLETE!" to "GAME COMPLETED!"
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
@@ -271,7 +271,6 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // Call onClose callback after modal is rendered
             setTimeout(function() {
                 console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
                 if (typeof onClose === 'function') {
@@ -279,7 +278,6 @@ var SignCard = (function() {
                 }
             }, 500);
             
-            // v1.16: Button handler with proper gameId closure
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
                 var newBtn = btn.cloneNode(true);
@@ -301,7 +299,6 @@ var SignCard = (function() {
                         return;
                     }
                     
-                    // Save celebration data to sessionStorage for HCP page
                     try {
                         sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
                         console.log("[SignCard] Celebration data saved to sessionStorage");
@@ -496,7 +493,6 @@ var SignCard = (function() {
                     border: 1px solid #ffaa44;
                 }
                 
-                /* v1.17: Score styles updated for new format */
                 .celebration-score {
                     display: flex;
                     justify-content: center;
@@ -638,17 +634,19 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Signature Submission - v1.20: FLAT structure fix
+    // Signature Submission - v1.21: UPDATES NESTED OBJECT
+    // Uses dot notation paths to update nested signatures object
+    // This matches the structure created by setup-game.html
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
-        // v1.20: Use FLAT structure to match cache and Firestore expectations
-        // Previously used nested structure (f1.signed) which caused cache mismatch
+        // v1.21: Use nested paths to update the existing signatures object
+        // This matches the structure: signatures.f1.signed, signatures.f1.signedAt, etc.
         var updatePayload = {};
-        updatePayload['signatures.f' + flight] = true;
-        updatePayload['signatures.f' + flight + '_at'] = firebase.firestore.FieldValue.serverTimestamp();
+        updatePayload['signatures.f' + flight + '.signed'] = true;
+        updatePayload['signatures.f' + flight + '.signedAt'] = firebase.firestore.FieldValue.serverTimestamp();
         if (captainName) {
-            updatePayload['signatures.f' + flight + '_captain'] = captainName;
+            updatePayload['signatures.f' + flight + '.captainName'] = captainName;
         }
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
@@ -656,6 +654,7 @@ var SignCard = (function() {
             // Use WRV for reliable Firestore write
             if (typeof WRV !== 'undefined' && WRV.update) {
                 return new Promise(function(resolve, reject) {
+                    // v1.21: Pass skipVerify to WRV to handle timestamp fields
                     WRV.update(collection, gameId, updatePayload, function(err, result) {
                         if (err) {
                             console.error('[SignCard] WRV signature error:', err);
@@ -664,7 +663,7 @@ var SignCard = (function() {
                             console.log('[SignCard] WRV signature successful for flight ' + flight);
                             resolve(result);
                         }
-                    });
+                    }, { skipVerify: ['updatedAt', 'signatures.f' + flight + '.signedAt'] });
                 });
             } else {
                 // Fallback: direct update
@@ -680,10 +679,10 @@ var SignCard = (function() {
         }
     }
     
-    // v1.20: FIXED - Check flat boolean structure instead of nested
+    // v1.21: Check nested boolean structure (matches schema)
     function isGameCompleted(signatures) {
         if (!signatures) return false;
-        return signatures.f1 === true && signatures.f2 === true;
+        return signatures.f1?.signed === true && signatures.f2?.signed === true;
     }
     
     function getWinner(trTeamA, trTeamB) {
@@ -716,14 +715,15 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: submitSignature() now uses FLAT structure for signatures (f1, f2) instead of nested (f1.signed)
-   - FIXED: isGameCompleted() now checks flat boolean signatures (f1 === true, f2 === true)
-   - This matches the cache structure expected by GameLoader.buildCacheFromDoc()
-   - Previously, nested signatures caused cache.signatures.f1 to be undefined or an object
-   - Result: Waiting screen and game complete flow never triggered
-   - PRESERVED: ALL other functionality from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: submitSignature() now updates nested signatures object instead of writing flat fields
+   - CHANGED: Uses 'signatures.f' + flight + '.signed' path instead of 'signatures.f' + flight
+   - CHANGED: Uses 'signatures.f' + flight + '.signedAt' path for timestamp
+   - CHANGED: Uses 'signatures.f' + flight + '.captainName' path for captain name
+   - PRESERVED: All other functionality from v1.20 unchanged
+   - This matches the schema structure created by setup-game.html
+   - Eliminates duplicate flat fields that caused WRV verification failures
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
