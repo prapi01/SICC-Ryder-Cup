@@ -1,9 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.66
-KEY CHANGES from v3.65:
-   - ADDED: Browser tab favicon using /images/ICON.png
-   - PRESERVED: All styling, functionality, and UI from v3.65
+VERSION: 3.67
+KEY CHANGES from v3.66:
+   - FIXED: NEXT GAME button now navigates to pre-game.html?mode=preview (view-only)
+   - CHANGED: handleNextGame() function now uses proper navigation instead of alert
+   - This allows users to view upcoming game setup before game day
+   - PRESERVED: All styling, functionality, and UI from v3.66
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -583,14 +585,14 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.66</div>
+<div class="version-tag">v3.67</div>
 
 <script>
-// FILE: index.html v3.66
-// VERSION: 3.66
+// FILE: index.html v3.67
+// VERSION: 3.67
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.66";
+window.INDEX_VERSION = "3.67";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -601,8 +603,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.66";
-var CACHE_KEY = "index_version_v366";
+var APP_VERSION = "3.67";
+var CACHE_KEY = "index_version_v367";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -1185,8 +1187,55 @@ function handleTodayGame() {
     });
 }
 
+// ============================================================
+// v3.67: NEXT GAME - Navigate to preview mode
+// ============================================================
+
 function handleNextGame() {
-    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'GAME DAY'.");
+    if (!firestoreReady) {
+        alert("Connecting to server... Please wait.");
+        return;
+    }
+    
+    // Find the next game in the background
+    FirebaseRetry.getCollection("scheduledGames", {
+        onExit: function() {
+            window.location.href = "index.html";
+        }
+    }).then(function(snapshot) {
+        var games = [];
+        snapshot.forEach(function(doc) {
+            games.push({ id: doc.id, date: doc.data().date, course: doc.data().course, startingHole: doc.data().startingHole });
+        });
+        
+        var nextGame = findNextGame(games);
+        if (!nextGame) {
+            alert("No upcoming games found. Please set up a game first.");
+            return;
+        }
+        
+        var gameId = nextGame.id;
+        console.log("[INDEX] NEXT GAME clicked, navigating to preview mode for:", gameId);
+        
+        // Navigate to pre-game in preview mode
+        SessionManager.addNavigationHistory("pre-game.html", "click_ngb_preview", { gameId: gameId, mode: "preview" });
+        SessionManager.updateSession({
+            returnDestination: "index.html",
+            activeGame: {
+                gameId: gameId,
+                gameType: "preview",
+                gameMode: "preview",
+                role: null,
+                collection: "scheduledGames"
+            }
+        });
+        sessionStorage.setItem("currentGameId", gameId);
+        window.location.href = "pre-game.html?mode=preview";
+        
+    }).catch(function(e) {
+        console.error("Error loading games:", e);
+        alert("Error loading games: " + e.message);
+    });
 }
 
 function proceedToRealGame(gameId, gameType) {
@@ -1293,8 +1342,9 @@ function renderMainUI() {
                     </div>
                 `;
             } else {
+                // v3.67: NEXT GAME is now clickable - goes to preview mode
                 ngbHtml = `
-                    <div class="ngb ngb-inactive" onclick="handleNextGame()">
+                    <div class="ngb" onclick="handleNextGame()">
                         <div class="icon">🏆</div>
                         <div class="title">NEXT GAME</div>
                         <div class="subtitle-text">${formattedDate}</div>
@@ -1367,7 +1417,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.66
+// Initialization - v3.67
 // ============================================================
 
 function initApp() {
@@ -1455,7 +1505,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.66
+// Start the app - v3.67
 // ============================================================
 
 if (isFirstLoad) {
@@ -1490,11 +1540,13 @@ if (isFirstLoad) {
 </html>
 
 <!--
-FILE: index.html v3.66
-VERSION: 3.66
-KEY CHANGES from v3.65:
-   - ADDED: Browser tab favicon using /images/ICON.png
-   - PRESERVED: All styling, functionality, and UI from v3.65
+FILE: index.html v3.67
+VERSION: 3.67
+KEY CHANGES from v3.66:
+   - FIXED: NEXT GAME button now navigates to pre-game.html?mode=preview (view-only)
+   - CHANGED: handleNextGame() function now uses proper navigation instead of alert
+   - This allows users to view upcoming game setup before game day
+   - PRESERVED: All styling, functionality, and UI from v3.66
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
