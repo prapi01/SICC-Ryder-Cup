@@ -1,24 +1,23 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: initializeGameData() now returns proper Promise and is awaited
-   - FIXED: GameData initialization now happens before UI is fully rendered
-   - ADDED: Loading state indicator while GameData initializes
-   - FIXED: Save button is only enabled after GameData is initialized
-   - ADDED: Verification check for GameData initialization state
-   - This ensures GameData is properly initialized before any saves occur
-   - PRESERVED: ALL existing functionality from v1.06
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - REMOVED: Cache refresh for myFlightChanged events (was causing UI reset)
+   - REMOVED: Cache refresh for resultsChanged events (cache already has correct data)
+   - PRESERVED: Cache refresh for otherFlightChanged events (needed for multi-device sync)
+   - This prevents the cache from being overwritten with stale data from Firestore
+   - The cache already has the correct data from the local save operation
+   - All existing functionality preserved from v1.05
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.07";
+window.REAL_GAME_INIT_VERSION = "1.06";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.07 - Proper GameData initialization before UI render");
+    console.log("[REAL-GAME-INIT] Initializing v1.06 - Skip cache refresh for own changes");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -534,23 +533,14 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // initializeGameData - v1.07: Proper Promise with verification
+    // initializeGameData
     // ============================================================
     
-    function initializeGameData(collection, cache) {
+    function initializeGameData(collection, cache, callback) {
         var gameId = getGameId();
         var editableFlight = getEditableFlight();
         
-        console.log('[INIT] Initializing GameData for game:', gameId, 'flight:', editableFlight);
-        
         return new Promise(function(resolve) {
-            // Check if GameData is already initialized
-            if (typeof GameData !== 'undefined' && GameData.isGameDataInitialized && GameData.isGameDataInitialized()) {
-                console.log('[INIT] GameData already initialized');
-                resolve(true);
-                return;
-            }
-            
             var mockSession = {
                 activeGame: {
                     gameId: gameId,
@@ -570,15 +560,12 @@ var RealGameInit = (function() {
                         if (typeof GameData.setPlayers === 'function') {
                             GameData.setPlayers(cache.players || []);
                         }
-                        console.log('[INIT] GameData initialized successfully');
                         resolve(true);
                     } else {
-                        console.warn('[INIT] GameData initialization failed');
                         resolve(false);
                     }
                 });
             } else {
-                console.warn('[INIT] GameData not available');
                 resolve(false);
             }
         });
@@ -603,7 +590,7 @@ var RealGameInit = (function() {
             Ticker.setPlayers(getAllPlayers());
         }
         
-        if (cache.signatures && cache.signatures.f1 && cache.signatures.f2 && 
+        if (cache.signatures && cache.signatures.f1 && cache.signatures.f2 &&
             !isGameComplete() && !isCelebrationTriggered()) {
             
             if (typeof RealGameNav !== 'undefined' && RealGameNav.createHistoryRecord) {
@@ -685,11 +672,11 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // init - Main Initialization Function - v1.07: Fixed initialization order
+    // init - Main Initialization Function - UNCHANGED
     // ============================================================
     
     async function init(renderAllCallback) {
-        console.log("[DEBUG-INIT] Starting initialization v1.07");
+        console.log("[DEBUG-INIT] Starting initialization");
         
         var myDeviceShortName = typeof SessionManager !== 'undefined' ? await SessionManager.getShortNameOnly() : "DEV-??";
         document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
@@ -724,7 +711,6 @@ var RealGameInit = (function() {
             });
         }
         
-        // v1.07: Check for pending writes first
         if (typeof RealGameSave !== 'undefined' && RealGameSave.loadPendingWrites) {
             var pendingWrites = RealGameSave.loadPendingWrites();
             if (pendingWrites) {
@@ -760,7 +746,6 @@ var RealGameInit = (function() {
         var gameDataPreloaded = sessionStorage.getItem("gameDataPreloaded") === "true";
         
         if (preloadData && gameDataPreloaded) {
-            // Preloaded data path
             applyPreloadedData(preloadData);
             sessionStorage.removeItem("gameDataPreloaded");
             
@@ -805,13 +790,6 @@ var RealGameInit = (function() {
                 RealGameSave.setSaveButtonIdle();
             }
             
-            // v1.07: Initialize GameData in background after UI is ready
-            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-            if (cache) {
-                await initializeGameData(collection, cache);
-                console.log('[INIT] GameData initialized in background for preloaded data');
-            }
-            
             if (typeof GameLoader !== 'undefined') {
                 GameLoader.loadGame(gameId, collection, function(result) {
                     if (result.success) {
@@ -832,9 +810,8 @@ var RealGameInit = (function() {
             setupRealtimeListener(renderAllCallback);
             
         } else {
-            // Normal load path - v1.07: Ensure GameData is initialized before UI renders
             if (typeof GameLoader !== 'undefined') {
-                GameLoader.loadGame(gameId, collection, async function(result) {
+                GameLoader.loadGame(gameId, collection, function(result) {
                     if (!result.success) {
                         document.getElementById("debug").innerHTML = "Error: " + result.error;
                         return;
@@ -850,67 +827,57 @@ var RealGameInit = (function() {
                     document.getElementById("courseName").innerHTML = getCourseName();
                     RealGameUtils.updateGameOrder(getStartingHole());
                     
-                    // v1.07: CRITICAL - Initialize GameData BEFORE rendering UI
-                    console.log('[INIT] Initializing GameData before UI render...');
-                    var initSuccess = await initializeGameData(collection, cache);
-                    
-                    if (!initSuccess) {
-                        console.warn('[INIT] GameData initialization failed - will retry on save');
-                        // Show warning but continue - saveCurrentHole will use RealGameState fallback
-                        document.getElementById("debug").innerHTML = "⚠️ GameData init pending...";
-                    } else {
-                        console.log('[INIT] GameData initialized successfully');
-                        // Verify initialization
-                        if (typeof GameData !== 'undefined' && GameData.isGameDataInitialized) {
-                            console.log('[INIT] GameData.isGameDataInitialized():', GameData.isGameDataInitialized());
-                            console.log('[INIT] GameData.getEditableFlight():', GameData.getEditableFlight());
+                    initializeGameData(collection, cache).then(function(initSuccess) {
+                        if (!initSuccess) {
+                            document.getElementById("debug").innerHTML = "Error: Failed to initialize";
+                            return;
                         }
-                    }
-                    
-                    if (typeof GameUI !== 'undefined') {
-                        GameUI.applyTightLayout();
-                    }
-                    
-                    if (typeof RealGameUI !== 'undefined') {
-                        RealGameUI.renderCompactHeaderWithFlightToggle();
-                    }
-                    
-                    if (typeof GameUI !== 'undefined') {
-                        GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
-                        setTimeout(function() {
-                            GameUI.addFlightBadge(editableFlight);
-                        }, 100);
-                        GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
-                    }
-                    
-                    var playOrder = RealGameUtils.getPlayOrder();
-                    var initialHole = playOrder[0];
-                    for (var i = 0; i < playOrder.length; i++) {
-                        var isSaved = RealGameUI.isHoleSaved ? RealGameUI.isHoleSaved(editableFlight, playOrder[i]) : false;
-                        if (!isSaved) {
-                            initialHole = playOrder[i];
-                            break;
+                        
+                        if (typeof GameUI !== 'undefined') {
+                            GameUI.applyTightLayout();
                         }
-                    }
-                    setCurrentHole(initialHole);
-                    
-                    if (typeof RealGameNav !== 'undefined') {
-                        RealGameNav.updateHoleNumberDisplay();
-                    }
-                    
-                    initTicker();
-                    if (getAllPlayers().length) {
-                        Ticker.setPlayers(getAllPlayers());
-                    }
-                    
-                    if (renderAllCallback) renderAllCallback();
-                    
-                    if (typeof RealGameSave !== 'undefined' && RealGameSave.setSaveButtonIdle) {
-                        RealGameSave.setSaveButtonIdle();
-                    }
-                    
-                    document.getElementById("mainContainer").classList.add("data-ready");
-                    setupRealtimeListener(renderAllCallback);
+                        
+                        if (typeof RealGameUI !== 'undefined') {
+                            RealGameUI.renderCompactHeaderWithFlightToggle();
+                        }
+                        
+                        if (typeof GameUI !== 'undefined') {
+                            GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
+                            setTimeout(function() {
+                                GameUI.addFlightBadge(editableFlight);
+                            }, 100);
+                            GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+                        }
+                        
+                        var playOrder = RealGameUtils.getPlayOrder();
+                        var initialHole = playOrder[0];
+                        for (var i = 0; i < playOrder.length; i++) {
+                            var isSaved = RealGameUI.isHoleSaved ? RealGameUI.isHoleSaved(editableFlight, playOrder[i]) : false;
+                            if (!isSaved) {
+                                initialHole = playOrder[i];
+                                break;
+                            }
+                        }
+                        setCurrentHole(initialHole);
+                        
+                        if (typeof RealGameNav !== 'undefined') {
+                            RealGameNav.updateHoleNumberDisplay();
+                        }
+                        
+                        initTicker();
+                        if (getAllPlayers().length) {
+                            Ticker.setPlayers(getAllPlayers());
+                        }
+                        
+                        if (renderAllCallback) renderAllCallback();
+                        
+                        if (typeof RealGameSave !== 'undefined' && RealGameSave.setSaveButtonIdle) {
+                            RealGameSave.setSaveButtonIdle();
+                        }
+                        
+                        document.getElementById("mainContainer").classList.add("data-ready");
+                        setupRealtimeListener(renderAllCallback);
+                    });
                 });
             }
         }
@@ -921,7 +888,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // Public API - v1.07: Added initialization verification
+    // Public API - UNCHANGED
     // ============================================================
     
     return {
@@ -964,15 +931,14 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: initializeGameData() now returns proper Promise and is awaited
-   - FIXED: GameData initialization now happens before UI is fully rendered
-   - ADDED: Loading state indicator while GameData initializes
-   - FIXED: Save button is only enabled after GameData is initialized
-   - ADDED: Verification check for GameData initialization state
-   - This ensures GameData is properly initialized before any saves occur
-   - PRESERVED: ALL existing functionality from v1.06
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - REMOVED: Cache refresh for myFlightChanged events (was causing UI reset)
+   - REMOVED: Cache refresh for resultsChanged events (cache already has correct data)
+   - PRESERVED: Cache refresh for otherFlightChanged events (needed for multi-device sync)
+   - This prevents the cache from being overwritten with stale data from Firestore
+   - The cache already has the correct data from the local save operation
+   - All existing functionality preserved from v1.05
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
