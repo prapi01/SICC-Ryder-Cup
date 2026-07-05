@@ -1,11 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - CHANGED: submitSignature() now uses WRV.update() for reliability
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: All v1.18 functions and API unchanged
-   - PRESERVED: Async/await pattern for submitSignature()
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: submitSignature() now uses FLAT structure for signatures (f1, f2) instead of nested (f1.signed)
+   - FIXED: isGameCompleted() now checks flat boolean signatures (f1 === true, f2 === true)
+   - This matches the cache structure expected by GameLoader.buildCacheFromDoc()
+   - Previously, nested signatures caused cache.signatures.f1 to be undefined or an object
+   - Result: Waiting screen and game complete flow never triggered
+   - PRESERVED: ALL other functionality from v1.19 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -636,15 +638,17 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Signature Submission - v1.19: WRV integration
+    // Signature Submission - v1.20: FLAT structure fix
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
+        // v1.20: Use FLAT structure to match cache and Firestore expectations
+        // Previously used nested structure (f1.signed) which caused cache mismatch
         var updatePayload = {};
-        updatePayload['signatures.f' + flight + '.signed'] = true;
-        updatePayload['signatures.f' + flight + '.signedAt'] = firebase.firestore.FieldValue.serverTimestamp();
+        updatePayload['signatures.f' + flight] = true;
+        updatePayload['signatures.f' + flight + '_at'] = firebase.firestore.FieldValue.serverTimestamp();
         if (captainName) {
-            updatePayload['signatures.f' + flight + '.captainName'] = captainName;
+            updatePayload['signatures.f' + flight + '_captain'] = captainName;
         }
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
@@ -676,9 +680,10 @@ var SignCard = (function() {
         }
     }
     
+    // v1.20: FIXED - Check flat boolean structure instead of nested
     function isGameCompleted(signatures) {
         if (!signatures) return false;
-        return signatures.f1?.signed === true && signatures.f2?.signed === true;
+        return signatures.f1 === true && signatures.f2 === true;
     }
     
     function getWinner(trTeamA, trTeamB) {
@@ -711,12 +716,14 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - CHANGED: submitSignature() now uses WRV.update() for reliability
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: All v1.18 functions and API unchanged
-   - PRESERVED: Async/await pattern for submitSignature()
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: submitSignature() now uses FLAT structure for signatures (f1, f2) instead of nested (f1.signed)
+   - FIXED: isGameCompleted() now checks flat boolean signatures (f1 === true, f2 === true)
+   - This matches the cache structure expected by GameLoader.buildCacheFromDoc()
+   - Previously, nested signatures caused cache.signatures.f1 to be undefined or an object
+   - Result: Waiting screen and game complete flow never triggered
+   - PRESERVED: ALL other functionality from v1.19 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
