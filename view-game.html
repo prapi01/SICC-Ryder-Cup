@@ -1,15 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 7.39
-KEY CHANGES from v7.38:
-   - FIXED: Game completion now uses Firestore status === "completed" as source of truth
-   - FIXED: isGameComplete() now checks cache.status first (primary), signatures as fallback
-   - FIXED: checkPostGameContext() now checks cache.status === "completed" first
-   - FIXED: isGameCompletedFromCache() new function for unified completion check
-   - FIXED: Realtime listener now detects status change from "scheduled" to "completed"
-   - FIXED: init() uses isGameCompletedFromCache() for proper post-game redirect
-   - All existing functionality preserved from v7.38
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
+VERSION: 7.40
+KEY CHANGES from v7.39:
+   - FIXED: isGameComplete() now reads nested signatures structure only
+   - FIXED: mockCache now uses nested signatures structure
+   - FIXED: loadFromHistoryRecord now uses nested signatures structure
+   - CHANGED: Removed flat signature fallback checks
+   - PRESERVED: ALL other functionality from v7.39 unchanged
+   - This matches the nested structure written by sign-card.js v1.22
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -22,9 +21,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.39"></script>
-    <script src="js/session.js?v=7.39"></script>
-    <script src="js/settings.js?v=7.39"></script>
+    <script src="js/firebase-config.js?v=7.40"></script>
+    <script src="js/session.js?v=7.40"></script>
+    <script src="js/settings.js?v=7.40"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -32,12 +31,12 @@ STATUS: Ready for integration
     <script src="js/game-stroke.js?v=1.06"></script>
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
-    <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.39"></script>
-    <script src="js/history-record.js?v=7.39"></script>
-    <script src="js/sign-card.js?v=7.39"></script>
-    <script src="js/hcp-adjust.js?v=7.39"></script>
-    <script src="js/modal.js?v=7.39"></script>
+    <script src="js/game-loader.js?v=1.16"></script>
+    <script src="js/ticker.js?v=7.40"></script>
+    <script src="js/history-record.js?v=7.40"></script>
+    <script src="js/sign-card.js?v=1.22"></script>
+    <script src="js/hcp-adjust.js?v=7.40"></script>
+    <script src="js/modal.js?v=7.40"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -158,14 +157,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.39</div>
+<div class="version-tag">v7.40</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.39: Uses Firestore status as source of truth
+// VERSION CACHE-BUSTING - v7.40: Nested signatures
 // ============================================================
-var APP_VERSION = "7.39";
-var CACHE_KEY = "view_game_version_v739";
+var APP_VERSION = "7.40";
+var CACHE_KEY = "view_game_version_v740";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -183,8 +182,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.39";
-console.log("[VIEW-GAME] Initializing v7.39 - Firestore status as source of truth");
+window.VIEW_GAME_VERSION = "7.40";
+console.log("[VIEW-GAME] Initializing v7.40 - Nested signatures");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -224,7 +223,7 @@ var isPostGameContext = false;
 var firestoreUnsubscribe = null;
 
 // ============================================================
-// v7.39: Check completion from Firestore status (source of truth)
+// v7.40: Check completion from Firestore status (source of truth)
 // ============================================================
 
 function isGameCompletedFromCache(cache) {
@@ -236,7 +235,7 @@ function isGameCompletedFromCache(cache) {
 }
 
 // ============================================================
-// v7.39: Post-game context detection - uses status first
+// v7.40: Post-game context detection - uses status first
 // ============================================================
 
 function checkPostGameContext(cache) {
@@ -250,8 +249,8 @@ function checkPostGameContext(cache) {
     
     // SECONDARY: local signatures (fallback)
     var signatures = cache.signatures || {};
-    var f1Signed = signatures.f1 === true || (signatures.f1 && signatures.f1.signed === true);
-    var f2Signed = signatures.f2 === true || (signatures.f2 && signatures.f2.signed === true);
+    var f1Signed = signatures.f1 && signatures.f1.signed === true;
+    var f2Signed = signatures.f2 && signatures.f2.signed === true;
     var isComplete = f1Signed && f2Signed;
     
     var sessionFlag = sessionStorage.getItem('isPostGame') === 'true';
@@ -509,6 +508,7 @@ function applyPreloadedData(preloadData) {
     
     updateGameOrder();
     
+    // v7.40: Use nested signatures structure
     var mockCache = {
         course: preloadData.course,
         players: preloadData.players,
@@ -524,7 +524,10 @@ function applyPreloadedData(preloadData) {
         lastSyncedPosition: preloadData.lastSyncedPosition !== undefined ? preloadData.lastSyncedPosition : -1,
         lastSyncedHole: preloadData.lastSyncedHole || 0,
         clinchedAt: preloadData.clinchedAt || {},
-        signatures: { f1: false, f2: false },
+        signatures: {
+            f1: { signed: false, signedAt: null, captainName: null },
+            f2: { signed: false, signedAt: null, captainName: null }
+        },
         submitted: { f1: false, f2: false },
         locks: { f1: null, f2: null },
         gameStarted: true,
@@ -569,6 +572,27 @@ function loadFromHistoryRecord(historyId) {
             
             updateGameOrder();
             
+            // v7.40: Use nested signatures structure from history
+            var historySignatures = historyData.signatures || null;
+            var defaultSignatures = {
+                f1: { signed: true, signedAt: null, captainName: null },
+                f2: { signed: true, signedAt: null, captainName: null }
+            };
+            
+            // If history has nested structure, use it; otherwise use default
+            var signatures = defaultSignatures;
+            if (historySignatures) {
+                if (historySignatures.f1 && typeof historySignatures.f1 === 'object' && historySignatures.f1.signed !== undefined) {
+                    signatures = historySignatures;
+                } else if (historySignatures.f1 === true || historySignatures.f1 === false) {
+                    // Convert flat to nested
+                    signatures = {
+                        f1: { signed: historySignatures.f1 === true, signedAt: null, captainName: null },
+                        f2: { signed: historySignatures.f2 === true, signedAt: null, captainName: null }
+                    };
+                }
+            }
+            
             var historyCache = {
                 course: { name: courseName, par: coursePar, si: courseSi },
                 players: allPlayers,
@@ -584,7 +608,7 @@ function loadFromHistoryRecord(historyId) {
                 lastSyncedPosition: 17,
                 lastSyncedHole: 18,
                 clinchedAt: historyData.results?.clinchedAt || {},
-                signatures: historyData.signatures || { f1: true, f2: true },
+                signatures: signatures,
                 submitted: { f1: true, f2: true },
                 locks: { f1: null, f2: null },
                 gameStarted: true,
@@ -877,7 +901,7 @@ function getBubbleClassWithClinch(player, opponent) {
 }
 
 // ============================================================
-// v7.39: Game Completion Detection - uses status as source of truth
+// v7.40: Game Completion Detection - nested signatures only
 // ============================================================
 
 function isGameComplete() {
@@ -887,10 +911,10 @@ function isGameComplete() {
     // PRIMARY: Firestore status field
     if (cache.status === "completed") return true;
     
-    // SECONDARY: local signatures (fallback)
+    // SECONDARY: local signatures (nested structure only)
     if (!cache.signatures) return false;
-    var f1Signed = cache.signatures.f1 === true || (cache.signatures.f1 && cache.signatures.f1.signed === true);
-    var f2Signed = cache.signatures.f2 === true || (cache.signatures.f2 && cache.signatures.f2.signed === true);
+    var f1Signed = cache.signatures.f1 && cache.signatures.f1.signed === true;
+    var f2Signed = cache.signatures.f2 && cache.signatures.f2.signed === true;
     
     return f1Signed && f2Signed;
 }
@@ -1348,7 +1372,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.39: Initialization - uses status as source of truth
+// v7.40: Initialization - uses status as source of truth
 // ============================================================
 
 async function init() {
@@ -1451,7 +1475,7 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
-            // v7.39: Check completion from Firestore status (source of truth)
+            // v7.40: Check completion from Firestore status (source of truth)
             var gameDate = cache.course?.date || null;
             var today = new Date().toISOString().split('T')[0];
             var isToday = (gameDate === today);
@@ -1470,7 +1494,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
-// v7.39: settings.js already initialized at top of script
+// v7.40: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1479,15 +1503,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.39
-KEY CHANGES from v7.38:
-   - FIXED: Game completion now uses Firestore status === "completed" as source of truth
-   - FIXED: isGameComplete() now checks cache.status first (primary), signatures as fallback
-   - FIXED: checkPostGameContext() now checks cache.status === "completed" first
-   - FIXED: isGameCompletedFromCache() new function for unified completion check
-   - FIXED: Realtime listener now detects status change from "scheduled" to "completed"
-   - FIXED: init() uses isGameCompletedFromCache() for proper post-game redirect
-   - All existing functionality preserved from v7.38
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
+VERSION: 7.40
+KEY CHANGES from v7.39:
+   - FIXED: isGameComplete() now reads nested signatures structure only
+   - FIXED: mockCache now uses nested signatures structure
+   - FIXED: loadFromHistoryRecord now uses nested signatures structure
+   - CHANGED: Removed flat signature fallback checks
+   - PRESERVED: ALL other functionality from v7.39 unchanged
+   - This matches the nested structure written by sign-card.js v1.22
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
