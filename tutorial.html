@@ -1,11 +1,12 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - ADDED: js/settings.js dependency for user preferences
-   - ADDED: Viewport meta tag with settings.js control
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.24
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - UPDATED: Step 1 instruction text now mentions clicking NEXT GAME to preview game setup
+   - UPDATED: Step 1 tip now includes preview functionality
+   - This aligns with the new NEXT GAME preview feature in index.html v3.67
+   - PRESERVED: All UI styling, layout, and functionality from v1.25 unchanged
+   - PRESERVED: All existing tutorial steps and interactions unchanged
 DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -734,7 +735,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.25</div>
+<div class="version-tag">v1.26</div>
 
 <script>
 // ============================================================
@@ -747,10 +748,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.25: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v1.26: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "1.25";
-var CACHE_KEY = "tutorial_version_v125";
+var APP_VERSION = "1.26";
+var CACHE_KEY = "tutorial_version_v126";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -851,7 +852,7 @@ function showExitModal() {
 }
 
 // ============================================================
-// STEP 1: Main Menu - UPDATED v1.18: "TODAY GAME" → "GAME DAY"
+// STEP 1: Main Menu - v1.26: Updated with NEXT GAME preview info
 // ============================================================
 
 function renderStep1() {
@@ -882,8 +883,10 @@ function renderStep1() {
     `;
     
     document.getElementById('demoScreen').innerHTML = html;
-    document.getElementById('instructionText').innerHTML = 'This is your home screen.<br><br>• <strong>GAME DAY / NEXT GAME</strong> - Shows scheduled game. On game day, becomes GAME DAY.<br>• <strong>VIEW PREVIOUS GAMES</strong> - See results and handicap adjustments from past matches.<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions: schedule games, manage courses, edit player handicaps.';
-    document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button changes to GAME DAY on match day.';
+    // v1.26: Updated instruction text to include NEXT GAME preview
+    document.getElementById('instructionText').innerHTML = 'This is your home screen.<br><br>• <strong>GAME DAY / NEXT GAME</strong> - Shows scheduled game. On game day, becomes GAME DAY. Click NEXT GAME to preview the game setup (view-only).<br>• <strong>VIEW PREVIOUS GAMES</strong> - See results and handicap adjustments from past matches.<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions: schedule games, manage courses, edit player handicaps.';
+    // v1.26: Updated tip to include preview
+    document.getElementById('instructionTip').innerHTML = '💡 Tip: Click NEXT GAME to preview the upcoming match. The button changes to GAME DAY on match day.';
 }
 
 // ============================================================
@@ -1006,12 +1009,13 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - ADDED: js/settings.js dependency for user preferences
-   - ADDED: Viewport meta tag with settings.js control
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.24
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - UPDATED: Step 1 instruction text now mentions clicking NEXT GAME to preview game setup
+   - UPDATED: Step 1 tip now includes preview functionality
+   - This aligns with the new NEXT GAME preview feature in index.html v3.67
+   - PRESERVED: All UI styling, layout, and functionality from v1.25 unchanged
+   - PRESERVED: All existing tutorial steps and interactions unchanged
 DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js, js/settings.js
 STATUS: Ready for integration
 -->
