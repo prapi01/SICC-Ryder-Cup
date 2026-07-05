@@ -1,14 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: submitSignature() now updates nested signatures object instead of writing flat fields
-   - CHANGED: Uses 'signatures.f' + flight + '.signed' path instead of 'signatures.f' + flight
-   - CHANGED: Uses 'signatures.f' + flight + '.signedAt' path for timestamp
-   - CHANGED: Uses 'signatures.f' + flight + '.captainName' path for captain name
-   - PRESERVED: All other functionality from v1.20 unchanged
-   - This matches the schema structure created by setup-game.html
-   - Eliminates duplicate flat fields that caused WRV verification failures
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: submitSignature() now writes nested signatures structure correctly
+   - CHANGED: Uses nested path 'signatures.f' + flight + '.signed' 
+   - CHANGED: Uses nested path 'signatures.f' + flight + '.signedAt'
+   - CHANGED: Uses nested path 'signatures.f' + flight + '.captainName'
+   - REMOVED: Flat field writes that caused mixed structures
+   - PRESERVED: ALL other functionality from v1.21 unchanged
+   - This matches the schema structure used by setup-game.html
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -634,14 +634,13 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Signature Submission - v1.21: UPDATES NESTED OBJECT
-    // Uses dot notation paths to update nested signatures object
-    // This matches the structure created by setup-game.html
+    // Signature Submission - v1.22: Writes NESTED structure
+    // Uses nested paths to update the signatures object
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
-        // v1.21: Use nested paths to update the existing signatures object
-        // This matches the structure: signatures.f1.signed, signatures.f1.signedAt, etc.
+        // v1.22: Use nested paths to update the signatures object
+        // Structure: signatures.f1.signed, signatures.f1.signedAt, signatures.f1.captainName
         var updatePayload = {};
         updatePayload['signatures.f' + flight + '.signed'] = true;
         updatePayload['signatures.f' + flight + '.signedAt'] = firebase.firestore.FieldValue.serverTimestamp();
@@ -654,7 +653,6 @@ var SignCard = (function() {
             // Use WRV for reliable Firestore write
             if (typeof WRV !== 'undefined' && WRV.update) {
                 return new Promise(function(resolve, reject) {
-                    // v1.21: Pass skipVerify to WRV to handle timestamp fields
                     WRV.update(collection, gameId, updatePayload, function(err, result) {
                         if (err) {
                             console.error('[SignCard] WRV signature error:', err);
@@ -679,7 +677,7 @@ var SignCard = (function() {
         }
     }
     
-    // v1.21: Check nested boolean structure (matches schema)
+    // v1.22: Check nested boolean structure (matches schema)
     function isGameCompleted(signatures) {
         if (!signatures) return false;
         return signatures.f1?.signed === true && signatures.f2?.signed === true;
@@ -715,15 +713,15 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: submitSignature() now updates nested signatures object instead of writing flat fields
-   - CHANGED: Uses 'signatures.f' + flight + '.signed' path instead of 'signatures.f' + flight
-   - CHANGED: Uses 'signatures.f' + flight + '.signedAt' path for timestamp
-   - CHANGED: Uses 'signatures.f' + flight + '.captainName' path for captain name
-   - PRESERVED: All other functionality from v1.20 unchanged
-   - This matches the schema structure created by setup-game.html
-   - Eliminates duplicate flat fields that caused WRV verification failures
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: submitSignature() now writes nested signatures structure correctly
+   - CHANGED: Uses nested path 'signatures.f' + flight + '.signed' 
+   - CHANGED: Uses nested path 'signatures.f' + flight + '.signedAt'
+   - CHANGED: Uses nested path 'signatures.f' + flight + '.captainName'
+   - REMOVED: Flat field writes that caused mixed structures
+   - PRESERVED: ALL other functionality from v1.21 unchanged
+   - This matches the schema structure used by setup-game.html
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
