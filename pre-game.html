@@ -1,12 +1,16 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.27
-KEY CHANGES from v3.26:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v3.26
+VERSION: 3.28
+KEY CHANGES from v3.27:
+   - ADDED: ?mode=preview support for view-only game preview
+   - ADDED: Label badges (3 chars, white on green) next to player names
+   - CHANGED: Status bubble shows "VIEW" in preview mode
+   - CHANGED: Title changes to "📋 NEXT GAME" in preview mode
+   - CHANGED: All role buttons disabled in preview mode
+   - CHANGED: TEE OFF button hidden in preview mode
+   - CHANGED: Back button is subtle grey text with thin green line in preview mode
+   - CHANGED: Slightly increased font sizes for better readability
+   - PRESERVED: All existing functionality unchanged for normal mode
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -245,7 +249,7 @@ STATUS: Ready for integration
         }
         
         .player-name { 
-            font-size: clamp(11px, 3.5vw, 13px); 
+            font-size: clamp(12px, 3.8vw, 14px); 
             font-weight: 500; 
             white-space: nowrap;
             overflow: hidden;
@@ -253,8 +257,26 @@ STATUS: Ready for integration
             flex: 1;
         }
         
+        /* v3.28: Label badge - 3 chars, white on green, minimal padding */
+        .player-label {
+            display: inline-block;
+            background: #1a3a1a;
+            color: #ffffff;
+            font-size: clamp(0.55rem, 1.8vw, 0.65rem);
+            font-weight: 700;
+            text-align: center;
+            border-radius: 4px;
+            padding: 1px 3px;
+            margin: 0 2px;
+            letter-spacing: 0.3px;
+            border: 1px solid #2a5a2a;
+            min-width: 26px;
+            flex-shrink: 0;
+            text-transform: uppercase;
+        }
+        
         .player-handicap { 
-            font-size: clamp(10px, 3vw, 11px); 
+            font-size: clamp(11px, 3.2vw, 13px); 
             font-weight: 600; 
             background: rgba(76,175,80,0.2);
             padding: 1px clamp(4px, 2vw, 6px);
@@ -338,6 +360,15 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
+        /* v3.28: Preview mode - disabled buttons */
+        .role-btn-disabled {
+            border-color: #555;
+            color: #666;
+            background: #1a1a1a;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
         .action-buttons {
             display: flex;
             gap: 12px;
@@ -372,6 +403,25 @@ STATUS: Ready for integration
         
         .btn-teeoff-disabled { opacity: 0.4; cursor: not-allowed; }
         
+        /* v3.28: Preview mode - subtle back link */
+        .preview-back-link {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #2a5a2a;
+            color: #888;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            letter-spacing: 0.5px;
+        }
+        .preview-back-link:hover {
+            color: #aaa;
+        }
+        .preview-back-link:active {
+            opacity: 0.6;
+        }
+        
         .role-status {
             text-align: center;
             font-size: 0.7rem;
@@ -382,6 +432,7 @@ STATUS: Ready for integration
         
         .role-status-selected { background: #1a3a1a; color: #4caf50; }
         .role-status-warning { background: #2a2a1a; color: #ffaa44; }
+        .role-status-preview { background: #1a1a2a; color: #888; }
         
         .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #444; }
         
@@ -636,10 +687,10 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.27</div>
+<div class="version-tag">v3.28</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.27
+// FILE: pre-game.html - VERSION 3.28
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -650,8 +701,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PRE-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "3.27";
-var CACHE_KEY = "pre_game_version_v327";
+var VERSION = "3.28";
+var CACHE_KEY = "pre_game_version_v328";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -688,6 +739,9 @@ var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
 var isPreviewSandbox = false;
+
+// v3.28: Preview mode flag
+var isPreviewMode = false;
 
 var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
@@ -1071,6 +1125,11 @@ function canTakeRole(role) {
 }
 
 function toggleRole(role) {
+    // v3.28: Preview mode - disable all role selection
+    if (isPreviewMode) {
+        return;
+    }
+    
     if (tempSelectedRole === role) {
         tempSelectedRole = null;
         render();
@@ -1196,6 +1255,14 @@ function loadGame() {
     var realGameId = sessionStorage.getItem("currentGameId");
     var activeGame = deviceSession ? deviceSession.activeGame : null;
     
+    // v3.28: Check for preview mode
+    var urlParams = new URLSearchParams(window.location.search);
+    isPreviewMode = (urlParams.get('mode') === 'preview');
+    
+    if (isPreviewMode) {
+        console.log("[PRE-GAME] Preview mode enabled - view-only");
+    }
+    
     if (!realGameId) {
         Modal.alert("No game selected. Please return to main menu.");
         setTimeout(function() {
@@ -1293,6 +1360,11 @@ function loadGame() {
 }
 
 function startGame() {
+    // v3.28: Preview mode - prevent TEE OFF
+    if (isPreviewMode) {
+        return;
+    }
+    
     // v3.26: Safety check for gameId before navigation
     if (!gameId) {
         console.error("[PRE-GAME] Cannot navigate - no gameId");
@@ -1433,6 +1505,11 @@ function startGame() {
 
 function goBack() {
     var returnDest = SessionManager.getReturnDestination();
+    // v3.28: Preview mode - always go back to index
+    if (isPreviewMode) {
+        window.location.href = "index.html";
+        return;
+    }
     window.location.href = returnDest;
 }
 
@@ -1442,6 +1519,11 @@ function getFormatDisplayName(format) {
 }
 
 function getButtonClass(flight) {
+    // v3.28: Preview mode - return disabled class
+    if (isPreviewMode) {
+        return "role-btn-disabled";
+    }
+    
     var now = Date.now();
     var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
     var isLocked = (flight === 1 ? locks.f1 : locks.f2) && (flight === 1 ? locks.f1.ex : locks.f2.ex) > now;
@@ -1464,6 +1546,11 @@ function getButtonClass(flight) {
 }
 
 function getViewButtonClass() {
+    // v3.28: Preview mode - return disabled class
+    if (isPreviewMode) {
+        return "role-btn-disabled";
+    }
+    
     var isSelected = (tempSelectedRole === "view");
     if (isSelected) {
         return "role-btn-gold";
@@ -1472,7 +1559,7 @@ function getViewButtonClass() {
 }
 
 // ============================================================
-// Render team with anchor highlighting
+// Render team with anchor highlighting and labels
 // ============================================================
 
 function renderTeam(teamPlayers, anchorName) {
@@ -1482,9 +1569,11 @@ function renderTeam(teamPlayers, anchorName) {
         var isAnchor = (anchorName === p.name);
         var nameColor = isAnchor ? '#ffaa44' : '#ffffff';
         var hcpColor = isAnchor ? '#ffaa44' : '#4caf50';
+        var label = p.label || '';
         
         html += '<div class="player-row">' +
             '<span class="player-name" style="color: ' + nameColor + ';">' + escapeHtml(p.name) + '</span>' +
+            '<span class="player-label">' + escapeHtml(label) + '</span>' +
             '<span class="player-handicap" style="color: ' + hcpColor + ';">' + p.handicap + '</span>' +
             '</div>';
     }
@@ -1540,9 +1629,20 @@ function render() {
     
     var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
     
+    // v3.28: Preview mode - disable TEE OFF and hide certain elements
+    if (isPreviewMode) {
+        isTeeOffDisabled = true;
+    }
+    
     var roleStatusText = "";
     var roleStatusClass = "";
-    if (tempSelectedRole === "update1") {
+    
+    // v3.28: Preview mode status
+    if (isPreviewMode) {
+        roleStatusText = "👁️ Preview Only - This game is scheduled for " + formatDisplayDate(gameData.date);
+        roleStatusClass = "role-status-preview";
+        isTeeOffDisabled = true;
+    } else if (tempSelectedRole === "update1") {
         roleStatusText = "✓ Score F1 selected. Click TEE OFF to lock this role.";
         roleStatusClass = "role-status-selected";
         isTeeOffDisabled = false;
@@ -1588,15 +1688,77 @@ function render() {
         flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
     
+    // v3.28: Preview mode - different title and bubble
+    var titleText = isPreviewMode ? "📋 NEXT GAME" : "🏌️ READY TO PLAY";
+    var subtitleText = isPreviewMode ? "View game setup (read-only)" : "Verify teams and handicaps before teeing off";
+    var bubbleText = isPreviewMode ? "VIEW" : "LIVE";
+    var bubbleColor = isPreviewMode ? '#ffaa44' : '#4caf50';
+    var bubbleBg = isPreviewMode ? 'rgba(255,170,68,0.2)' : 'rgba(76,175,80,0.3)';
+    var bubbleBorder = isPreviewMode ? '#ffaa44' : '#4caf50';
+    
+    // v3.28: Preview mode - no hint for admin (disabled)
+    var titleHint = isPreviewMode ? '' : '<span class="title-hint">⌘+click or long press for admin</span>';
+    
+    // v3.28: Preview mode - hide TEE OFF button and role section
+    var roleSectionHtml = '';
+    var actionButtonsHtml = '';
+    
+    if (!isPreviewMode) {
+        // Normal mode - show role section and TEE OFF button
+        roleSectionHtml = `
+            <div class="role-section">
+                <div class="role-title">🎮 SELECT YOUR ROLE</div>
+                <div class="role-buttons">
+                    <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')">${f1ButtonText}</button>
+                    <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')">${f2ButtonText}</button>
+                    <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
+                </div>
+                <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
+            </div>
+        `;
+        
+        actionButtonsHtml = `
+            <div class="action-buttons">
+                <button class="btn btn-back" onclick="goBack()">← BACK</button>
+                <button class="btn btn-teeoff ${isTeeOffDisabled ? 'btn-teeoff-disabled' : ''}" onclick="startGame()" ${isTeeOffDisabled ? 'disabled' : ''}>⛳ TEE OFF →</button>
+            </div>
+        `;
+    } else {
+        // Preview mode - show status only, no role buttons, no TEE OFF
+        roleSectionHtml = `
+            <div class="role-section" style="opacity:0.7; border-color:#333;">
+                <div class="role-title" style="color:#888;">👁️ PREVIEW MODE</div>
+                <div class="role-buttons">
+                    <button class="role-btn role-btn-disabled">SCORE F1</button>
+                    <button class="role-btn role-btn-disabled">SCORE F2</button>
+                    <button class="role-btn role-btn-disabled">VIEW ONLY</button>
+                </div>
+                <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
+            </div>
+        `;
+        
+        actionButtonsHtml = '';
+    }
+    
+    // v3.28: Preview mode - subtle back link instead of button
+    var backHtml = '';
+    if (isPreviewMode) {
+        backHtml = `
+            <div class="preview-back-link" onclick="goBack()">← Back to Main Menu</div>
+        `;
+    } else {
+        backHtml = '';
+    }
+    
     var html = `
-        <div class="status-bubble" id="statusBubble">LIVE</div>
+        <div class="status-bubble" id="statusBubble" style="background:${bubbleBg}; border-color:${bubbleBorder}; color:${bubbleColor};">${bubbleText}</div>
         
         <div class="header">
             <div class="title" id="preGameTitle">
-                🏌️ READY TO PLAY
-                <span class="title-hint">⌘+click or long press for admin</span>
+                ${titleText}
+                ${titleHint}
             </div>
-            <div class="subtitle">Verify teams and handicaps before teeing off</div>
+            <div class="subtitle">${subtitleText}</div>
         </div>
         
         <div class="course-card">
@@ -1636,20 +1798,11 @@ function render() {
             </div>
         </div>
         
-        <div class="role-section">
-            <div class="role-title">🎮 SELECT YOUR ROLE</div>
-            <div class="role-buttons">
-                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')">${f1ButtonText}</button>
-                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')">${f2ButtonText}</button>
-                <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
-            </div>
-            <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
-        </div>
+        ${roleSectionHtml}
         
-        <div class="action-buttons">
-            <button class="btn btn-back" onclick="goBack()">← BACK</button>
-            <button class="btn btn-teeoff ${isTeeOffDisabled ? 'btn-teeoff-disabled' : ''}" onclick="startGame()" ${isTeeOffDisabled ? 'disabled' : ''}>⛳ TEE OFF →</button>
-        </div>
+        ${actionButtonsHtml}
+        
+        ${backHtml}
         
         <div class="footer">SICC Ryder Cup v${VERSION}</div>
     `;
@@ -1657,10 +1810,10 @@ function render() {
     document.getElementById("app").innerHTML = html;
     
     // ============================================================
-    // v3.24: Setup long-click + Cmd+Click on title
+    // v3.24: Setup long-click + Cmd+Click on title (disabled in preview mode)
     // ============================================================
     var titleEl = document.getElementById('preGameTitle');
-    if (titleEl) {
+    if (titleEl && !isPreviewMode) {
         setupLongClickAdmin(titleEl);
     }
     
@@ -1702,13 +1855,17 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.27
-KEY CHANGES from v3.26:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v3.26
+VERSION: 3.28
+KEY CHANGES from v3.27:
+   - ADDED: ?mode=preview support for view-only game preview
+   - ADDED: Label badges (3 chars, white on green) next to player names
+   - CHANGED: Status bubble shows "VIEW" in preview mode
+   - CHANGED: Title changes to "📋 NEXT GAME" in preview mode
+   - CHANGED: All role buttons disabled in preview mode
+   - CHANGED: TEE OFF button hidden in preview mode
+   - CHANGED: Back button is subtle grey text with thin green line in preview mode
+   - CHANGED: Slightly increased font sizes for better readability
+   - PRESERVED: All existing functionality unchanged for normal mode
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js, js/settings.js
 STATUS: Ready for integration
 -->
