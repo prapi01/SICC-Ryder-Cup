@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 6.21
-KEY CHANGES from v6.20:
-   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
-   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
-   - ADDED: Firebase Storage and html2canvas SDKs for celebration features
-   - UPDATED: Dependent files to CORRECT WRV-integrated versions
-   - All existing functionality preserved from v6.20
-DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.21), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.11), js/real-game-init.js (v1.02), js/waiting-screen.js, js/settings.js, js/wrv.js (v1.02), js/celebration-photo.js (v1.01), js/game-data.js (v2.08), js/sign-card.js (v1.19), js/hcp-adjust.js (v2.51), js/history-record.js (v3.04)
+VERSION: 6.22
+KEY CHANGES from v6.21:
+   - UPDATED: sign-card.js from v1.19 to v1.20 (flat signature structure fix)
+   - FIXED: Browser was loading cached v1.19 instead of v1.20 causing WRV verification failures
+   - UPDATED: Cache-busting to v622 for fresh load
+   - All existing functionality preserved from v6.21
+DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.21), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.11), js/real-game-init.js (v1.02), js/waiting-screen.js, js/settings.js, js/wrv.js (v1.02), js/celebration-photo.js (v1.01), js/game-data.js (v2.08), js/sign-card.js (v1.20), js/hcp-adjust.js (v2.51), js/history-record.js (v3.04)
 STATUS: Ready for integration
 -->
 
@@ -27,10 +26,10 @@ STATUS: Ready for integration
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=6.21"></script>
-    <script src="js/session.js?v=6.21"></script>
-    <script src="js/settings.js?v=6.21"></script>
-    <script src="js/modal.js?v=6.21"></script>
+    <script src="js/firebase-config.js?v=6.22"></script>
+    <script src="js/session.js?v=6.22"></script>
+    <script src="js/settings.js?v=6.22"></script>
+    <script src="js/modal.js?v=6.22"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     
@@ -41,7 +40,7 @@ STATUS: Ready for integration
     <!-- Game modules (CORRECT WRV-integrated versions) -->
     <script src="js/history-record.js?v=3.04"></script>
     <script src="js/game-data.js?v=2.08"></script>
-    <script src="js/sign-card.js?v=1.19"></script>
+    <script src="js/sign-card.js?v=1.20"></script>
     <script src="js/hcp-adjust.js?v=2.51"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-team.js?v=1.13"></script>
@@ -323,7 +322,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v6.21</div>
+<div class="version-tag">v6.22</div>
 
 <script>
 // ============================================================
@@ -336,16 +335,16 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v6.21: Added WRV support
+// VERSION CACHE-BUSTING - v6.22: Updated sign-card.js to v1.20
 // ============================================================
-var APP_VERSION = "6.21";
-var CACHE_KEY = "real_game_version_v621";
+var APP_VERSION = "6.22";
+var CACHE_KEY = "real_game_version_v622";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    // v6.21: Preserve ALL existing URL parameters
+    // v6.22: Preserve ALL existing URL parameters
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', APP_VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -357,8 +356,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "6.21";
-console.log("[REAL-GAME] Initializing v6.21 - Added WRV support");
+window.REAL_GAME_VERSION = "6.22";
+console.log("[REAL-GAME] Initializing v6.22 - Updated sign-card.js to v1.20");
 console.log("[REAL-GAME] =========================================");
 console.log("[REAL-GAME] WRV loaded:", typeof WRV !== 'undefined');
 console.log("[REAL-GAME] celebration-photo loaded:", typeof checkAndRenameCelebrationPhoto === 'function');
@@ -385,13 +384,12 @@ setTimeout(function() {
 
 <!--
 FILE: real-game.html
-VERSION: 6.21
-KEY CHANGES from v6.20:
-   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
-   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
-   - ADDED: Firebase Storage and html2canvas SDKs for celebration features
-   - UPDATED: Dependent files to CORRECT WRV-integrated versions
-   - All existing functionality preserved from v6.20
-DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.21), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.11), js/real-game-init.js (v1.02), js/waiting-screen.js, js/settings.js, js/wrv.js (v1.02), js/celebration-photo.js (v1.01), js/game-data.js (v2.08), js/sign-card.js (v1.19), js/hcp-adjust.js (v2.51), js/history-record.js (v3.04)
+VERSION: 6.22
+KEY CHANGES from v6.21:
+   - UPDATED: sign-card.js from v1.19 to v1.20 (flat signature structure fix)
+   - FIXED: Browser was loading cached v1.19 instead of v1.20 causing WRV verification failures
+   - UPDATED: Cache-busting to v622 for fresh load
+   - All existing functionality preserved from v6.21
+DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.21), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.11), js/real-game-init.js (v1.02), js/waiting-screen.js, js/settings.js, js/wrv.js (v1.02), js/celebration-photo.js (v1.01), js/game-data.js (v2.08), js/sign-card.js (v1.20), js/hcp-adjust.js (v2.51), js/history-record.js (v3.04)
 STATUS: Ready for integration
 -->
