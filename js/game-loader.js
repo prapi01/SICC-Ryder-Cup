@@ -1,13 +1,13 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: GameData.startingHole is now set BEFORE parsing saved holes in buildCacheFromDoc()
-   - This ensures getSavedHolesFromString() uses the correct play order mapping
-   - Previously, GameData.startingHole was still 1 (default) when savedHoles were parsed
-   - This caused savedHoles to be stored in natural order (1-12) instead of play order (10-18,1-9)
-   - Result: Scorecard showed H1 as first hole instead of H10 for shotgun start
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: buildCacheFromDoc() now correctly reads signatures from BOTH sources:
+     - Flat fields: docData['signatures.f1'] (v1.20 writes these)
+     - Nested fields: docData.signatures?.f1?.signed (v1.21 writes these)
+   - This ensures cache.signatures is correctly built regardless of which version wrote the data
+   - Eliminates the mismatch between cache and Firestore that prevented game completion
+   - PRESERVED: ALL other functionality from v1.14 unchanged
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -172,7 +172,7 @@ var GameLoader = (function() {
     
     // ============================================================
     // Helper: Build cache from Firestore document
-    // v1.14: CRITICAL FIX - Set GameData.startingHole BEFORE parsing saved holes
+    // v1.15: FIXED - Read signatures from both flat fields and nested object
     // ============================================================
     function buildCacheFromDoc(docData) {
         var course = docData.course || {};
@@ -182,7 +182,33 @@ var GameLoader = (function() {
         var f1DataString = docData.f1?.d || "";
         var f2DataString = docData.f2?.d || "";
         var results = docData.results || null;
-        var signatures = docData.signatures || { f1: false, f2: false };
+        
+        // v1.15: Build signatures from BOTH sources to handle mixed structure
+        // Check flat fields (v1.20 writes these) AND nested .signed (v1.21 writes these)
+        var f1Signed = false;
+        var f2Signed = false;
+        
+        // Check flat fields at document root
+        if (docData['signatures.f1'] === true) f1Signed = true;
+        if (docData['signatures.f2'] === true) f2Signed = true;
+        
+        // Check nested signatures object
+        if (docData.signatures) {
+            // Check flat booleans inside signatures object
+            if (docData.signatures.f1 === true) f1Signed = true;
+            if (docData.signatures.f2 === true) f2Signed = true;
+            // Check nested .signed structure (v1.21)
+            if (docData.signatures.f1 && docData.signatures.f1.signed === true) f1Signed = true;
+            if (docData.signatures.f2 && docData.signatures.f2.signed === true) f2Signed = true;
+        }
+        
+        var signatures = {
+            f1: f1Signed,
+            f2: f2Signed
+        };
+        
+        console.log('[GAME-LOADER] buildCacheFromDoc: signatures built:', JSON.stringify(signatures));
+        
         var submitted = docData.submitted || { f1: false, f2: false };
         var locks = docData.locks || { f1: null, f2: null };
         var gameStarted = docData.gameStarted || false;
@@ -539,14 +565,14 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: GameData.startingHole is now set BEFORE parsing saved holes in buildCacheFromDoc()
-   - This ensures getSavedHolesFromString() uses the correct play order mapping
-   - Previously, GameData.startingHole was still 1 (default) when savedHoles were parsed
-   - This caused savedHoles to be stored in natural order (1-12) instead of play order (10-18,1-9)
-   - Result: Scorecard showed H1 as first hole instead of H10 for shotgun start
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: buildCacheFromDoc() now correctly reads signatures from BOTH sources:
+     - Flat fields: docData['signatures.f1'] (v1.20 writes these)
+     - Nested fields: docData.signatures?.f1?.signed (v1.21 writes these)
+   - This ensures cache.signatures is correctly built regardless of which version wrote the data
+   - Eliminates the mismatch between cache and Firestore that prevented game completion
+   - PRESERVED: ALL other functionality from v1.14 unchanged
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
