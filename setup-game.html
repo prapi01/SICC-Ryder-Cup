@@ -1,14 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.60
-KEY CHANGES from v1.59:
-   - ADDED: label-based handicap loading from historyGames
-   - ADDED: getLatestHandicapForLabel(label) - queries historyGames for most recent finalHcp
-   - ADDED: loadLatestHandicapsFromHistory(players) - bulk updates handicaps from history
-   - MODIFIED: loadPlayerList() now calls loadLatestHandicapsFromHistory() after loading
-   - FALLBACK: If no history found, uses playerInformation.handicap
-   - FALLBACK: If no playerInformation, uses 0
-   - PRESERVED: All UI styling and layout from v1.59 unchanged
+VERSION: 1.61
+KEY CHANGES from v1.60:
+   - FIXED: signatures now use NESTED structure: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
+   - FIXED: This matches the schema and eliminates mixed structure issues
+   - REMOVED: submitted field (no longer used, was causing confusion)
+   - ADDED: Label display field next to player name (white on green, 3 chars)
+   - ADDED: Labels shown in dropdown as "(LABEL)" next to player name
+   - CHANGED: Player name field reduced to fit label display
+   - PRESERVED: All UI styling and layout from v1.60
    - PRESERVED: All edit mode functionality unchanged
    - PRESERVED: All existing form handling unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
@@ -259,12 +259,12 @@ STATUS: Ready for integration
             display: none;
         }
         
-        /* Column 1: Name - 160px */
+        /* Column 1: Name - reduced to fit label */
         .player-name-wrapper {
-            flex: 0 0 160px;
-            width: 160px;
-            min-width: 160px;
-            max-width: 160px;
+            flex: 0 0 140px;
+            width: 140px;
+            min-width: 140px;
+            max-width: 140px;
             position: relative;
             display: inline-block;
             height: 24px;
@@ -282,7 +282,7 @@ STATUS: Ready for integration
         .player-name-select {
             width: 100%;
             height: 24px;
-            font-size: 14px;
+            font-size: 0.7rem;
             padding: 2px 18px 2px 4px;
             border: 1px solid #2a5a2a;
             border-radius: 3px;
@@ -303,20 +303,36 @@ STATUS: Ready for integration
         .player-name-select option {
             background: #0a0a0a;
             color: #e0e0e0;
-            font-size: 14px;
+            font-size: 0.7rem;
         }
         
-        /* Column 2: Label - HIDDEN */
+        /* Column 2: Label - 3 chars, white on green, minimal padding */
         .label-display {
-            display: none !important;
+            flex: 0 0 36px;
+            width: 36px;
+            min-width: 36px;
+            max-width: 36px;
+            display: inline-block;
+            background: #1a3a1a;
+            color: #ffffff;
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-align: center;
+            border-radius: 4px;
+            padding: 1px 2px;
+            margin: 0 2px;
+            letter-spacing: 0.3px;
+            border: 1px solid #2a5a2a;
+            line-height: 20px;
+            text-transform: uppercase;
         }
         
-        /* Column 3: HCP - 40px, center-aligned, arrows on focus */
+        /* Column 3: HCP - 32px, center-aligned */
         .hcp-group {
-            flex: 0 0 40px;
-            width: 40px;
-            min-width: 40px;
-            max-width: 40px;
+            flex: 0 0 32px;
+            width: 32px;
+            min-width: 32px;
+            max-width: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -330,8 +346,8 @@ STATUS: Ready for integration
             display: none;
         }
         .hcp-group input[type="number"] {
-            width: 28px;
-            font-size: 14px;
+            width: 24px;
+            font-size: 0.7rem;
             text-align: center;
             font-weight: 600;
             padding: 0;
@@ -355,12 +371,12 @@ STATUS: Ready for integration
             appearance: auto;
         }
         
-        /* Column 4: Team - 44px, right-aligned, with custom arrow */
+        /* Column 4: Team - 40px, right-aligned */
         .team-wrapper {
-            flex: 0 0 44px;
-            width: 44px;
-            min-width: 44px;
-            max-width: 44px;
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
             position: relative;
             display: inline-block;
             height: 24px;
@@ -378,7 +394,7 @@ STATUS: Ready for integration
         .team-display {
             width: 100%;
             height: 24px;
-            font-size: 14px;
+            font-size: 0.7rem;
             text-align: right;
             padding: 1px 18px 1px 4px;
             font-weight: 600;
@@ -400,12 +416,12 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Column 5: Flight - 48px, right-aligned, user-assigned */
+        /* Column 5: Flight - 44px, right-aligned */
         .flight-wrapper {
-            flex: 0 0 48px;
-            width: 48px;
-            min-width: 48px;
-            max-width: 48px;
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
             position: relative;
             display: inline-block;
             height: 24px;
@@ -423,7 +439,7 @@ STATUS: Ready for integration
         .flight-display {
             width: 100%;
             height: 24px;
-            font-size: 14px;
+            font-size: 0.7rem;
             text-align: right;
             padding: 1px 18px 1px 4px;
             font-weight: 600;
@@ -445,7 +461,7 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Player header row - fixed column widths (Label hidden) */
+        /* Player header row - fixed column widths */
         .player-header-row {
             display: flex;
             align-items: center;
@@ -453,7 +469,7 @@ STATUS: Ready for integration
             padding: 2px 4px;
             margin-bottom: 4px;
             border-bottom: 1px solid #2a5a2a;
-            font-size: 10px;
+            font-size: 0.5rem;
             color: #4caf50;
             font-weight: 600;
             letter-spacing: 0.5px;
@@ -461,10 +477,10 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-player {
-            flex: 0 0 160px;
-            width: 160px;
-            min-width: 160px;
-            max-width: 160px;
+            flex: 0 0 140px;
+            width: 140px;
+            min-width: 140px;
+            max-width: 140px;
             text-align: left;
             display: flex;
             align-items: center;
@@ -472,13 +488,21 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-label {
-            display: none !important;
+            flex: 0 0 36px;
+            width: 36px;
+            min-width: 36px;
+            max-width: 36px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
         }
         .player-header-row .header-hcp {
-            flex: 0 0 40px;
-            width: 40px;
-            min-width: 40px;
-            max-width: 40px;
+            flex: 0 0 32px;
+            width: 32px;
+            min-width: 32px;
+            max-width: 32px;
             text-align: center;
             display: flex;
             align-items: center;
@@ -486,10 +510,10 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-team {
-            flex: 0 0 44px;
-            width: 44px;
-            min-width: 44px;
-            max-width: 44px;
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
             text-align: right;
             display: flex;
             align-items: center;
@@ -497,10 +521,10 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-flight {
-            flex: 0 0 48px;
-            width: 48px;
-            min-width: 48px;
-            max-width: 48px;
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
             text-align: right;
             display: flex;
             align-items: center;
@@ -627,11 +651,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.60</div>
+<div class="version-tag">v1.61</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.60
+// VERSION: 1.61
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -639,8 +663,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.60";
-var CACHE_KEY = "setup_game_version_v160";
+var VERSION = "1.61";
+var CACHE_KEY = "setup_game_version_v161";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1004,7 +1028,7 @@ function rotateDataString(naturalData, startingHole) {
 }
 
 // ============================================================
-// v1.59 FIX: initializeEmptyResults with OBJECTS for nested data
+// v1.59: initializeEmptyResults with OBJECTS for nested data
 // Firestore does NOT support nested arrays (arrays inside arrays)
 // Using objects: matchResults[0] works the same as array[0]
 // ============================================================
@@ -1601,12 +1625,26 @@ function proceedWithCommit() {
 }
 
 // ============================================================
-// v1.59 FIX: createNewGame with OBJECTS for nested results
+// v1.61: createNewGame with NESTED signatures
 // ============================================================
 function createNewGame(anchorPlayer) {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
     var emptyResults = initializeEmptyResults();
+    
+    // v1.61: NESTED signatures structure (matches schema)
+    var signatures = {
+        f1: {
+            signed: false,
+            signedAt: null,
+            captainName: null
+        },
+        f2: {
+            signed: false,
+            signedAt: null,
+            captainName: null
+        }
+    };
     
     console.log("[CREATE-GAME] emptyResults.matchResults:", emptyResults.matchResults);
     console.log("[CREATE-GAME] emptyResults.f1IntraMatches:", emptyResults.f1IntraMatches);
@@ -1636,13 +1674,12 @@ function createNewGame(anchorPlayer) {
         createdAt: new Date().toISOString(),
         lastSyncedPosition: -1,
         savedHoles: { "1": [], "2": [] },
-        gameStarted: false
+        gameStarted: false,
+        // v1.61: NESTED signatures structure
+        signatures: signatures
     };
     
-    console.log("[CREATE-GAME] Game data prepared with results.matchResults:", gameData.results.matchResults);
-    console.log("[CREATE-GAME] Game data prepared with results.game2.displayT1:", gameData.results.game2.displayT1);
-    console.log("[CREATE-GAME] Game data prepared with results.game2.displayT2:", gameData.results.game2.displayT2);
-    console.log("[CREATE-GAME] Game data prepared with results.game3.displayStrk:", gameData.results.game3.displayStrk);
+    console.log("[CREATE-GAME] Game data prepared with signatures:", gameData.signatures);
     
     var newGameId = generateGameId();
     
@@ -1662,7 +1699,7 @@ function createNewGame(anchorPlayer) {
 }
 
 // ============================================================
-// v1.59 FIX: updateExistingGame preserves OBJECTS for nested results
+// v1.61: updateExistingGame with NESTED signatures
 // ============================================================
 function updateExistingGame(anchorPlayer) {
     db.collection("scheduledGames").doc(state.editingGameId).get()
@@ -1685,6 +1722,21 @@ function updateExistingGame(anchorPlayer) {
                 savedHoles['2'] = [];
             }
             
+            // v1.61: Preserve existing signatures if they exist, but ensure nested structure
+            var existingSignatures = existingData.signatures || {};
+            var signatures = {
+                f1: {
+                    signed: existingSignatures.f1?.signed === true || false,
+                    signedAt: existingSignatures.f1?.signedAt || null,
+                    captainName: existingSignatures.f1?.captainName || null
+                },
+                f2: {
+                    signed: existingSignatures.f2?.signed === true || false,
+                    signedAt: existingSignatures.f2?.signedAt || null,
+                    captainName: existingSignatures.f2?.captainName || null
+                }
+            };
+            
             var updatePayload = {
                 date: document.getElementById("combinedDatePicker").value,
                 course: state.selectedCourseData,
@@ -1701,17 +1753,14 @@ function updateExistingGame(anchorPlayer) {
                 currentHoleF1: existingData.currentHoleF1 || 1,
                 currentHoleF2: existingData.currentHoleF2 || 1,
                 locks: existingData.locks || { f1: null, f2: null },
-                signatures: existingData.signatures || { f1: false, f2: false },
-                submitted: existingData.submitted || { f1: false, f2: false },
+                // v1.61: NESTED signatures structure
+                signatures: signatures,
                 gameStarted: existingData.gameStarted || false,
                 lastSyncedPosition: existingData.lastSyncedPosition !== undefined ? existingData.lastSyncedPosition : -1,
                 savedHoles: savedHoles
             };
             
-            console.log("[UPDATE-GAME] Update payload results.matchResults:", updatePayload.results?.matchResults);
-            console.log("[UPDATE-GAME] Update payload preserving results.game2.displayT1:", updatePayload.results?.game2?.displayT1);
-            console.log("[UPDATE-GAME] Update payload preserving results.game2.displayT2:", updatePayload.results?.game2?.displayT2);
-            console.log("[UPDATE-GAME] Update payload preserving results.game3.displayStrk:", updatePayload.results?.game3?.displayStrk);
+            console.log("[UPDATE-GAME] Update payload with signatures:", updatePayload.signatures);
             
             var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
             if (courseChanged) {
@@ -1725,7 +1774,7 @@ function updateExistingGame(anchorPlayer) {
                 updatePayload.lastSyncedPosition = -1;
                 updatePayload.savedHoles = { "1": [], "2": [] };
                 updatePayload.gameStarted = false;
-                console.log("[UPDATE-GAME] Course changed - reset results with matchResults, f1IntraMatches, f2IntraMatches as objects");
+                console.log("[UPDATE-GAME] Course changed - reset results");
             }
             
             var startingHoleChanged = (existingData.startingHole !== state.startingHole);
@@ -1743,7 +1792,6 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.lastSyncedPosition = -1;
                         updatePayload.savedHoles = { "1": [], "2": [] };
                         updatePayload.gameStarted = false;
-                        console.log("[UPDATE-GAME] Starting hole changed - reset results with matchResults, f1IntraMatches, f2IntraMatches as objects");
                         
                         updateDefaultPlayers(state.players, function(success) {
                             if (success) {
@@ -1863,11 +1911,13 @@ function render() {
         });
         if (originalIdx === -1) originalIdx = idx;
         
+        // v1.61: Show labels in dropdown options
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
             var isSelected = (pl.name === p.name) ? ' selected' : '';
-            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
+            var displayName = pl.name + (pl.label ? ' (' + pl.label + ')' : '');
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(displayName) + '</option>';
         }
         
         var flightVal = p.flight !== null && p.flight !== undefined ? p.flight : '';
@@ -2120,15 +2170,15 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.60
-KEY CHANGES from v1.59:
-   - ADDED: label-based handicap loading from historyGames
-   - ADDED: getLatestHandicapForLabel(label) - queries historyGames for most recent finalHcp
-   - ADDED: loadLatestHandicapsFromHistory(players) - bulk updates handicaps from history
-   - MODIFIED: loadPlayerList() now calls loadLatestHandicapsFromHistory() after loading
-   - FALLBACK: If no history found, uses playerInformation.handicap
-   - FALLBACK: If no playerInformation, uses 0
-   - PRESERVED: All UI styling and layout from v1.59 unchanged
+VERSION: 1.61
+KEY CHANGES from v1.60:
+   - FIXED: signatures now use NESTED structure: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
+   - FIXED: This matches the schema and eliminates mixed structure issues
+   - REMOVED: submitted field (no longer used, was causing confusion)
+   - ADDED: Label display field next to player name (white on green, 3 chars)
+   - ADDED: Labels shown in dropdown as "(LABEL)" next to player name
+   - CHANGED: Player name field reduced to fit label display
+   - PRESERVED: All UI styling and layout from v1.60
    - PRESERVED: All edit mode functionality unchanged
    - PRESERVED: All existing form handling unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
