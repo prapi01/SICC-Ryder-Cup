@@ -1,22 +1,23 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: onCacheUpdate() signature check now requires signed === true
-   - Previously the condition triggered when cache.signatures.f1 and f2 were objects
-   - Now properly checks f1.signed === true and f2.signed === true
-   - This prevents premature game completion redirect on initial load
-   - PRESERVED: ALL other functionality from v1.06 unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: applyPreloadedData() now uses nested signatures structure
+   - Previously: signatures: { f1: false, f2: false } (FLAT)
+   - Now: signatures: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
+   - This prevents flat fields from being created in cache and written to Firestore
+   - PRESERVED: ALL other functionality from v1.07 unchanged
+   - This matches the schema structure v4.0 (nested signatures only)
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.07";
+window.REAL_GAME_INIT_VERSION = "1.08";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.07 - Fixed signature check to require signed === true");
+    console.log("[REAL-GAME-INIT] Initializing v1.08 - Fixed applyPreloadedData signatures to nested structure");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -337,7 +338,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // applyPreloadedData
+    // applyPreloadedData - v1.08: FIXED nested signatures
     // ============================================================
     
     function applyPreloadedData(preloadData) {
@@ -359,6 +360,7 @@ var RealGameInit = (function() {
         
         RealGameUtils.updateGameOrder(startingHole);
         
+        // v1.08: FIXED - Use nested signatures structure (matches schema v4.0)
         var mockCache = {
             course: preloadData.course,
             players: preloadData.players,
@@ -373,7 +375,11 @@ var RealGameInit = (function() {
             strkRow: preloadData.strkRow || new Array(18).fill('0'),
             lastSyncedPosition: preloadData.lastSyncedPosition || -1,
             clinchedAt: preloadData.clinchedAt || {},
-            signatures: { f1: false, f2: false },
+            // v1.08: NESTED signatures - matches Firestore schema v4.0
+            signatures: {
+                f1: { signed: false, signedAt: null, captainName: null },
+                f2: { signed: false, signedAt: null, captainName: null }
+            },
             submitted: { f1: false, f2: false },
             locks: preloadData.locks || { f1: null, f2: null },
             gameStarted: true
@@ -935,13 +941,14 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: onCacheUpdate() signature check now requires signed === true
-   - Previously the condition triggered when cache.signatures.f1 and f2 were objects
-   - Now properly checks f1.signed === true and f2.signed === true
-   - This prevents premature game completion redirect on initial load
-   - PRESERVED: ALL other functionality from v1.06 unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: applyPreloadedData() now uses nested signatures structure
+   - Previously: signatures: { f1: false, f2: false } (FLAT)
+   - Now: signatures: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
+   - This prevents flat fields from being created in cache and written to Firestore
+   - PRESERVED: ALL other functionality from v1.07 unchanged
+   - This matches the schema structure v4.0 (nested signatures only)
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
