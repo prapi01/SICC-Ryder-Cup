@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.43
-KEY CHANGES from v8.42:
-   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
-   - CHANGED: In history view, isOtherFlightHoleSaved is always true (all data already saved)
-   - FIXED: Cross-flight bubbles now show correct colors since both flights have data in history
-   - PRESERVED: All v8.42 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.42 unchanged
+VERSION: 8.44
+KEY CHANGES from v8.43:
+   - FIXED: renderGameList() now uses nested signatures structure from history records
+   - FIXED: loadGameListAndModules() now passes signatures from history data
+   - CHANGED: Added nested signatures handling for history records
+   - PRESERVED: All v8.43 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.43 unchanged
    - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
@@ -486,7 +486,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.43</div>
+<div class="version-tag">v8.44</div>
 
 <script>
 // ============================================================
@@ -499,10 +499,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.43: Cross-flight with isOtherFlightHoleSaved
+// VERSION CACHE-BUSTING - v8.44: Nested signatures for history
 // ============================================================
-var APP_VERSION = "8.43";
-var CACHE_KEY = "view_history_version_v843";
+var APP_VERSION = "8.44";
+var CACHE_KEY = "view_history_version_v844";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -520,8 +520,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.43";
-console.log("[VIEW-HISTORY] Initializing v8.43 - Cross-flight with isOtherFlightHoleSaved");
+window.VIEW_HISTORY_VERSION = "8.44";
+console.log("[VIEW-HISTORY] Initializing v8.44 - Nested signatures for history");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1472,7 +1472,35 @@ function loadGameListAndModules() {
             var games = [];
             snapshot.forEach(function(doc) {
                 var data = doc.data();
-                // v8.40: Include celebration field directly from Firestore
+                // v8.44: Include signatures from history data (nested structure)
+                var signatures = data.signatures || null;
+                // If signatures exist, use them; otherwise default to nested structure
+                var normalizedSignatures = null;
+                if (signatures) {
+                    // Check if it's already nested (has f1.signed)
+                    if (signatures.f1 && typeof signatures.f1 === 'object' && signatures.f1.signed !== undefined) {
+                        normalizedSignatures = signatures;
+                    } else if (signatures.f1 === true || signatures.f1 === false) {
+                        // Convert flat to nested
+                        normalizedSignatures = {
+                            f1: { signed: signatures.f1 === true, signedAt: null, captainName: null },
+                            f2: { signed: signatures.f2 === true, signedAt: null, captainName: null }
+                        };
+                    } else {
+                        // Fallback: default nested with both signed
+                        normalizedSignatures = {
+                            f1: { signed: true, signedAt: null, captainName: null },
+                            f2: { signed: true, signedAt: null, captainName: null }
+                        };
+                    }
+                } else {
+                    // No signatures in history - default to both signed (completed game)
+                    normalizedSignatures = {
+                        f1: { signed: true, signedAt: null, captainName: null },
+                        f2: { signed: true, signedAt: null, captainName: null }
+                    };
+                }
+                
                 games.push({
                     archiveId: doc.id,
                     originalGameId: data.originalGameId,
@@ -1485,7 +1513,8 @@ function loadGameListAndModules() {
                     f2DataString: data.f2DataString || "",
                     adjustedHandicaps: data.adjustedHandicaps,
                     completedAt: data.completedAt || data.createdAt,
-                    celebration: data.celebration || null  // v8.40: Include celebration data
+                    celebration: data.celebration || null,  // v8.40: Include celebration data
+                    signatures: normalizedSignatures  // v8.44: Include normalized signatures
                 });
             });
             
@@ -1588,13 +1617,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.43
-KEY CHANGES from v8.42:
-   - FIXED: getBubbleClass() now passes isOtherFlightHoleSaved as 10th parameter to GameMatch.getMatchBubbleClass()
-   - CHANGED: In history view, isOtherFlightHoleSaved is always true (all data already saved)
-   - FIXED: Cross-flight bubbles now show correct colors since both flights have data in history
-   - PRESERVED: All v8.42 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.42 unchanged
+VERSION: 8.44
+KEY CHANGES from v8.43:
+   - FIXED: renderGameList() now uses nested signatures structure from history records
+   - FIXED: loadGameListAndModules() now passes signatures from history data
+   - CHANGED: Added nested signatures handling for history records
+   - PRESERVED: All v8.43 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.43 unchanged
    - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
