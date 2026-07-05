@@ -1,13 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.40
-KEY CHANGES from v7.39:
-   - FIXED: isGameComplete() now reads nested signatures structure only
-   - FIXED: mockCache now uses nested signatures structure
-   - FIXED: loadFromHistoryRecord now uses nested signatures structure
-   - CHANGED: Removed flat signature fallback checks
-   - PRESERVED: ALL other functionality from v7.39 unchanged
-   - This matches the nested structure written by sign-card.js v1.22
+VERSION: 7.41
+KEY CHANGES from v7.40:
+   - FIXED: TR display now shows "-" for unsaved holes (0 values)
+   - CHANGED: Added !0 check for TR display (matches real-game.html behavior)
+   - PRESERVED: ALL other functionality from v7.40 unchanged
+   - This ensures view-game.html displays "-" for unsaved holes
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -21,9 +19,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.40"></script>
-    <script src="js/session.js?v=7.40"></script>
-    <script src="js/settings.js?v=7.40"></script>
+    <script src="js/firebase-config.js?v=7.41"></script>
+    <script src="js/session.js?v=7.41"></script>
+    <script src="js/settings.js?v=7.41"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -32,11 +30,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=7.40"></script>
-    <script src="js/history-record.js?v=7.40"></script>
+    <script src="js/ticker.js?v=7.41"></script>
+    <script src="js/history-record.js?v=7.41"></script>
     <script src="js/sign-card.js?v=1.22"></script>
-    <script src="js/hcp-adjust.js?v=7.40"></script>
-    <script src="js/modal.js?v=7.40"></script>
+    <script src="js/hcp-adjust.js?v=7.41"></script>
+    <script src="js/modal.js?v=7.41"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -157,14 +155,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.40</div>
+<div class="version-tag">v7.41</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.40: Nested signatures
+// VERSION CACHE-BUSTING - v7.41: TR display fix
 // ============================================================
-var APP_VERSION = "7.40";
-var CACHE_KEY = "view_game_version_v740";
+var APP_VERSION = "7.41";
+var CACHE_KEY = "view_game_version_v741";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -182,8 +180,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.40";
-console.log("[VIEW-GAME] Initializing v7.40 - Nested signatures");
+window.VIEW_GAME_VERSION = "7.41";
+console.log("[VIEW-GAME] Initializing v7.41 - TR display fix (show '-' for 0)");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1250,7 +1248,11 @@ function renderAll() {
     var tr = GameLoader.getTRForHole(currentHole);
     
     GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    // v7.41: FIXED - Check for 0 values and display "-" instead
+    var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined && tr.teamA !== 0) ? tr.teamA : "-";
+    var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined && tr.teamB !== 0) ? tr.teamB : "-";
+    GameUI.updateTR("trDisplay", displayTeamA, displayTeamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(currentFlight);
     GameUI.renderPlayerCards("playerCards", currentPlayers, getAllOpponents, getBubbleClassWithClinch, getBubbleValue, getCurrentScore, false, null);
@@ -1503,14 +1505,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.40
-KEY CHANGES from v7.39:
-   - FIXED: isGameComplete() now reads nested signatures structure only
-   - FIXED: mockCache now uses nested signatures structure
-   - FIXED: loadFromHistoryRecord now uses nested signatures structure
-   - CHANGED: Removed flat signature fallback checks
-   - PRESERVED: ALL other functionality from v7.39 unchanged
-   - This matches the nested structure written by sign-card.js v1.22
+VERSION: 7.41
+KEY CHANGES from v7.40:
+   - FIXED: TR display now shows "-" for unsaved holes (0 values)
+   - CHANGED: Added !0 check for TR display (matches real-game.html behavior)
+   - PRESERVED: ALL other functionality from v7.40 unchanged
+   - This ensures view-game.html displays "-" for unsaved holes
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
