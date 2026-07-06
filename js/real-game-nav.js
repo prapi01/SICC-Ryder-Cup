@@ -1,26 +1,23 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: WRV operations now NEVER block UI (User Never Waits for WRV)
-   - REMOVED: `await` from SignCard.submitSignature() - UI updates immediately
-   - REMOVED: `await` from createHistoryRecord() - history record writes in background
-   - CHANGED: showSignCardModal() now shows waiting screen BEFORE WRV starts
-   - CHANGED: Cache updates happen optimistically (immediately after sign)
-   - CHANGED: Game completion triggered immediately (no waiting for WRV)
-   - This ensures users never wait for WRV operations to complete
-   - WRV runs in background with unlimited retries until success
-   - PRESERVED: ALL other functionality from v1.12 unchanged
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - REMOVED: Waiting screen from showGameCompleteScreen() - redirects directly
+   - ADDED: showGameCompleteModal() for showing modal on current page
+   - FIXED: showSignCardModal() now calls showGameCompleteScreen() directly when both signed
+   - PRESERVED: ALL other functionality from v1.13 unchanged
+   - REASON: When both cards are signed, user should go directly to post-game.html
+   - REASON: No waiting screen needed - game is already complete
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.13";
+window.REAL_GAME_NAV_VERSION = "1.14";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.13 - WRV never blocks UI");
+    console.log("[REAL-GAME-NAV] Initializing v1.14 - Direct redirect to post-game.html when complete");
     
     // ============================================================
     // Private Helpers
@@ -243,7 +240,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showSignCardModal - v1.13: WRV NEVER BLOCKS UI
+    // showSignCardModal - v1.14: Direct redirect when both signed
     // ============================================================
     
     function showSignCardModal() {
@@ -272,7 +269,7 @@ var RealGameNav = (function() {
             document.getElementById('signModalNew').remove();
         };
         
-        // v1.13: NO async - UI updates immediately, WRV runs in background
+        // v1.14: NO async - UI updates immediately, WRV runs in background
         document.getElementById('signConfirmBtnNew').onclick = function() {
             document.getElementById('signModalNew').remove();
             
@@ -296,11 +293,17 @@ var RealGameNav = (function() {
                 
                 // ✅ Check if both flights are signed (using cache)
                 if (cache.signatures.f1.signed && cache.signatures.f2.signed) {
-                    // ✅ Fire history record in background (no await)
+                    // v1.14: Fire history record in background (no await)
                     createHistoryRecord();
                     setGameComplete(true);
                     setCelebrationTriggered(false);
+                    
+                    // v1.14: Hide waiting screen (no longer needed)
+                    hideWaitingScreen();
+                    
+                    // v1.14: Redirect directly to post-game.html (NO waiting screen)
                     showGameCompleteScreen();
+                    
                     if (typeof RealGameUI !== 'undefined') {
                         RealGameUI.renderAll();
                     }
@@ -347,14 +350,12 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.13: UNCHANGED
+    // showGameCompleteScreen - v1.14: Direct redirect, NO waiting screen
     // ============================================================
     
     function showGameCompleteScreen() {
-        hideWaitingScreen();
-        
         var gameId = getGameId();
-        console.log("[NAV] showGameCompleteScreen called, gameId:", gameId);
+        console.log("[NAV] showGameCompleteScreen called - redirecting to post-game.html");
         
         // v1.10: Safety check for gameId before navigation
         if (!gameId) {
@@ -371,23 +372,62 @@ var RealGameNav = (function() {
         sessionStorage.setItem('isPostGame', 'true');
         sessionStorage.setItem('currentGameId', gameId);
         
-        // Show waiting screen while redirecting
-        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-            WaitingScreen.show("Loading Post-Game...");
-            console.log("[NAV] Waiting screen shown");
-        } else {
-            var overlay = document.createElement('div');
-            overlay.id = 'waitingScreenOverlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
-            overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Post-Game...</div>';
-            document.body.appendChild(overlay);
-            console.log("[NAV] Fallback waiting screen shown");
-        }
+        // v1.14: NO waiting screen - redirect immediately
+        console.log("[NAV] Navigating to: post-game.html?gameId=" + gameId);
+        window.location.href = 'post-game.html?gameId=' + gameId;
+    }
+    
+    // ============================================================
+    // v1.14: showGameCompleteModal - Show modal on current page
+    // Used by real-game-init.js when both signatures detected
+    // ============================================================
+    
+    function showGameCompleteModal(gameId) {
+        console.log("[NAV] showGameCompleteModal called - showing modal on current page");
         
-        setTimeout(function() {
-            console.log("[NAV] Navigating to: post-game.html?gameId=" + gameId);
-            window.location.href = 'post-game.html?gameId=' + gameId;
-        }, 300);
+        // Hide waiting screen if showing
+        hideWaitingScreen();
+        
+        // Remove any existing modal
+        var existing = document.getElementById('gameCompleteModal');
+        if (existing) existing.remove();
+        
+        // Store post-game context
+        sessionStorage.setItem('isPostGame', 'true');
+        sessionStorage.setItem('currentGameId', gameId || getGameId());
+        
+        var targetGameId = gameId || getGameId();
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="gameCompleteModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10001; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
+                <div style="background:#1a1a1a; border-radius:28px; padding:32px 28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
+                    <div style="font-size:1.5rem; font-weight:700; color:#ffaa44; margin-bottom:12px;">🏆 GAME COMPLETED</div>
+                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:16px; line-height:1.4;">Both cards have been signed!</div>
+                    <div style="font-size:1.5rem; margin-bottom:24px;">🍺 🏆 🍺</div>
+                    <button id="seeResultsFromModalBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%; transition:all 0.2s;">🏆 SEE RESULTS</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        var btn = document.getElementById('seeResultsFromModalBtn');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                if (btn._clicked) return;
+                btn._clicked = true;
+                btn.disabled = true;
+                btn.textContent = '⏳ Loading...';
+                
+                // Remove the modal
+                var modal = document.getElementById('gameCompleteModal');
+                if (modal) modal.remove();
+                
+                // Redirect to post-game.html
+                console.log("[NAV] SEE RESULTS clicked - redirecting to post-game.html");
+                window.location.href = 'post-game.html?gameId=' + targetGameId;
+            });
+        }
     }
     
     // ============================================================
@@ -542,6 +582,7 @@ var RealGameNav = (function() {
         showWaitingScreen: showWaitingScreen,
         hideWaitingScreen: hideWaitingScreen,
         showGameCompleteScreen: showGameCompleteScreen,
+        showGameCompleteModal: showGameCompleteModal,
         showCelebrationAndHandicap: showCelebrationAndHandicap,
         createHistoryRecord: createHistoryRecord
     };
@@ -553,17 +594,14 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: WRV operations now NEVER block UI (User Never Waits for WRV)
-   - REMOVED: `await` from SignCard.submitSignature() - UI updates immediately
-   - REMOVED: `await` from createHistoryRecord() - history record writes in background
-   - CHANGED: showSignCardModal() now shows waiting screen BEFORE WRV starts
-   - CHANGED: Cache updates happen optimistically (immediately after sign)
-   - CHANGED: Game completion triggered immediately (no waiting for WRV)
-   - This ensures users never wait for WRV operations to complete
-   - WRV runs in background with unlimited retries until success
-   - PRESERVED: ALL other functionality from v1.12 unchanged
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - REMOVED: Waiting screen from showGameCompleteScreen() - redirects directly
+   - ADDED: showGameCompleteModal() for showing modal on current page
+   - FIXED: showSignCardModal() now calls showGameCompleteScreen() directly when both signed
+   - PRESERVED: ALL other functionality from v1.13 unchanged
+   - REASON: When both cards are signed, user should go directly to post-game.html
+   - REASON: No waiting screen needed - game is already complete
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
