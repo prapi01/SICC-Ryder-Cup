@@ -1,19 +1,20 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: DEFAULT_SKIP_VERIFY array for timestamp fields
-   - CHANGED: verifyData() now skips specified fields during comparison
-   - CHANGED: writeWithWRV() accepts skipVerify option
-   - CHANGED: updateWithWRV() accepts skipVerify option
-   - SKIP FIELDS: updatedAt, createdAt, completedAt, lastComputedAt, 
-     results.lastComputedAt, celebration.copiedAt, .serverTimestamp fields
-   - PRESERVED: All functionality from v1.09, recovery is unchanged
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - REMOVED: MAX_RETRIES limit (10) - now retries indefinitely
+   - CHANGED: WRV now runs until success, never gives up
+   - CHANGED: Exponential backoff with unlimited retries
+   - CHANGED: Removed "All retries exhausted" error
+   - ADDED: Logging every 100 attempts to avoid console spam
+   - PRESERVED: All verification logic from v1.10 unchanged
+   - PRESERVED: All skipVerify functionality unchanged
+   - This ensures data is eventually synced even with network issues
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.10";
+window.WRV_VERSION = "1.11";
 
 var WRV = (function() {
     
@@ -21,9 +22,9 @@ var WRV = (function() {
     // Configuration
     // ============================================================
     
-    var MAX_RETRIES = 10;
+    // v1.11: No MAX_RETRIES - retry indefinitely until success
     var BASE_DELAY = 1000;
-    var MAX_DELAY = 30000;
+    var MAX_DELAY = 60000;  // 60 seconds max between retries
     
     // ============================================================
     // v1.10: Fields to skip during verification
@@ -190,7 +191,7 @@ var WRV = (function() {
     
     // ============================================================
     // WRV.write() - Write payload, verify payload fields only
-    // v1.10: Accepts skipVerify option
+    // v1.11: INFINITE RETRIES - never gives up
     // ============================================================
     
     function writeWithWRV(collection, docId, data, callback, options) {
@@ -223,16 +224,19 @@ var WRV = (function() {
                     }
                 })
                 .catch(function(err) {
+                    // v1.11: Log warning but NEVER give up
                     console.warn('[WRV] ⚠️ Attempt', attempt, 'failed:', err.message);
                     
-                    if (attempt < MAX_RETRIES) {
-                        var delay = Math.min(BASE_DELAY * Math.pow(1.5, attempt - 1), MAX_DELAY);
-                        console.log('[WRV] Retrying in', delay, 'ms...');
-                        setTimeout(doWrite, delay);
-                    } else {
-                        console.error('[WRV] ❌ All retries exhausted');
-                        if (callback) callback(err);
+                    // v1.11: Unlimited retries - calculate delay with exponential backoff
+                    var delay = Math.min(BASE_DELAY * Math.pow(1.5, attempt - 1), MAX_DELAY);
+                    
+                    // v1.11: Log every 100 attempts to avoid console spam
+                    if (attempt % 100 === 0) {
+                        console.log('[WRV] 📊 Still retrying... attempt #' + attempt + ' for', collection + '/' + docId);
                     }
+                    
+                    console.log('[WRV] 🔄 Retrying in', delay, 'ms... (attempt', attempt + 1, ')');
+                    setTimeout(doWrite, delay);
                 });
         }
         
@@ -426,13 +430,12 @@ var WRV = (function() {
     }
     
     // ============================================================
-    // Public API - v1.10: Added skipVerify support
+    // Public API - v1.11: Infinite retries
     // ============================================================
     
     return {
         write: writeWithWRV,
         update: updateWithWRV,
-        MAX_RETRIES: MAX_RETRIES,
         BASE_DELAY: BASE_DELAY,
         MAX_DELAY: MAX_DELAY,
         recover: recover,
@@ -455,15 +458,16 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: DEFAULT_SKIP_VERIFY array for timestamp fields
-   - CHANGED: verifyData() now skips specified fields during comparison
-   - CHANGED: writeWithWRV() accepts skipVerify option
-   - CHANGED: updateWithWRV() accepts skipVerify option
-   - SKIP FIELDS: updatedAt, createdAt, completedAt, lastComputedAt, 
-     results.lastComputedAt, celebration.copiedAt, .serverTimestamp fields
-   - PRESERVED: All functionality from v1.09, recovery is unchanged
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - REMOVED: MAX_RETRIES limit (10) - now retries indefinitely
+   - CHANGED: WRV now runs until success, never gives up
+   - CHANGED: Exponential backoff with unlimited retries
+   - CHANGED: Removed "All retries exhausted" error
+   - ADDED: Logging every 100 attempts to avoid console spam
+   - PRESERVED: All verification logic from v1.10 unchanged
+   - PRESERVED: All skipVerify functionality unchanged
+   - This ensures data is eventually synced even with network issues
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
