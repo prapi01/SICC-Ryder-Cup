@@ -1,16 +1,14 @@
 <!--
 FILE: post-game.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
-   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
-   - ADDED: js/history-record.js (v3.04) for history record operations
-   - ADDED: Firebase Storage and html2canvas SDKs
-   - ADDED: copyCelebrationPhoto() call in SEE RESULTS handler
-   - UPDATED: game-data.js to v2.08 (WRV-integrated)
-   - UPDATED: sign-card.js to v1.19 (WRV-integrated)
-   - PRESERVED: All v1.05 UI design and functionality
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REMOVED: duplicate celebration photo check (already copied at H17)
+   - REMOVED: copyCelebrationPhoto() call from SEE RESULTS handler
+   - CHANGED: SEE RESULTS now shows celebration screen immediately using cached data
+   - ADDED: Button disable on click to prevent multiple clicks
+   - PRESERVED: All v1.06 UI design and functionality
    - PRESERVED: Dark theme, modal-based layout, all original styling
+   - REASON: Photo is already in Firestore from H17 checkpoint, no need to check again
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -29,11 +27,11 @@ STATUS: Ready for integration
     <!-- html2canvas for celebration capture -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
-    <script src="js/firebase-config.js?v=1.06"></script>
-    <script src="js/session.js?v=1.06"></script>
-    <script src="js/settings.js?v=1.06"></script>
-    <script src="js/modal.js?v=1.06"></script>
-    <script src="js/waiting-screen.js?v=1.06"></script>
+    <script src="js/firebase-config.js?v=1.07"></script>
+    <script src="js/session.js?v=1.07"></script>
+    <script src="js/settings.js?v=1.07"></script>
+    <script src="js/modal.js?v=1.07"></script>
+    <script src="js/waiting-screen.js?v=1.07"></script>
     <script src="js/game-order.js?v=1.00"></script>
     
     <!-- WRV Core - MUST be loaded before dependent files -->
@@ -179,6 +177,11 @@ STATUS: Ready for integration
         .game-complete-btn:active {
             transform: scale(0.98);
         }
+        
+        .game-complete-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -191,7 +194,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
 // ============================================================
@@ -204,10 +207,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.06: WRV integration
+// VERSION CACHE-BUSTING - v1.07: Removed duplicate photo check
 // ============================================================
-var APP_VERSION = "1.06";
-var CACHE_KEY = "post_game_version_v106";
+var APP_VERSION = "1.07";
+var CACHE_KEY = "post_game_version_v107";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -225,8 +228,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.06";
-console.log("[POST-GAME] Initializing v1.06 - WRV integration");
+window.POST_GAME_PAGE_VERSION = "1.07";
+console.log("[POST-GAME] Initializing v1.07 - Removed duplicate photo check");
 console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
@@ -235,6 +238,7 @@ console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 
 var gameId = null;
 var gameData = null;
+var isSeeResultsClicked = false;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -259,21 +263,23 @@ function showGameCompleteModal() {
     content.innerHTML = html;
     
     document.getElementById('seeResultsBtn').addEventListener('click', function() {
+        // v1.07: Prevent multiple clicks
+        if (isSeeResultsClicked) {
+            console.log("[POST-GAME] SEE RESULTS already clicked - ignoring duplicate");
+            return;
+        }
+        isSeeResultsClicked = true;
+        
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ Loading...';
+        
         console.log("[POST-GAME] SEE RESULTS clicked");
         
-        // Check for celebration photo
-        if (typeof copyCelebrationPhoto === 'function') {
-            console.log('[POST-GAME] 📸 Checking for celebration photo');
-            copyCelebrationPhoto(gameId, function(err) {
-                if (err) {
-                    console.warn('[POST-GAME] Celebration photo copy failed:', err);
-                } else {
-                    console.log('[POST-GAME] Celebration photo ready');
-                }
-            });
-        }
+        // v1.07: REMOVED duplicate photo check - photo already copied at H17
+        // The celebration photo is already in Firestore from the H17 checkpoint
         
-        // Store celebration data and go to celebration
+        // Prepare celebration data from gameData
         var players = gameData.players || [];
         var results = gameData.results || {};
         var tr = results.tr || {};
@@ -297,7 +303,7 @@ function showGameCompleteModal() {
         sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
         window._currentCelebrationData = celebrationData;
         
-        // Go to celebration
+        // Go to celebration immediately - photo is already in Firestore
         if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
             SignCard.showCelebrationScreen(
                 winner,
@@ -308,6 +314,8 @@ function showGameCompleteModal() {
                 function() {
                     // onClose callback - do NOT navigate automatically
                     console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+                    // Re-enable button if they come back
+                    isSeeResultsClicked = false;
                 }
             );
         } else {
@@ -435,17 +443,15 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
-   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
-   - ADDED: js/history-record.js (v3.04) for history record operations
-   - ADDED: Firebase Storage and html2canvas SDKs
-   - ADDED: copyCelebrationPhoto() call in SEE RESULTS handler
-   - UPDATED: game-data.js to v2.08 (WRV-integrated)
-   - UPDATED: sign-card.js to v1.19 (WRV-integrated)
-   - PRESERVED: All v1.05 UI design and functionality
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REMOVED: duplicate celebration photo check (already copied at H17)
+   - REMOVED: copyCelebrationPhoto() call from SEE RESULTS handler
+   - CHANGED: SEE RESULTS now shows celebration screen immediately using cached data
+   - ADDED: Button disable on click to prevent multiple clicks
+   - PRESERVED: All v1.06 UI design and functionality
    - PRESERVED: Dark theme, modal-based layout, all original styling
+   - REASON: Photo is already in Firestore from H17 checkpoint, no need to check again
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
