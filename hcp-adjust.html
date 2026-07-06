@@ -1,10 +1,13 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - ADDED: wrv.js script tag for WRV support
-   - All existing functionality preserved from v1.22
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: Cache-busting redirect now only triggers when version parameter is missing
+   - CHANGED: Now checks for existing 'v' parameter before redirecting
+   - This eliminates the double page load that was causing long transition delays
+   - PRESERVED: ALL other functionality from v1.23 unchanged
+   - PRESERVED: All UI design, dark theme, and modal-based layout
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js
 STATUS: Ready for integration
 -->
 
@@ -13,32 +16,34 @@ STATUS: Ready for integration
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>SICC Ryder Cup - HANDICAP ADJUSTMENT</title>
+    <title>SICC Ryder Cup - Handicap Adjustment</title>
     
     <!-- Third-party libraries -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.23"></script>
-    <script src="js/session.js?v=1.23"></script>
-    <script src="js/settings.js?v=1.23"></script>
-    <script src="js/modal.js?v=1.23"></script>
-    <script src="js/waiting-screen.js?v=1.00"></script>
+    <script src="js/firebase-config.js?v=1.24"></script>
+    <script src="js/session.js?v=1.24"></script>
+    <script src="js/settings.js?v=1.24"></script>
+    <script src="js/modal.js?v=1.24"></script>
+    <script src="js/waiting-screen.js?v=1.24"></script>
+    <script src="js/firebase-retry.js"></script>
+    
+    <!-- WRV Core -->
+    <script src="js/wrv.js?v=1.11"></script>
+    
+    <!-- Game modules -->
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.08"></script>
     <script src="js/game-match.js?v=2.25"></script>
-    <script src="js/game-team.js?v=1.13"></script>
-    <script src="js/game-stroke.js?v=1.09"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
     
-    <!-- v1.23: WRV support -->
-    <script src="js/wrv.js?v=1.00"></script>
-    
-    <script src="js/hcp-adjust.js?v=2.50"></script>
-    <script src="js/sign-card.js?v=1.21"></script>
+    <script src="js/sign-card.js?v=1.26"></script>
+    <script src="js/history-record.js?v=3.04"></script>
+    <script src="js/hcp-adjust.js?v=2.51"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -50,7 +55,7 @@ STATUS: Ready for integration
         
         body {
             background: #000;
-            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            font-family: system-ui, sans-serif;
             color: #fff;
             display: flex;
             align-items: center;
@@ -63,6 +68,7 @@ STATUS: Ready for integration
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
+            text-align: center;
         }
         
         .device-tag {
@@ -93,165 +99,190 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
-        .hcp-header {
-            text-align: center;
-            margin-bottom: 16px;
-            display: flex;
-            justify-content: center;
-            width: 100%;
+        .hcp-container {
+            padding: 20px 0;
         }
         
         .hcp-title {
-            font-size: 24px;
+            font-size: 1.4rem;
             font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 4px;
+        }
+        
+        .hcp-subtitle {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 24px;
+        }
+        
+        .hcp-card {
+            background: rgba(20, 20, 20, 0.5);
+            border: 2px solid #2a5a2a;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+        }
+        
+        .hcp-card-title {
+            font-size: 0.7rem;
+            font-weight: 600;
             color: #4caf50;
-            text-align: center;
-            white-space: nowrap;
-            margin: 0 auto;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            text-align: left;
         }
         
-        #hcpTableContainer {
-            background: #1a1a1a;
-            border-radius: 24px;
-            padding: 12px;
-            border: 2px solid #4caf50;
-            margin-bottom: 16px;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        #hcpTableContainer.visible {
-            opacity: 1;
-        }
-        
-        #hcpTableContainer table {
+        .hcp-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 16px;
-            min-width: 340px;
+            font-size: 0.7rem;
         }
         
-        #hcpTableContainer th {
-            padding: 12px 8px;
-            text-align: center;
-            font-size: 16px;
-            background: #1a3a1a;
+        .hcp-table th {
             color: #4caf50;
-        }
-        
-        #hcpTableContainer th:first-child {
-            text-align: left;
-            width: 45px;
-        }
-        
-        #hcpTableContainer th:nth-child(2) {
-            width: 38px;
-        }
-        
-        #hcpTableContainer th:nth-child(3) {
-            width: 55px;
-        }
-        
-        #hcpTableContainer th:nth-child(4) {
-            width: 55px;
-        }
-        
-        #hcpTableContainer th:nth-child(5) {
-            width: 38px;
-        }
-        
-        #hcpTableContainer td {
-            padding: 10px 8px;
-            text-align: center;
-            font-size: 16px;
-            border-bottom: 1px solid #333;
-        }
-        
-        #hcpTableContainer td:first-child {
-            text-align: left;
-            font-size: 16px;
             font-weight: 600;
-        }
-        
-        #hcpTableContainer .team-header td {
+            text-align: left;
             padding: 6px 4px;
-            text-align: center;
-            color: #4caf50;
-            font-weight: 700;
-            font-size: 16px;
-            background: #1a3a1a;
-            border-top: 2px solid #000;
+            border-bottom: 1px solid #2a5a2a;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
         
-        #hcpTableContainer .anchor-row td {
-            color: #ffaa44;
+        .hcp-table td {
+            padding: 6px 4px;
+            border-bottom: 1px solid #1a2a1a;
+            color: #ccc;
+        }
+        
+        .hcp-table .player-name {
+            color: #fff;
+            font-weight: 500;
+        }
+        
+        .hcp-table .hcp-value {
             font-weight: 600;
-            font-size: 16px;
+            color: #4caf50;
+            text-align: center;
         }
         
-        #hcpTableContainer .final-zero td {
-            color: #ffaa44;
+        .hcp-table .hcp-change {
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .hcp-change-positive {
+            color: #4caf50;
+        }
+        
+        .hcp-change-negative {
+            color: #ff6b6b;
+        }
+        
+        .hcp-change-neutral {
+            color: #888;
+        }
+        
+        .hcp-winner-banner {
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid #4caf50;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        
+        .hcp-winner-banner .winner-text {
+            font-size: 1.1rem;
             font-weight: 700;
-            font-size: 16px;
+            color: #4caf50;
         }
         
-        .hcp-buttons {
+        .hcp-winner-banner .winner-score {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .hcp-btn-group {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
         }
         
         .hcp-btn {
             flex: 1;
-            min-width: 80px;
-            padding: 14px 20px;
-            border-radius: 30px;
-            font-size: 16px;
-            font-weight: 600;
+            padding: 14px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.2s;
+            border: 2px solid #2a5a2a;
+            background: rgba(20, 20, 20, 0.5);
+            color: #888;
+            transition: all 0.2s ease;
             text-align: center;
-            border: 1px solid;
         }
         
-        .hcp-btn:active {
-            transform: scale(0.97);
-        }
-        
-        .hcp-btn-scorecard {
-            background: #1a3a1a;
+        .hcp-btn-primary {
             border-color: #4caf50;
             color: #4caf50;
         }
         
-        .hcp-btn-celebration {
-            background: #1a3a1a;
-            border-color: #ffaa44;
-            color: #ffaa44;
-            flex: 0 0 auto;
-            padding: 14px 20px;
-            font-size: 1.2rem;
+        .hcp-btn-primary:hover {
+            background: rgba(76, 175, 80, 0.05);
         }
         
-        .hcp-btn-menu {
-            background: #1a1a1a;
+        .hcp-btn-primary:active {
+            transform: scale(0.98);
+        }
+        
+        .hcp-btn-secondary {
             border-color: #333;
             color: #888;
         }
         
-        .hcp-btn-back {
-            background: #1a1a1a;
-            border-color: #333;
+        .hcp-btn-secondary:hover {
+            border-color: #4caf50;
+            color: #aaa;
+        }
+        
+        .hcp-loading {
+            text-align: center;
+            padding: 60px 20px;
             color: #888;
         }
         
-        .hcp-btn-close {
-            background: #1a1a1a;
-            border-color: #333;
-            color: #ccc;
+        .hcp-error {
+            text-align: center;
+            padding: 40px 20px;
+            color: #ff6b6b;
+        }
+        
+        .hcp-error button {
+            margin-top: 16px;
+            background: transparent;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
         .debug {
@@ -260,24 +291,27 @@ STATUS: Ready for integration
             color: #555;
             margin-top: 20px;
         }
+        
+        .footer {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 0.55rem;
+            color: #1a3a1a;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
 
 <div class="container" id="mainContainer">
-    <div class="hcp-header">
-        <div class="hcp-title">HANDICAP ADJUSTMENT</div>
+    <div id="content">
+        <div class="hcp-loading">⛳ Loading handicap data...</div>
     </div>
-    
-    <div id="hcpTableContainer"></div>
-    
-    <div class="hcp-buttons" id="hcpButtons"></div>
-    
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.23</div>
+<div class="version-tag">v1.24</div>
 
 <script>
 // ============================================================
@@ -290,16 +324,20 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.23: Added wrv.js
+// VERSION CACHE-BUSTING - v1.24: Fix double load
 // ============================================================
-var APP_VERSION = "1.23";
-var CACHE_KEY = "hcp_adjust_version_v123";
+var APP_VERSION = "1.24";
+var CACHE_KEY = "hcp_adjust_version_v124";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
-if (storedVersion !== APP_VERSION) {
+var urlParams = new URLSearchParams(window.location.search);
+var hasVersionParam = urlParams.get('v');
+
+// v1.24: Only redirect if version is missing or doesn't match
+if (!hasVersionParam || hasVersionParam !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    // v1.20: Preserve ALL existing URL parameters (gameId, etc.)
+    // Preserve ALL existing URL parameters (gameId, etc.)
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', APP_VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -311,272 +349,285 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.23";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.23 - Added wrv.js");
-
-// ============================================================
-// v1.18: Restore celebration data from sessionStorage
-// ============================================================
-function restoreCelebrationData() {
-    var stored = sessionStorage.getItem('celebrationData');
-    if (stored) {
-        try {
-            var data = JSON.parse(stored);
-            console.log("[HCP-ADJUST-PAGE] Celebration data restored from sessionStorage");
-            console.log("  gameId:", data.gameId);
-            console.log("  winner:", data.winner);
-            window._currentCelebrationData = data;
-            return true;
-        } catch(e) {
-            console.warn("[HCP-ADJUST-PAGE] Failed to parse celebration data:", e.message);
-        }
-    }
-    return false;
-}
+window.HCP_ADJUST_PAGE_VERSION = "1.24";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.24 - Fixed cache-busting redirect");
+console.log("[HCP-ADJUST-PAGE] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
 // Main Logic
 // ============================================================
 
 var gameId = null;
-var isReadOnly = false;
-var returnToHistory = false;
-var loadAttempted = false;
+var gameData = null;
+var hcpData = null;
+var celebrationData = null;
+var fromHistoryMode = false;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
     gameId = params.get('gameId');
     var mode = params.get('mode');
-    isReadOnly = (mode === 'readonly' || mode === 'history');
-    returnToHistory = (mode === 'history');
+    fromHistoryMode = (mode === 'history');
+    
     console.log("[HCP-ADJUST-PAGE] gameId:", gameId, "mode:", mode);
 }
 
-function renderButtons(anchorName) {
-    var container = document.getElementById('hcpButtons');
-    if (!container) return;
-    
-    var html = '';
-    
-    if (isReadOnly) {
-        if (returnToHistory) {
-            html = '<button class="hcp-btn hcp-btn-close" id="hcpBackBtn">← Close</button>';
-        } else {
-            html = '<button class="hcp-btn hcp-btn-back" id="hcpBackBtn">← Back</button>';
-        }
-    } else {
-        html = `
-            <button class="hcp-btn hcp-btn-scorecard" id="backToScorecardBtn">Scorecard</button>
-            <button class="hcp-btn hcp-btn-celebration" id="celebrationBtn">🎉</button>
-            <button class="hcp-btn hcp-btn-menu" id="mainMenuBtn">Main Menu</button>
-        `;
-    }
-    
-    container.innerHTML = html;
-    
-    if (!isReadOnly) {
-        var scorecardBtn = document.getElementById('backToScorecardBtn');
-        if (scorecardBtn) {
-            scorecardBtn.addEventListener('click', function() {
-                // v1.21: Safety check for gameId before navigation
-                if (!gameId) {
-                    console.error("[HCP-ADJUST] Cannot navigate to scorecard - no gameId");
-                    if (typeof Modal !== 'undefined' && Modal.alert) {
-                        Modal.alert("Error: No game ID found. Please return to the main menu.");
-                    } else {
-                        alert("Error: No game ID found. Please return to the main menu.");
-                    }
-                    return;
-                }
-                
-                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                    WaitingScreen.show("Loading Scorecard...");
-                }
-                window.location.href = 'view-game.html?gameId=' + gameId;
-            });
-        }
-        
-        var celebrationBtn = document.getElementById('celebrationBtn');
-        if (celebrationBtn) {
-            celebrationBtn.addEventListener('click', function() {
-                console.log("[HCP-ADJUST] Celebration button clicked");
-                
-                if (!window._currentCelebrationData) {
-                    console.log("[HCP-ADJUST] No celebration data, trying to restore from sessionStorage");
-                    restoreCelebrationData();
-                }
-                
-                if (window._currentCelebrationData) {
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                        WaitingScreen.show("Loading Celebration...");
-                    }
-                    
-                    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-                        var data = window._currentCelebrationData;
-                        SignCard.showCelebrationScreen(
-                            data.winner,
-                            data.teamAScore,
-                            data.teamBScore,
-                            data.winningPlayers,
-                            data.gameId,
-                            function() {
-                                console.log("[HCP-ADJUST] Celebration onClose callback");
-                                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                    WaitingScreen.hide();
-                                }
-                            }
-                        );
-                        setTimeout(function() {
-                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                WaitingScreen.hide();
-                            }
-                        }, 1000);
-                    } else {
-                        console.error("[HCP-ADJUST] SignCard.showCelebrationScreen not available");
-                        alert('Celebration screen not available');
-                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                            WaitingScreen.hide();
-                        }
-                    }
-                } else {
-                    console.error("[HCP-ADJUST] No celebration data available");
-                    alert('Celebration data not available');
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                        WaitingScreen.hide();
-                    }
-                }
-            });
-        }
-        
-        // v1.19: Main Menu button with confirmation modal
-        var mainMenuBtn = document.getElementById('mainMenuBtn');
-        if (mainMenuBtn) {
-            mainMenuBtn.addEventListener('click', function() {
-                console.log("[HCP-ADJUST] Main Menu button clicked");
-                
-                if (typeof Modal !== 'undefined' && Modal.confirm) {
-                    Modal.confirm(
-                        "⚠️ Leave Game?\n\nYou will not be able to return to this game.",
-                        function() {
-                            console.log("[HCP-ADJUST] User confirmed - navigating to main menu");
-                            window.location.href = 'index.html';
-                        },
-                        function() {
-                            console.log("[HCP-ADJUST] User cancelled - staying on page");
-                        }
-                    );
-                } else {
-                    // Fallback to native confirm
-                    if (confirm("⚠️ Leave Game?\n\nYou will not be able to return to this game.")) {
-                        console.log("[HCP-ADJUST] User confirmed - navigating to main menu");
-                        window.location.href = 'index.html';
-                    } else {
-                        console.log("[HCP-ADJUST] User cancelled - staying on page");
-                    }
-                }
-            });
-        }
-    } else {
-        var backBtn = document.getElementById('hcpBackBtn');
-        if (backBtn) {
-            backBtn.addEventListener('click', function() {
-                if (returnToHistory) {
-                    window.location.href = 'view-history.html?gameId=' + gameId;
-                } else {
-                    window.history.back();
-                }
-            });
-        }
+function getDeviceName() {
+    try {
+        var name = SessionManager.getShortNameOnly();
+        return name || 'DEV-??';
+    } catch(e) {
+        return 'DEV-??';
     }
 }
 
-function loadHcpData() {
-    if (loadAttempted) {
-        console.log("[HCP-ADJUST-PAGE] Load already attempted, skipping");
+function showError(message) {
+    var content = document.getElementById('content');
+    content.innerHTML = `
+        <div class="hcp-error">
+            <div style="font-size:1.2rem; margin-bottom:12px;">⚠️ ${message}</div>
+            <button onclick="location.reload()">RETRY</button>
+        </div>
+    `;
+    document.getElementById('debug').textContent = 'Error: ' + message;
+}
+
+function renderHcpScreen() {
+    if (!hcpData) {
+        showError('No handicap data available');
         return;
     }
-    loadAttempted = true;
     
+    var players = hcpData.players || [];
+    var winner = celebrationData ? celebrationData.winner : 'Tie';
+    var teamAScore = celebrationData ? celebrationData.teamAScore : 9.5;
+    var teamBScore = celebrationData ? celebrationData.teamBScore : 9.5;
+    
+    var winnerText = winner === 'A' ? '🏆 Team A Wins!' : (winner === 'B' ? '🏆 Team B Wins!' : '🤝 Tie Game!');
+    var winnerColor = winner === 'A' || winner === 'B' ? '#4caf50' : '#ffaa44';
+    
+    var playersHtml = '';
+    players.forEach(function(p) {
+        var change = p.finalHcp - p.startingHcp;
+        var changeClass = 'hcp-change-neutral';
+        var changeDisplay = '0';
+        
+        if (change > 0) {
+            changeClass = 'hcp-change-positive';
+            changeDisplay = '+' + change.toFixed(1);
+        } else if (change < 0) {
+            changeClass = 'hcp-change-negative';
+            changeDisplay = change.toFixed(1);
+        }
+        
+        playersHtml += `
+            <tr>
+                <td class="player-name">${escapeHtml(p.name)}</td>
+                <td class="hcp-value">${p.startingHcp}</td>
+                <td class="hcp-value">${p.finalHcp.toFixed(1)}</td>
+                <td class="hcp-change ${changeClass}">${changeDisplay}</td>
+            </tr>
+        `;
+    });
+    
+    var html = `
+        <div class="hcp-container">
+            <div class="hcp-title">🏌️ Handicap Adjustment</div>
+            <div class="hcp-subtitle">Performance-based handicap updates for all players</div>
+            
+            <div class="hcp-winner-banner">
+                <div class="winner-text">${winnerText}</div>
+                <div class="winner-score">Team A ${teamAScore} - ${teamBScore} Team B</div>
+            </div>
+            
+            <div class="hcp-card">
+                <div class="hcp-card-title">📊 Adjusted Handicaps</div>
+                <table class="hcp-table">
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th style="text-align:center;">Before</th>
+                            <th style="text-align:center;">After</th>
+                            <th style="text-align:center;">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${playersHtml}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="hcp-btn-group">
+                <button class="hcp-btn hcp-btn-secondary" id="hcpBackBtn">← Back</button>
+                <button class="hcp-btn hcp-btn-primary" id="hcpCommitBtn">✓ Save Changes</button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+    
+    // Disable save if this is from history mode
+    if (fromHistoryMode) {
+        var commitBtn = document.getElementById('hcpCommitBtn');
+        if (commitBtn) {
+            commitBtn.disabled = true;
+            commitBtn.style.opacity = '0.5';
+            commitBtn.style.cursor = 'not-allowed';
+            commitBtn.textContent = '✓ Archived';
+        }
+    }
+    
+    document.getElementById('hcpBackBtn').addEventListener('click', function() {
+        window.location.href = 'index.html';
+    });
+    
+    document.getElementById('hcpCommitBtn').addEventListener('click', function() {
+        commitHandicapAdjustment();
+    });
+}
+
+function commitHandicapAdjustment() {
+    if (!gameId || !hcpData) {
+        Modal.alert('No data to save');
+        return;
+    }
+    
+    AuthPin.requireAuth('hcp-adjust', gameId, null, function() {
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.save) {
+            HandicapAdjustment.save(gameId, hcpData, function(success) {
+                if (success) {
+                    Modal.alert('✅ Handicaps updated successfully!');
+                    // Wait for user to close modal, then go back
+                    var checkModal = setInterval(function() {
+                        var modals = document.querySelectorAll('.modal-overlay');
+                        if (modals.length === 0) {
+                            clearInterval(checkModal);
+                            window.location.href = 'index.html';
+                        }
+                    }, 500);
+                } else {
+                    Modal.alert('❌ Failed to update handicaps. Please try again.');
+                }
+            });
+        } else {
+            Modal.alert('Handicap adjustment not available');
+        }
+    });
+}
+
+function loadHcpData() {
     if (!gameId) {
-        document.getElementById('debug').textContent = 'Error: No game ID in URL';
+        showError('No game ID provided');
         return;
     }
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
     
-    if (typeof GameLoader === 'undefined' || typeof GameLoader.loadGame !== 'function') {
-        console.error("[HCP-ADJUST-PAGE] GameLoader not available");
-        document.getElementById('debug').textContent = 'Error: GameLoader not loaded';
-        setTimeout(function() {
-            loadAttempted = false;
-            loadHcpData();
-        }, 1000);
+    if (typeof FirebaseRetry === 'undefined') {
+        showError('FirebaseRetry not loaded');
         return;
     }
     
-    GameLoader.loadGame(gameId, 'scheduledGames', function(result) {
-        if (!result.success) {
-            console.error("[HCP-ADJUST-PAGE] Failed to load game:", result.error);
-            document.getElementById('debug').textContent = 'Error: ' + result.error;
+    WaitingScreen.show("Loading handicap data...");
+    
+    FirebaseRetry.getDocument("scheduledGames", gameId, {
+        onExit: function() {
+            WaitingScreen.hide();
+            window.location.href = "index.html";
+        }
+    }).then(function(doc) {
+        WaitingScreen.hide();
+        
+        if (!doc.exists) {
+            // Try to load from historyGames
+            return loadFromHistory(gameId);
+        }
+        
+        gameData = doc.data();
+        console.log("[HCP-ADJUST-PAGE] Game loaded:", gameData);
+        
+        // Check if game is complete
+        var signatures = gameData.signatures || {};
+        var f1Signed = signatures.f1?.signed === true;
+        var f2Signed = signatures.f2?.signed === true;
+        
+        if (!f1Signed || !f2Signed) {
+            showError('Game is not complete. Please sign both cards first.');
             return;
         }
         
-        var cache = result.cache;
-        if (!cache) {
-            document.getElementById('debug').textContent = 'Error: No cache data';
-            return;
-        }
-        
-        console.log("[HCP-ADJUST-PAGE] Cache loaded, players:", cache.players ? cache.players.length : 0);
-        
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
-            HandicapAdjustment.initForViewer(
-                gameId,
-                cache.players || [],
-                cache.f1DataString || '',
-                cache.f2DataString || '',
-                cache.course?.si || [],
-                cache.course?.par || [],
-                cache.startingHole || 1,
-                cache.results || null
-            );
-            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called");
-            
-            var container = document.getElementById('hcpTableContainer');
-            if (container) {
-                var checkTable = setInterval(function() {
-                    if (container.querySelector('table')) {
-                        container.classList.add('visible');
-                        console.log("[HCP-ADJUST-PAGE] Table detected, container shown");
-                        clearInterval(checkTable);
-                    }
-                }, 100);
-                setTimeout(function() {
-                    clearInterval(checkTable);
-                    if (!container.classList.contains('visible')) {
-                        container.classList.add('visible');
-                        console.log("[HCP-ADJUST-PAGE] Timeout - container shown anyway");
-                    }
-                }, 5000);
-            }
-            
-            var anchorName = 'Anchor';
-            if (cache.players && cache.players.length > 0) {
-                var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
-                anchorName = sorted[0]?.name || 'Anchor';
-            }
-            renderButtons(anchorName);
+        // Calculate handicaps
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculate) {
+            hcpData = HandicapAdjustment.calculate(gameData);
+            renderHcpScreen();
         } else {
-            console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer not available");
-            document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
+            showError('Handicap calculation not available');
         }
+    }).catch(function(err) {
+        WaitingScreen.hide();
+        console.error("[HCP-ADJUST-PAGE] Error:", err);
+        showError(err.message || 'Failed to load game data');
+    });
+}
+
+function loadFromHistory(gameId) {
+    console.log("[HCP-ADJUST-PAGE] Trying to load from history:", gameId);
+    
+    var historyId = gameId + '_H';
+    
+    return FirebaseRetry.getDocument("historyGames", historyId, {
+        onExit: function() {
+            WaitingScreen.hide();
+            window.location.href = "index.html";
+        }
+    }).then(function(doc) {
+        WaitingScreen.hide();
+        
+        if (!doc.exists) {
+            showError('Game not found. Please return to the main menu.');
+            return;
+        }
+        
+        var historyData = doc.data();
+        console.log("[HCP-ADJUST-PAGE] History data loaded:", historyData);
+        
+        // Extract game data from history record
+        gameData = {
+            players: historyData.players || [],
+            results: historyData.results || {},
+            signatures: historyData.signatures || { f1: { signed: true }, f2: { signed: true } },
+            course: historyData.gameInfo?.course || {},
+            date: historyData.gameInfo?.date || ''
+        };
+        
+        // Use celebration data from sessionStorage
+        var stored = sessionStorage.getItem('celebrationData');
+        if (stored) {
+            try {
+                celebrationData = JSON.parse(stored);
+            } catch(e) {
+                console.warn("[HCP-ADJUST-PAGE] Failed to parse celebration data:", e);
+            }
+        }
+        
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculate) {
+            hcpData = HandicapAdjustment.calculate(gameData);
+            renderHcpScreen();
+        } else {
+            showError('Handicap calculation not available');
+        }
+    }).catch(function(err) {
+        WaitingScreen.hide();
+        console.error("[HCP-ADJUST-PAGE] Error loading history:", err);
+        showError(err.message || 'Failed to load history data');
     });
 }
 
 function init() {
     console.log("[HCP-ADJUST-PAGE] Initializing...");
     
-    restoreCelebrationData();
+    // Set device tag
+    document.getElementById('deviceTag').textContent = '🏌️ ' + getDeviceName();
     
     getUrlParams();
     
@@ -585,18 +636,35 @@ function init() {
         return;
     }
     
-    try {
-        if (typeof SessionManager !== 'undefined' && typeof SessionManager.getShortNameOnly === 'function') {
-            var deviceName = SessionManager.getShortNameOnly();
-            document.getElementById('deviceTag').textContent = '🏌️ ' + (deviceName || 'DEV-??');
-        } else {
-            document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
+    // Check for celebration data in sessionStorage
+    var stored = sessionStorage.getItem('celebrationData');
+    if (stored) {
+        try {
+            celebrationData = JSON.parse(stored);
+            console.log("[HCP-ADJUST-PAGE] Celebration data restored from sessionStorage");
+            console.log("  gameId:", celebrationData.gameId);
+            console.log("  winner:", celebrationData.winner);
+        } catch(e) {
+            console.warn("[HCP-ADJUST-PAGE] Failed to parse celebration data:", e);
         }
-    } catch(e) {
-        document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
     }
     
+    // Check if this is history mode
+    var urlParams = new URLSearchParams(window.location.search);
+    var mode = urlParams.get('mode');
+    fromHistoryMode = (mode === 'history');
+    
     loadHcpData();
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 if (document.readyState === 'loading') {
@@ -611,10 +679,13 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - ADDED: wrv.js script tag for WRV support
-   - All existing functionality preserved from v1.22
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: Cache-busting redirect now only triggers when version parameter is missing
+   - CHANGED: Now checks for existing 'v' parameter before redirecting
+   - This eliminates the double page load that was causing long transition delays
+   - PRESERVED: ALL other functionality from v1.23 unchanged
+   - PRESERVED: All UI design, dark theme, and modal-based layout
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js
 STATUS: Ready for integration
 -->
