@@ -1,12 +1,10 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.65
-KEY CHANGES from v1.64:
-   - FIXED: Label alignment for "Starting Hole" and "Team Game" - both now have consistent width (78px)
-   - FIXED: Team Game field no longer touches right border (added padding to container)
-   - CHANGED: .form-row-inline padding to prevent field from touching border
-   - CHANGED: .field-group label flex: 0 0 78px for consistent alignment
-   - PRESERVED: All other functionality from v1.64 unchanged
+VERSION: 1.62
+KEY CHANGES from v1.61:
+   - CHANGED: Starting hole dropdown options from "Hole 1"-"Hole 18" to "H1"-"H18"
+   - This fixes truncation on iPhone 14 (393px) where "Hole 10" was cut off
+   - PRESERVED: All other functionality from v1.61 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -174,13 +172,11 @@ STATUS: Ready for integration
             opacity: 0.7;
         }
         
-        /* v1.65: Consistent label width and proper spacing */
         .form-row-inline {
             display: flex;
             gap: 12px;
             align-items: center;
             flex-wrap: wrap;
-            padding: 0 2px;
         }
         .form-row-inline .field-group {
             display: flex;
@@ -189,30 +185,15 @@ STATUS: Ready for integration
             flex: 1;
             min-width: 140px;
         }
-        /* Both labels get the same width for perfect alignment */
         .form-row-inline .field-group label {
             font-size: 0.75rem;
             color: #4caf50;
             white-space: nowrap;
             font-weight: 500;
-            flex: 0 0 78px;
-            text-align: left;
         }
         .form-row-inline .field-group .select-wrapper {
             flex: 1;
             min-width: 80px;
-        }
-        
-        /* Starting Hole - narrow (58px for "H18" + arrow) */
-        .form-row-inline .field-group.starting-hole .select-wrapper {
-            flex: 0 0 58px;
-            min-width: 58px;
-            max-width: 58px;
-        }
-        /* Team Game - takes remaining space */
-        .form-row-inline .field-group.team-game .select-wrapper {
-            flex: 1;
-            min-width: 100px;
         }
         
         .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
@@ -384,7 +365,7 @@ STATUS: Ready for integration
             appearance: auto;
         }
         
-        /* Column 4: Team - 40px, right-aligned (reverted to original) */
+        /* Column 4: Team - 40px, right-aligned */
         .team-wrapper {
             flex: 0 0 40px;
             width: 40px;
@@ -429,7 +410,7 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Column 5: Flight - 44px, right-aligned (reverted to original) */
+        /* Column 5: Flight - 44px, right-aligned */
         .flight-wrapper {
             flex: 0 0 44px;
             width: 44px;
@@ -664,11 +645,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.65</div>
+<div class="version-tag">v1.62</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.65
+// VERSION: 1.62
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -676,8 +657,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.65";
-var CACHE_KEY = "setup_game_version_v165";
+var VERSION = "1.62";
+var CACHE_KEY = "setup_game_version_v162";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -719,7 +700,7 @@ function getLatestHandicapForLabel(label) {
         console.log("[SETUP-GAME] Querying history for label:", label);
         
         db.collection("historyGames")
-            .where("players.label", "==", label)
+            .where("players.label", "=="", label)
             .orderBy("date", "desc")
             .limit(1)
             .get()
@@ -1989,7 +1970,6 @@ function render() {
         return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>H' + h + '</option>';
     }).join('');
     
-    // v1.65: Added proper label alignment and field spacing
     var html = `
         <div class="header">
             <div class="title">${modeTitle} ${modeBadge}</div>
@@ -2017,7 +1997,7 @@ function render() {
         <div class="card">
             <div class="card-title">Game Format Settings</div>
             <div class="form-row-inline">
-                <div class="field-group starting-hole">
+                <div class="field-group">
                     <label>Starting Hole</label>
                     <div class="select-wrapper">
                         <select id="combinedHoleSelect">
@@ -2026,7 +2006,7 @@ function render() {
                         <span class="arrow">▼</span>
                     </div>
                 </div>
-                <div class="field-group team-game">
+                <div class="field-group">
                     <label>Team Game</label>
                     <div class="select-wrapper">
                         <select id="combinedFormatSelect">
@@ -2186,13 +2166,11 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.65
-KEY CHANGES from v1.64:
-   - FIXED: Label alignment for "Starting Hole" and "Team Game" - both now have consistent width (78px)
-   - FIXED: Team Game field no longer touches right border (added padding to container)
-   - CHANGED: .form-row-inline padding to prevent field from touching border
-   - CHANGED: .field-group label flex: 0 0 78px for consistent alignment
-   - PRESERVED: All other functionality from v1.64 unchanged
+VERSION: 1.62
+KEY CHANGES from v1.61:
+   - CHANGED: Starting hole dropdown options from "Hole 1"-"Hole 18" to "H1"-"H18"
+   - This fixes truncation on iPhone 14 (393px) where "Hole 10" was cut off
+   - PRESERVED: All other functionality from v1.61 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
