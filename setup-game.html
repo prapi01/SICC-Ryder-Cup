@@ -1,13 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.63
-KEY CHANGES from v1.62:
-   - FIXED: Team (A/B) dropdown text alignment - now centered instead of left-aligned
-   - CHANGED: Removed excessive right padding (was 18px, now equal 4px padding)
-   - CHANGED: .team-display text-align: center (was right)
-   - CHANGED: .header-team text-align: center (was right)
+VERSION: 1.64
+KEY CHANGES from v1.63:
+   - FIXED: Starting Hole dropdown width reduced to 60px (was taking too much space)
+   - FIXED: Team Game field now takes remaining space (was truncated)
+   - REVERTED: Team (A/B) field back to previous version (left-aligned, no changes)
+   - REVERTED: Flight (F1/F2) field back to previous version (right-aligned, no changes)
    - PRESERVED: Green arrow remains on all dropdowns
-   - PRESERVED: All other functionality from v1.62 unchanged
+   - PRESERVED: All other functionality from v1.63 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -199,6 +199,17 @@ STATUS: Ready for integration
             min-width: 80px;
         }
         
+        /* v1.64: Starting Hole narrow, Team Game takes remaining space */
+        .form-row-inline .field-group.starting-hole .select-wrapper {
+            flex: 0 0 58px;
+            min-width: 58px;
+            max-width: 58px;
+        }
+        .form-row-inline .field-group.team-game .select-wrapper {
+            flex: 1;
+            min-width: 100px;
+        }
+        
         .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
         
         /* ===== TABLE LAYOUT - FIXED COLUMN WIDTHS ===== */
@@ -368,7 +379,7 @@ STATUS: Ready for integration
             appearance: auto;
         }
         
-        /* Column 4: Team - 40px, center-aligned */
+        /* Column 4: Team - 40px, right-aligned (reverted to original) */
         .team-wrapper {
             flex: 0 0 40px;
             width: 40px;
@@ -392,8 +403,8 @@ STATUS: Ready for integration
             width: 100%;
             height: 24px;
             font-size: 0.7rem;
-            text-align: center;
-            padding: 1px 4px;
+            text-align: right;
+            padding: 1px 18px 1px 4px;
             font-weight: 600;
             color: #ffaa44;
             border: 1px solid #2a5a2a;
@@ -413,7 +424,7 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Column 5: Flight - 44px, right-aligned */
+        /* Column 5: Flight - 44px, right-aligned (reverted to original) */
         .flight-wrapper {
             flex: 0 0 44px;
             width: 44px;
@@ -511,10 +522,10 @@ STATUS: Ready for integration
             width: 40px;
             min-width: 40px;
             max-width: 40px;
-            text-align: center;
+            text-align: right;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-end;
             height: 24px;
         }
         .player-header-row .header-flight {
@@ -648,11 +659,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.63</div>
+<div class="version-tag">v1.64</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.63
+// VERSION: 1.64
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -660,8 +671,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.63";
-var CACHE_KEY = "setup_game_version_v163";
+var VERSION = "1.64";
+var CACHE_KEY = "setup_game_version_v164";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1973,6 +1984,7 @@ function render() {
         return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>H' + h + '</option>';
     }).join('');
     
+    // v1.64: Add classes for field width control
     var html = `
         <div class="header">
             <div class="title">${modeTitle} ${modeBadge}</div>
@@ -2000,7 +2012,7 @@ function render() {
         <div class="card">
             <div class="card-title">Game Format Settings</div>
             <div class="form-row-inline">
-                <div class="field-group">
+                <div class="field-group starting-hole">
                     <label>Starting Hole</label>
                     <div class="select-wrapper">
                         <select id="combinedHoleSelect">
@@ -2009,7 +2021,7 @@ function render() {
                         <span class="arrow">▼</span>
                     </div>
                 </div>
-                <div class="field-group">
+                <div class="field-group team-game">
                     <label>Team Game</label>
                     <div class="select-wrapper">
                         <select id="combinedFormatSelect">
@@ -2169,14 +2181,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.63
-KEY CHANGES from v1.62:
-   - FIXED: Team (A/B) dropdown text alignment - now centered instead of left-aligned
-   - CHANGED: Removed excessive right padding (was 18px, now equal 4px padding)
-   - CHANGED: .team-display text-align: center (was right)
-   - CHANGED: .header-team text-align: center (was right)
+VERSION: 1.64
+KEY CHANGES from v1.63:
+   - FIXED: Starting Hole dropdown width reduced to 60px (was taking too much space)
+   - FIXED: Team Game field now takes remaining space (was truncated)
+   - REVERTED: Team (A/B) field back to previous version (left-aligned, no changes)
+   - REVERTED: Flight (F1/F2) field back to previous version (right-aligned, no changes)
    - PRESERVED: Green arrow remains on all dropdowns
-   - PRESERVED: All other functionality from v1.62 unchanged
+   - PRESERVED: All other functionality from v1.63 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
