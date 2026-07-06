@@ -1,23 +1,25 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: applyPreloadedData() now uses nested signatures structure
-   - Previously: signatures: { f1: false, f2: false } (FLAT)
-   - Now: signatures: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
-   - This prevents flat fields from being created in cache and written to Firestore
-   - PRESERVED: ALL other functionality from v1.07 unchanged
-   - This matches the schema structure v4.0 (nested signatures only)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - ADDED: Signature change detection in setupRealtimeListener()
+   - ADDED: signaturesChanged variable to detect changes in signatures object
+   - FIXED: When F2 signs, F1 UI now detects it and redirects to post-game
+   - CHANGED: Real-time listener now watches for signatures changes
+   - ADDED: Cache update for signatures when Firestore changes
+   - PRESERVED: ALL other functionality from v1.08 unchanged
+   - This ensures both devices detect game completion when signatures are written
+   - Works regardless of which flight signs first (F1 or F2)
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.08";
+window.REAL_GAME_INIT_VERSION = "1.09";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.08 - Fixed applyPreloadedData signatures to nested structure");
+    console.log("[REAL-GAME-INIT] Initializing v1.09 - Added signature change detection to listener");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -424,7 +426,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener - v1.06: Skip cache refresh for own changes
+    // setupRealtimeListener - v1.09: Added signature change detection
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -466,8 +468,10 @@ var RealGameInit = (function() {
                 var f2Changed = (currentCache.f2DataString !== data.f2?.d);
                 var locksChanged = (JSON.stringify(currentCache.locks) !== JSON.stringify(data.locks));
                 var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
+                // v1.09: Check if signatures changed
+                var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
                 
-                if (f1Changed || f2Changed || locksChanged || resultsChanged) {
+                if (f1Changed || f2Changed || locksChanged || resultsChanged || signaturesChanged) {
                     // v1.04: Determine which flight changed
                     var myFlight = getEditableFlight();
                     var otherFlight = (myFlight === 1) ? 2 : 1;
@@ -475,6 +479,45 @@ var RealGameInit = (function() {
                     var otherFlightChanged = (otherFlight === 1) ? f1Changed : f2Changed;
                     
                     console.log("Realtime update detected");
+                    
+                    // v1.09: Handle signature changes - ALWAYS process
+                    if (signaturesChanged) {
+                        console.log('[REALTIME] Signatures changed - updating cache and checking completion');
+                        
+                        // Update cache with new signatures
+                        if (currentCache.signatures && data.signatures) {
+                            currentCache.signatures.f1.signed = data.signatures.f1?.signed === true;
+                            currentCache.signatures.f2.signed = data.signatures.f2?.signed === true;
+                            currentCache.signatures.f1.signedAt = data.signatures.f1?.signedAt || null;
+                            currentCache.signatures.f2.signedAt = data.signatures.f2?.signedAt || null;
+                            currentCache.signatures.f1.captainName = data.signatures.f1?.captainName || null;
+                            currentCache.signatures.f2.captainName = data.signatures.f2?.captainName || null;
+                            console.log('[REALTIME] Cache updated with new signatures');
+                        }
+                        
+                        // Check if both flights are now signed
+                        if (data.signatures?.f1?.signed === true && data.signatures?.f2?.signed === true) {
+                            console.log('[REALTIME] Both signatures detected - completing game');
+                            
+                            // Hide waiting screen if showing
+                            if (typeof RealGameNav !== 'undefined' && RealGameNav.hideWaitingScreen) {
+                                RealGameNav.hideWaitingScreen();
+                            }
+                            
+                            // Set game complete and redirect
+                            setGameComplete(true);
+                            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteScreen) {
+                                RealGameNav.showGameCompleteScreen();
+                            }
+                            if (renderAllCallback) renderAllCallback();
+                            
+                            // Return early - no need to process other changes
+                            // Clear flag after processing
+                            RealGameState.setFirestoreChanged(false);
+                            console.log('[REALTIME] Firestore changed flag cleared (signatures completion)');
+                            return;
+                        }
+                    }
                     
                     if (otherFlightChanged) {
                         // OTHER flight changed - refresh cache and re-render
@@ -941,14 +984,16 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: applyPreloadedData() now uses nested signatures structure
-   - Previously: signatures: { f1: false, f2: false } (FLAT)
-   - Now: signatures: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
-   - This prevents flat fields from being created in cache and written to Firestore
-   - PRESERVED: ALL other functionality from v1.07 unchanged
-   - This matches the schema structure v4.0 (nested signatures only)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - ADDED: Signature change detection in setupRealtimeListener()
+   - ADDED: signaturesChanged variable to detect changes in signatures object
+   - FIXED: When F2 signs, F1 UI now detects it and redirects to post-game
+   - CHANGED: Real-time listener now watches for signatures changes
+   - ADDED: Cache update for signatures when Firestore changes
+   - PRESERVED: ALL other functionality from v1.08 unchanged
+   - This ensures both devices detect game completion when signatures are written
+   - Works regardless of which flight signs first (F1 or F2)
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
