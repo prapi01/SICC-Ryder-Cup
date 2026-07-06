@@ -700,7 +700,7 @@ function getLatestHandicapForLabel(label) {
         console.log("[SETUP-GAME] Querying history for label:", label);
         
         db.collection("historyGames")
-            .where("players.label", "=="", label)
+            .where("players.label", "==", label)
             .orderBy("date", "desc")
             .limit(1)
             .get()
