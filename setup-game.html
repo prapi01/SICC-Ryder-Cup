@@ -1,11 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.62
-KEY CHANGES from v1.61:
-   - CHANGED: Starting hole dropdown options from "Hole 1"-"Hole 18" to "H1"-"H18"
-   - This fixes truncation on iPhone 14 (393px) where "Hole 10" was cut off
-   - PRESERVED: All other functionality from v1.61 unchanged
-   - This change only affects setup-game.html dropdown; pre-game and other screens unaffected
+VERSION: 1.63
+KEY CHANGES from v1.62:
+   - FIXED: Team (A/B) dropdown text alignment - now centered instead of left-aligned
+   - CHANGED: Removed excessive right padding (was 18px, now equal 4px padding)
+   - CHANGED: .team-display text-align: center (was right)
+   - CHANGED: .header-team text-align: center (was right)
+   - PRESERVED: Green arrow remains on all dropdowns
+   - PRESERVED: All other functionality from v1.62 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -366,7 +368,7 @@ STATUS: Ready for integration
             appearance: auto;
         }
         
-        /* Column 4: Team - 40px, right-aligned */
+        /* Column 4: Team - 40px, center-aligned */
         .team-wrapper {
             flex: 0 0 40px;
             width: 40px;
@@ -390,8 +392,8 @@ STATUS: Ready for integration
             width: 100%;
             height: 24px;
             font-size: 0.7rem;
-            text-align: right;
-            padding: 1px 18px 1px 4px;
+            text-align: center;
+            padding: 1px 4px;
             font-weight: 600;
             color: #ffaa44;
             border: 1px solid #2a5a2a;
@@ -509,10 +511,10 @@ STATUS: Ready for integration
             width: 40px;
             min-width: 40px;
             max-width: 40px;
-            text-align: right;
+            text-align: center;
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: center;
             height: 24px;
         }
         .player-header-row .header-flight {
@@ -646,11 +648,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.62</div>
+<div class="version-tag">v1.63</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.62
+// VERSION: 1.63
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -658,8 +660,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.62";
-var CACHE_KEY = "setup_game_version_v162";
+var VERSION = "1.63";
+var CACHE_KEY = "setup_game_version_v163";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -2167,12 +2169,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.62
-KEY CHANGES from v1.61:
-   - CHANGED: Starting hole dropdown options from "Hole 1"-"Hole 18" to "H1"-"H18"
-   - This fixes truncation on iPhone 14 (393px) where "Hole 10" was cut off
-   - PRESERVED: All other functionality from v1.61 unchanged
-   - This change only affects setup-game.html dropdown; pre-game and other screens unaffected
+VERSION: 1.63
+KEY CHANGES from v1.62:
+   - FIXED: Team (A/B) dropdown text alignment - now centered instead of left-aligned
+   - CHANGED: Removed excessive right padding (was 18px, now equal 4px padding)
+   - CHANGED: .team-display text-align: center (was right)
+   - CHANGED: .header-team text-align: center (was right)
+   - PRESERVED: Green arrow remains on all dropdowns
+   - PRESERVED: All other functionality from v1.62 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
