@@ -1,12 +1,16 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - FIXED: Losing team score now displays in RED instead of green
-   - CHANGED: Only the winning team score remains GREEN
-   - This makes it visually clear which team won
-   - PRESERVED: ALL other functionality from v1.26 unchanged
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - REPLACED: WRV.write() for signature flags with direct Firestore update
+   - ADDED: Self-confirming double-listener pattern for signature writes
+   - ADDED: Retry mechanism with listener confirmation (5 attempts, 3s timeout)
+   - CHANGED: UI updates from cache IMMEDIATELY (user never waits)
+   - PRESERVED: WRV for archival (history record, complete game data)
+   - PRESERVED: All celebration screen, waiting screen, UI logic from v1.27
+   - REASON: WRV write for f1.signed/f2.signed was unreliable
+   - REASON: Double-listener ensures signature flags reach Firestore and trigger all devices
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
 
@@ -639,88 +643,278 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.25: Get current signatures from Firestore
+    // v1.28: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS
     // ============================================================
     
-    function getCurrentSignatures(collection, gameId) {
+    /**
+     * submitSignature - Write signature flag with self-confirmation
+     * 
+     * 1. Update cache IMMEDIATELY (user sees UI update)
+     * 2. Show waiting screen or Game Complete based on cache
+     * 3. Write to Firestore in background
+     * 4. Self-confirm via listener (retry if needed)
+     * 
+     * @param {string} gameId - The game ID
+     * @param {number} flight - 1 or 2
+     * @param {string} captainName - Captain name (optional)
+     * @param {string} collection - Firestore collection name
+     * @returns {Promise<boolean>} - Success/failure
+     */
+    
+    function submitSignature(gameId, flight, captainName, collection) {
         return new Promise(function(resolve, reject) {
             var db = getDb();
-            db.collection(collection).doc(gameId).get()
-                .then(function(doc) {
-                    if (!doc.exists) {
-                        reject(new Error('Document not found'));
-                        return;
-                    }
-                    var data = doc.data();
-                    resolve(data.signatures || {});
-                })
-                .catch(function(err) {
-                    reject(err);
-                });
+            var docRef = db.collection(collection).doc(gameId);
+            var flightKey = 'f' + flight;
+            var otherFlightKey = flight === 1 ? 'f2' : 'f1';
+            
+            console.log('[SignCard] submitSignature called: flight', flight, 'gameId', gameId);
+            
+            // ============================================================
+            // STEP 1: IMMEDIATE - Update local cache (user never waits)
+            // ============================================================
+            
+            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+            var f1Signed = false;
+            var f2Signed = false;
+            
+            if (cache) {
+                if (!cache.signatures) cache.signatures = {};
+                if (!cache.signatures.f1) cache.signatures.f1 = { signed: false, signedAt: null, captainName: null };
+                if (!cache.signatures.f2) cache.signatures.f2 = { signed: false, signedAt: null, captainName: null };
+                
+                cache.signatures[flightKey] = {
+                    signed: true,
+                    signedAt: null,
+                    captainName: captainName || null
+                };
+                
+                f1Signed = cache.signatures.f1.signed === true;
+                f2Signed = cache.signatures.f2.signed === true;
+                
+                console.log('[SignCard] Cache updated IMMEDIATELY for flight', flight);
+                console.log('[SignCard] Cache now: f1.signed=' + f1Signed + ', f2.signed=' + f2Signed);
+            } else {
+                console.warn('[SignCard] No cache available - UI may not update immediately');
+            }
+            
+            // ============================================================
+            // STEP 2: IMMEDIATE - Show UI based on cache (user never waits)
+            // ============================================================
+            
+            var bothSigned = f1Signed && f2Signed;
+            
+            if (bothSigned) {
+                console.log('[SignCard] Both signed (from cache)! Showing Game Complete modal');
+                
+                // Show Game Complete modal on current page
+                if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                    RealGameNav.showGameCompleteModal(gameId);
+                } else {
+                    // Fallback: try to show modal directly
+                    showGameCompleteModalDirect(gameId);
+                }
+            } else {
+                // Show waiting screen for the user who just signed
+                var waitingFor = flight === 1 ? 2 : 1;
+                console.log('[SignCard] Showing waiting screen for flight', waitingFor);
+                showWaitingScreen(waitingFor);
+            }
+            
+            // ============================================================
+            // STEP 3: BACKGROUND - Write to Firestore with self-confirmation
+            // ============================================================
+            
+            var maxRetries = 5;
+            var attemptCount = 0;
+            var confirmed = false;
+            var writeTimeout = null;
+            var listenerUnsubscribe = null;
+            
+            // Function to perform the write
+            function performWrite(retryCount) {
+                attemptCount = retryCount + 1;
+                console.log('[SignCard] Write attempt', attemptCount, 'for flight', flight);
+                
+                // Read current document from Firestore
+                docRef.get()
+                    .then(function(doc) {
+                        if (!doc.exists) {
+                            throw new Error('Game document not found');
+                        }
+                        
+                        var data = doc.data();
+                        var signatures = data.signatures || {};
+                        
+                        // Ensure both flights exist
+                        if (!signatures.f1) {
+                            signatures.f1 = { signed: false, signedAt: null, captainName: null };
+                        }
+                        if (!signatures.f2) {
+                            signatures.f2 = { signed: false, signedAt: null, captainName: null };
+                        }
+                        
+                        // Set signature for this flight
+                        signatures[flightKey] = {
+                            signed: true,
+                            signedAt: null,
+                            captainName: captainName || null
+                        };
+                        
+                        // Direct Firestore update (not WRV for signature flags)
+                        return docRef.update({
+                            signatures: signatures,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    })
+                    .then(function() {
+                        console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
+                        
+                        // Start listening for confirmation
+                        var confirmTimeout = 3000; // 3 seconds
+                        var startTime = Date.now();
+                        
+                        // Set up listener for confirmation
+                        if (listenerUnsubscribe) {
+                            listenerUnsubscribe();
+                        }
+                        
+                        listenerUnsubscribe = docRef.onSnapshot(function(snapshot) {
+                            if (!snapshot.exists) return;
+                            
+                            var data = snapshot.data();
+                            var signatures = data.signatures || {};
+                            var f1SignedCheck = signatures.f1?.signed === true;
+                            var f2SignedCheck = signatures.f2?.signed === true;
+                            
+                            // Check if our flight is signed
+                            var ourFlightSigned = flight === 1 ? f1SignedCheck : f2SignedCheck;
+                            
+                            if (ourFlightSigned) {
+                                // Confirmed!
+                                if (!confirmed) {
+                                    confirmed = true;
+                                    console.log('[SignCard] ✅ CONFIRMED via listener: flight', flight, 'signed=true');
+                                    
+                                    // Clean up
+                                    if (listenerUnsubscribe) {
+                                        listenerUnsubscribe();
+                                        listenerUnsubscribe = null;
+                                    }
+                                    if (writeTimeout) {
+                                        clearTimeout(writeTimeout);
+                                        writeTimeout = null;
+                                    }
+                                    
+                                    // Check both signed now
+                                    if (f1SignedCheck && f2SignedCheck) {
+                                        console.log('[SignCard] Both signed (confirmed)! Triggering Game Complete');
+                                        if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                                            RealGameNav.showGameCompleteModal(gameId);
+                                        } else {
+                                            showGameCompleteModalDirect(gameId);
+                                        }
+                                    }
+                                    
+                                    resolve(true);
+                                }
+                            }
+                        }, function(err) {
+                            console.warn('[SignCard] Listener error:', err.message);
+                        });
+                        
+                        // Set timeout for confirmation
+                        writeTimeout = setTimeout(function() {
+                            if (!confirmed) {
+                                console.warn('[SignCard] ⚠️ Confirmation timeout for flight', flight, '(attempt', attemptCount + ')');
+                                
+                                // Clean up listener
+                                if (listenerUnsubscribe) {
+                                    listenerUnsubscribe();
+                                    listenerUnsubscribe = null;
+                                }
+                                
+                                // Retry if attempts remaining
+                                if (attemptCount < maxRetries) {
+                                    var delay = 1000 * Math.pow(1.5, attemptCount);
+                                    console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
+                                    setTimeout(function() {
+                                        performWrite(attemptCount);
+                                    }, delay);
+                                } else {
+                                    // All retries exhausted
+                                    console.error('[SignCard] ❌ All', maxRetries, 'retries failed for flight', flight);
+                                    reject(new Error('Failed to confirm signature after ' + maxRetries + ' retries'));
+                                }
+                            }
+                        }, confirmTimeout);
+                    })
+                    .catch(function(err) {
+                        console.warn('[SignCard] Write attempt', attemptCount, 'failed:', err.message);
+                        
+                        if (attemptCount < maxRetries) {
+                            var delay = 1000 * Math.pow(1.5, attemptCount);
+                            console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
+                            setTimeout(function() {
+                                performWrite(attemptCount);
+                            }, delay);
+                        } else {
+                            console.error('[SignCard] ❌ All', maxRetries, 'write attempts failed for flight', flight);
+                            reject(err);
+                        }
+                    });
+            }
+            
+            // Start the background write process
+            performWrite(0);
         });
     }
     
     // ============================================================
-    // Signature Submission - v1.25: Write ENTIRE signatures object
+    // v1.28: Direct Game Complete Modal (fallback)
     // ============================================================
     
-    async function submitSignature(gameId, flight, captainName, collection) {
-        try {
-            // v1.25: Read current signatures first
-            var currentSignatures = await getCurrentSignatures(collection, gameId);
-            
-            // Ensure both flights exist in the object
-            if (!currentSignatures.f1) {
-                currentSignatures.f1 = { signed: false, signedAt: null, captainName: null };
-            }
-            if (!currentSignatures.f2) {
-                currentSignatures.f2 = { signed: false, signedAt: null, captainName: null };
-            }
-            
-            // Update the signature for the specified flight
-            currentSignatures['f' + flight] = {
-                signed: true,
-                signedAt: null,
-                captainName: captainName || null
-            };
-            
-            // v1.25: Write the ENTIRE signatures object - NO DOT NOTATION
-            var updatePayload = {
-                signatures: currentSignatures,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            console.log('[SignCard] Writing entire signatures object for flight', flight, ':', JSON.stringify(currentSignatures, null, 2));
-            
-            // Use WRV with skipVerify for updatedAt only
-            if (typeof WRV !== 'undefined' && WRV.update) {
-                return new Promise(function(resolve, reject) {
-                    WRV.update(collection, gameId, updatePayload, function(err, result) {
-                        if (err) {
-                            console.error('[SignCard] WRV signature error:', err);
-                            reject(err);
-                        } else {
-                            console.log('[SignCard] WRV signature successful for flight ' + flight);
-                            console.log('[SignCard] Signatures after write:', JSON.stringify(currentSignatures, null, 2));
-                            resolve(result);
-                        }
-                    }, { skipVerify: ['updatedAt'] });
-                });
-            } else {
-                // Fallback: direct update
-                console.warn('[SignCard] WRV not available, using direct update for signature');
-                var db = getDb();
-                await db.collection(collection).doc(gameId).update(updatePayload);
-                console.log('[SignCard] Direct signature successful for flight ' + flight);
-                return true;
-            }
-        } catch (error) {
-            console.error('[SignCard] Signature error:', error);
-            return false;
+    function showGameCompleteModalDirect(gameId) {
+        var existing = document.getElementById('gameCompleteModal');
+        if (existing) return;
+        
+        console.log('[SignCard] Showing Game Complete modal directly (fallback)');
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="gameCompleteModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10001; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
+                <div style="background:#1a1a1a; border-radius:28px; padding:32px 28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
+                    <div style="font-size:1.5rem; font-weight:700; color:#ffaa44; margin-bottom:12px;">🏆 GAME COMPLETED</div>
+                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:16px; line-height:1.4;">Both cards have been signed!</div>
+                    <div style="font-size:1.5rem; margin-bottom:24px;">🍺 🏆 🍺</div>
+                    <button id="seeResultsFromModalBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%; transition:all 0.2s;">🏆 SEE RESULTS</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        var btn = document.getElementById('seeResultsFromModalBtn');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                if (btn._clicked) return;
+                btn._clicked = true;
+                btn.disabled = true;
+                btn.textContent = '⏳ Loading...';
+                
+                // Remove the modal
+                var modal = document.getElementById('gameCompleteModal');
+                if (modal) modal.remove();
+                
+                // Redirect to post-game.html
+                window.location.href = 'post-game.html?gameId=' + gameId;
+            });
         }
     }
     
+    // ============================================================
     // v1.25: Check nested boolean structure (matches schema v4.0)
+    // ============================================================
+    
     function isGameCompleted(signatures) {
         if (!signatures) return false;
         return signatures.f1?.signed === true && signatures.f2?.signed === true;
@@ -733,7 +927,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Public API - UNCHANGED
+    // Public API
     // ============================================================
     
     return {
@@ -756,12 +950,16 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - FIXED: Losing team score now displays in RED instead of green
-   - CHANGED: Only the winning team score remains GREEN
-   - This makes it visually clear which team won
-   - PRESERVED: ALL other functionality from v1.26 unchanged
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - REPLACED: WRV.write() for signature flags with direct Firestore update
+   - ADDED: Self-confirming double-listener pattern for signature writes
+   - ADDED: Retry mechanism with listener confirmation (5 attempts, 3s timeout)
+   - CHANGED: UI updates from cache IMMEDIATELY (user never waits)
+   - PRESERVED: WRV for archival (history record, complete game data)
+   - PRESERVED: All celebration screen, waiting screen, UI logic from v1.27
+   - REASON: WRV write for f1.signed/f2.signed was unreliable
+   - REASON: Double-listener ensures signature flags reach Firestore and trigger all devices
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
