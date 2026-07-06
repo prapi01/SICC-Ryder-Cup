@@ -1,13 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.43
-KEY CHANGES from v7.42:
-   - FIXED: Signature detection now properly triggers redirect to post-game.html
-   - FIXED: onCacheUpdate() now calls showGameCompleteModal() when both signatures detected
-   - FIXED: setupRealtimeListener() now properly detects both signatures
-   - PRESERVED: ALL other functionality from v7.42 unchanged
-   - REASON: View-game must redirect to post-game.html when both cards are signed
-   - REASON: Game Complete modal is shown in post-game.html, not in view-game
+VERSION: 7.44
+KEY CHANGES from v7.43:
+   - ADDED: restoreCacheFromSession() - restores GameLoader cache from sessionStorage
+   - CHANGED: init() now restores cache from sessionStorage before loading game
+   - REASON: Cache may be lost on page load if coming from real-game.html
+   - REASON: sessionStorage persists cache across page reloads
+   - PRESERVED: ALL other functionality from v7.43 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -21,9 +20,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.43"></script>
-    <script src="js/session.js?v=7.43"></script>
-    <script src="js/settings.js?v=7.43"></script>
+    <script src="js/firebase-config.js?v=7.44"></script>
+    <script src="js/session.js?v=7.44"></script>
+    <script src="js/settings.js?v=7.44"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -32,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=7.43"></script>
-    <script src="js/history-record.js?v=7.43"></script>
-    <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=7.43"></script>
-    <script src="js/modal.js?v=7.43"></script>
+    <script src="js/ticker.js?v=7.44"></script>
+    <script src="js/history-record.js?v=7.44"></script>
+    <script src="js/sign-card.js?v=1.29"></script>
+    <script src="js/hcp-adjust.js?v=7.44"></script>
+    <script src="js/modal.js?v=7.44"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -157,14 +156,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.43</div>
+<div class="version-tag">v7.44</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.43: Fix signature detection
+// VERSION CACHE-BUSTING - v7.44: Restore cache from sessionStorage
 // ============================================================
-var APP_VERSION = "7.43";
-var CACHE_KEY = "view_game_version_v743";
+var APP_VERSION = "7.44";
+var CACHE_KEY = "view_game_version_v744";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -182,8 +181,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.43";
-console.log("[VIEW-GAME] Initializing v7.43 - Fix signature detection for post-game redirect");
+window.VIEW_GAME_VERSION = "7.44";
+console.log("[VIEW-GAME] Initializing v7.44 - Restore cache from sessionStorage");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -221,6 +220,27 @@ var hasSwitchedToHistory = false;
 var isPostGameContext = false;
 
 var firestoreUnsubscribe = null;
+
+// ============================================================
+// v7.44: Restore cache from sessionStorage
+// ============================================================
+
+function restoreCacheFromSession() {
+    var stored = sessionStorage.getItem('gameCache');
+    if (stored) {
+        try {
+            var cache = JSON.parse(stored);
+            if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
+                GameLoader.setLocalCache(cache);
+                console.log('[VIEW-GAME] ✅ Cache restored from sessionStorage');
+                return true;
+            }
+        } catch(e) {
+            console.warn('[VIEW-GAME] Failed to restore cache:', e.message);
+        }
+    }
+    return false;
+}
 
 // ============================================================
 // v7.40: Check completion from Firestore status (source of truth)
@@ -1375,7 +1395,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.40: Initialization - uses status as source of truth
+// v7.44: Initialization - Restore cache from sessionStorage
 // ============================================================
 
 async function init() {
@@ -1405,6 +1425,14 @@ async function init() {
     if (!gameId) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
         return;
+    }
+    
+    // v7.44: Restore cache from sessionStorage BEFORE loading
+    var cacheRestored = restoreCacheFromSession();
+    if (cacheRestored) {
+        console.log("[VIEW-GAME] ✅ Cache restored from sessionStorage");
+    } else {
+        console.log("[VIEW-GAME] No cache in sessionStorage - will load from Firestore");
     }
     
     var collection = "scheduledGames";
@@ -1494,7 +1522,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
-// v7.43: settings.js already initialized at top of script
+// v7.44: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1503,14 +1531,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.43
-KEY CHANGES from v7.42:
-   - FIXED: Signature detection now properly triggers redirect to post-game.html
-   - FIXED: onCacheUpdate() now calls showGameCompleteModal() when both signatures detected
-   - FIXED: setupRealtimeListener() now properly detects both signatures
-   - PRESERVED: ALL other functionality from v7.42 unchanged
-   - REASON: View-game must redirect to post-game.html when both cards are signed
-   - REASON: Game Complete modal is shown in post-game.html, not in view-game
+VERSION: 7.44
+KEY CHANGES from v7.43:
+   - ADDED: restoreCacheFromSession() - restores GameLoader cache from sessionStorage
+   - CHANGED: init() now restores cache from sessionStorage before loading game
+   - REASON: Cache may be lost on page load if coming from real-game.html
+   - REASON: sessionStorage persists cache across page reloads
+   - PRESERVED: ALL other functionality from v7.43 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
