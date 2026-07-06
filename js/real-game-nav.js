@@ -1,23 +1,22 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - REMOVED: Waiting screen from showGameCompleteScreen() - redirects directly
-   - ADDED: showGameCompleteModal() for showing modal on current page
-   - FIXED: showSignCardModal() now calls showGameCompleteScreen() directly when both signed
-   - PRESERVED: ALL other functionality from v1.13 unchanged
-   - REASON: When both cards are signed, user should go directly to post-game.html
-   - REASON: No waiting screen needed - game is already complete
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: saveCacheToSessionStorage() - saves GameLoader cache to sessionStorage
+   - CHANGED: showGameCompleteScreen() now saves cache before redirecting to post-game.html
+   - REASON: post-game.html needs the cache to show celebration instantly
+   - REASON: sessionStorage persists cache across page reloads
+   - PRESERVED: ALL other functionality from v1.14 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.14";
+window.REAL_GAME_NAV_VERSION = "1.15";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.14 - Direct redirect to post-game.html when complete");
+    console.log("[REAL-GAME-NAV] Initializing v1.15 - Cache persistence via sessionStorage");
     
     // ============================================================
     // Private Helpers
@@ -126,6 +125,28 @@ var RealGameNav = (function() {
     
     function hasUnsavedChanges(flight, hole) {
         return RealGameState.hasUnsavedChanges(flight, hole);
+    }
+    
+    // ============================================================
+    // v1.15: Save cache to sessionStorage for post-game
+    // ============================================================
+    
+    function saveCacheToSessionStorage() {
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (cache) {
+            try {
+                // Remove any circular references or large data that might cause issues
+                var cacheCopy = JSON.parse(JSON.stringify(cache));
+                sessionStorage.setItem('gameCache', JSON.stringify(cacheCopy));
+                console.log('[NAV] Cache saved to sessionStorage, size:', JSON.stringify(cacheCopy).length, 'bytes');
+                return true;
+            } catch(e) {
+                console.warn('[NAV] Failed to save cache to sessionStorage:', e.message);
+            }
+        } else {
+            console.warn('[NAV] No cache available to save');
+        }
+        return false;
     }
     
     // ============================================================
@@ -301,6 +322,9 @@ var RealGameNav = (function() {
                     // v1.14: Hide waiting screen (no longer needed)
                     hideWaitingScreen();
                     
+                    // v1.15: Save cache to sessionStorage before redirect
+                    saveCacheToSessionStorage();
+                    
                     // v1.14: Redirect directly to post-game.html (NO waiting screen)
                     showGameCompleteScreen();
                     
@@ -350,14 +374,13 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.14: Direct redirect, NO waiting screen
+    // showGameCompleteScreen - v1.15: Save cache before redirect
     // ============================================================
     
     function showGameCompleteScreen() {
         var gameId = getGameId();
         console.log("[NAV] showGameCompleteScreen called - redirecting to post-game.html");
         
-        // v1.10: Safety check for gameId before navigation
         if (!gameId) {
             console.error("[NAV] Cannot navigate to post-game - no gameId");
             if (typeof Modal !== 'undefined' && Modal.alert) {
@@ -367,6 +390,9 @@ var RealGameNav = (function() {
         }
         
         console.log("[NAV] Game completed - redirecting to post-game.html");
+        
+        // v1.15: Save cache to sessionStorage before redirect
+        saveCacheToSessionStorage();
         
         // Store post-game context
         sessionStorage.setItem('isPostGame', 'true');
@@ -584,7 +610,9 @@ var RealGameNav = (function() {
         showGameCompleteScreen: showGameCompleteScreen,
         showGameCompleteModal: showGameCompleteModal,
         showCelebrationAndHandicap: showCelebrationAndHandicap,
-        createHistoryRecord: createHistoryRecord
+        createHistoryRecord: createHistoryRecord,
+        // v1.15: Expose for debugging
+        saveCacheToSessionStorage: saveCacheToSessionStorage
     };
     
 })();
@@ -594,14 +622,13 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - REMOVED: Waiting screen from showGameCompleteScreen() - redirects directly
-   - ADDED: showGameCompleteModal() for showing modal on current page
-   - FIXED: showSignCardModal() now calls showGameCompleteScreen() directly when both signed
-   - PRESERVED: ALL other functionality from v1.13 unchanged
-   - REASON: When both cards are signed, user should go directly to post-game.html
-   - REASON: No waiting screen needed - game is already complete
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - ADDED: saveCacheToSessionStorage() - saves GameLoader cache to sessionStorage
+   - CHANGED: showGameCompleteScreen() now saves cache before redirecting to post-game.html
+   - REASON: post-game.html needs the cache to show celebration instantly
+   - REASON: sessionStorage persists cache across page reloads
+   - PRESERVED: ALL other functionality from v1.14 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
