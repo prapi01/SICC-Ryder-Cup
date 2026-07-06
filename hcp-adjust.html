@@ -1,13 +1,13 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.27
+VERSION: 1.28
 KEY CHANGES from v1.24:
-   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustments()
+   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustmentsFromRaw()
    - ADDED: restoreCacheFromSession() for cache persistence
    - CHANGED: init() now restores cache from sessionStorage before loading
-   - PRESERVED: ALL UI design, dark theme, and modal-based layout from v1.24
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout EXACTLY as v1.24
    - PRESERVED: renderHcpScreen(), loadHcpData() EXACTLY as v1.24
-   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustments()
+   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustmentsFromRaw()
    - REASON: Cache must be restored for post-game transition to work
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
@@ -25,11 +25,11 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.27"></script>
-    <script src="js/session.js?v=1.27"></script>
-    <script src="js/settings.js?v=1.27"></script>
-    <script src="js/modal.js?v=1.27"></script>
-    <script src="js/waiting-screen.js?v=1.27"></script>
+    <script src="js/firebase-config.js?v=1.28"></script>
+    <script src="js/session.js?v=1.28"></script>
+    <script src="js/settings.js?v=1.28"></script>
+    <script src="js/modal.js?v=1.28"></script>
+    <script src="js/waiting-screen.js?v=1.28"></script>
     <script src="js/firebase-retry.js"></script>
     
     <!-- WRV Core -->
@@ -313,7 +313,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.27</div>
+<div class="version-tag">v1.28</div>
 
 <script>
 // ============================================================
@@ -326,10 +326,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.27: Fix calculate method name + restore cache
+// VERSION CACHE-BUSTING - v1.28: Fix calculate method
 // ============================================================
-var APP_VERSION = "1.27";
-var CACHE_KEY = "hcp_adjust_version_v127";
+var APP_VERSION = "1.28";
+var CACHE_KEY = "hcp_adjust_version_v128";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 var urlParams = new URLSearchParams(window.location.search);
@@ -349,12 +349,12 @@ if (!hasVersionParam || hasVersionParam !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.27";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.27 - Fixed calculate method, restore cache");
+window.HCP_ADJUST_PAGE_VERSION = "1.28";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.28 - Fixed calculate method");
 console.log("[HCP-ADJUST-PAGE] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
-// v1.27: Restore cache from sessionStorage
+// v1.28: Restore cache from sessionStorage
 // ============================================================
 
 function restoreCacheFromSession() {
@@ -370,14 +370,12 @@ function restoreCacheFromSession() {
         } catch(e) {
             console.warn('[HCP-ADJUST-PAGE] Failed to restore cache:', e.message);
         }
-    } else {
-        console.log('[HCP-ADJUST-PAGE] No gameCache in sessionStorage');
     }
     return false;
 }
 
 // ============================================================
-// Main Logic - UNCHANGED from v1.24 except calculate → calculateAllAdjustments
+// Main Logic - EXACTLY as v1.24, only method name changed
 // ============================================================
 
 var gameId = null;
@@ -544,7 +542,7 @@ function loadHcpData() {
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
     
-    // v1.27: Restore cache if not already in memory
+    // v1.28: Restore cache if not already in memory
     var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
     if (!cache) {
         restoreCacheFromSession();
@@ -581,9 +579,23 @@ function loadHcpData() {
             return;
         }
         
-        // v1.27: FIXED - calculate() → calculateAllAdjustments()
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustments) {
-            hcpData = HandicapAdjustment.calculateAllAdjustments(gameData);
+        // v1.28: FIXED - Use calculateAllAdjustmentsFromRaw with proper parameters
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
+            var anchor = gameData.anchor || null;
+            var players = gameData.players || [];
+            var flight1DataStr = gameData.f1?.d || '';
+            var flight2DataStr = gameData.f2?.d || '';
+            var courseSi = gameData.course?.si || [];
+            var coursePar = gameData.course?.par || [];
+            
+            hcpData = HandicapAdjustment.calculateAllAdjustmentsFromRaw(
+                anchor,
+                players,
+                flight1DataStr,
+                flight2DataStr,
+                courseSi,
+                coursePar
+            );
             renderHcpScreen();
         } else {
             showError('Handicap calculation not available');
@@ -633,9 +645,23 @@ function loadFromHistory(gameId) {
             }
         }
         
-        // v1.27: FIXED - calculate() → calculateAllAdjustments()
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustments) {
-            hcpData = HandicapAdjustment.calculateAllAdjustments(gameData);
+        // v1.28: FIXED - Use calculateAllAdjustmentsFromRaw with proper parameters
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
+            var anchor = gameData.anchor || null;
+            var players = gameData.players || [];
+            var flight1DataStr = gameData.f1?.d || '';
+            var flight2DataStr = gameData.f2?.d || '';
+            var courseSi = gameData.course?.si || [];
+            var coursePar = gameData.course?.par || [];
+            
+            hcpData = HandicapAdjustment.calculateAllAdjustmentsFromRaw(
+                anchor,
+                players,
+                flight1DataStr,
+                flight2DataStr,
+                courseSi,
+                coursePar
+            );
             renderHcpScreen();
         } else {
             showError('Handicap calculation not available');
@@ -659,7 +685,7 @@ function init() {
         return;
     }
     
-    // v1.27: Restore cache from sessionStorage BEFORE loading
+    // v1.28: Restore cache from sessionStorage BEFORE loading
     restoreCacheFromSession();
     
     var stored = sessionStorage.getItem('celebrationData');
@@ -703,14 +729,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.27
+VERSION: 1.28
 KEY CHANGES from v1.24:
-   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustments()
+   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustmentsFromRaw()
    - ADDED: restoreCacheFromSession() for cache persistence
    - CHANGED: init() now restores cache from sessionStorage before loading
-   - PRESERVED: ALL UI design, dark theme, and modal-based layout from v1.24
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout EXACTLY as v1.24
    - PRESERVED: renderHcpScreen(), loadHcpData() EXACTLY as v1.24
-   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustments()
+   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustmentsFromRaw()
    - REASON: Cache must be restored for post-game transition to work
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
