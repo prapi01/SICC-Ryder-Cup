@@ -1,16 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.61
-KEY CHANGES from v1.60:
-   - FIXED: signatures now use NESTED structure: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
-   - FIXED: This matches the schema and eliminates mixed structure issues
-   - REMOVED: submitted field (no longer used, was causing confusion)
-   - ADDED: Label display field next to player name (white on green, 3 chars)
-   - CHANGED: Player name field font size increased to 0.75rem
-   - CHANGED: Removed label from dropdown (labels are shown in badge field)
-   - PRESERVED: All UI styling and layout from v1.60
-   - PRESERVED: All edit mode functionality unchanged
-   - PRESERVED: All existing form handling unchanged
+VERSION: 1.62
+KEY CHANGES from v1.61:
+   - CHANGED: Starting hole dropdown options from "Hole 1"-"Hole 18" to "H1"-"H18"
+   - This fixes truncation on iPhone 14 (393px) where "Hole 10" was cut off
+   - PRESERVED: All other functionality from v1.61 unchanged
+   - This change only affects setup-game.html dropdown; pre-game and other screens unaffected
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -651,11 +646,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.61</div>
+<div class="version-tag">v1.62</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.61
+// VERSION: 1.62
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -663,8 +658,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.61";
-var CACHE_KEY = "setup_game_version_v161";
+var VERSION = "1.62";
+var CACHE_KEY = "setup_game_version_v162";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1971,6 +1966,11 @@ function render() {
     var modeTitle = state.isEditMode ? 'Edit Scheduled Game' : 'Set Up New Game';
     var modeBadge = state.isEditMode ? '<span class="edit-badge">Edit Mode</span>' : '';
     
+    // v1.62: Starting hole dropdown options shortened to "H1"-"H18" for mobile
+    var startingHoleOptions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
+        return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>H' + h + '</option>';
+    }).join('');
+    
     var html = `
         <div class="header">
             <div class="title">${modeTitle} ${modeBadge}</div>
@@ -2002,9 +2002,7 @@ function render() {
                     <label>Starting Hole</label>
                     <div class="select-wrapper">
                         <select id="combinedHoleSelect">
-                            ${[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
-                                return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>Hole ' + h + '</option>';
-                            }).join('')}
+                            ${startingHoleOptions}
                         </select>
                         <span class="arrow">▼</span>
                     </div>
@@ -2169,17 +2167,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.61
-KEY CHANGES from v1.60:
-   - FIXED: signatures now use NESTED structure: { f1: { signed: false, signedAt: null, captainName: null }, f2: { ... } }
-   - FIXED: This matches the schema and eliminates mixed structure issues
-   - REMOVED: submitted field (no longer used, was causing confusion)
-   - ADDED: Label display field next to player name (white on green, 3 chars)
-   - CHANGED: Player name field font size increased to 0.75rem
-   - CHANGED: Removed label from dropdown (labels are shown in badge field)
-   - PRESERVED: All UI styling and layout from v1.60
-   - PRESERVED: All edit mode functionality unchanged
-   - PRESERVED: All existing form handling unchanged
+VERSION: 1.62
+KEY CHANGES from v1.61:
+   - CHANGED: Starting hole dropdown options from "Hole 1"-"Hole 18" to "H1"-"H18"
+   - This fixes truncation on iPhone 14 (393px) where "Hole 10" was cut off
+   - PRESERVED: All other functionality from v1.61 unchanged
+   - This change only affects setup-game.html dropdown; pre-game and other screens unaffected
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
