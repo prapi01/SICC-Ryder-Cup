@@ -1,14 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - FIXED: Now writes the ENTIRE signatures object instead of dot notation paths
-   - REMOVED: Dot notation that was causing flat fields in Firestore
-   - CHANGED: Reads current signatures first, then updates nested object
-   - ADDED: Error handling for missing document
-   - PRESERVED: signedAt remains null (matches schema v4.0)
-   - PRESERVED: ALL other functionality from v1.24 unchanged
-   - This eliminates flat fields while keeping WRV verification working
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - FIXED: "HANDICAP ADJUSTMENT" button now responds to physical clicks
+   - REMOVED: Button cloning (cloneNode + replaceChild) that was breaking event listeners
+   - CHANGED: Now uses direct event listener on the existing button element
+   - PRESERVED: ALL other functionality from v1.25 unchanged
+   - PRESERVED: Nested signatures structure, entire object write
+   - This ensures the button works on actual device touch/click events
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -199,7 +198,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen
+    // Celebration Screen - v1.26: Fixed button listener
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -271,6 +270,10 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
+            // v1.26: Use direct event listener on the existing button
+            // Store the gameId for the handler
+            var capturedGameId = gameId;
+            
             setTimeout(function() {
                 console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
                 if (typeof onClose === 'function') {
@@ -278,61 +281,62 @@ var SignCard = (function() {
                 }
             }, 500);
             
-            var btn = document.getElementById("handicapAdjustBtn");
+            // v1.26: Find the button directly and add the listener
+            var btn = document.getElementById('handicapAdjustBtn');
             if (btn) {
-                var newBtn = btn.cloneNode(true);
-                btn.parentNode.replaceChild(newBtn, btn);
-                
-                var capturedGameId = gameId;
-                
-                newBtn.addEventListener("click", function() {
-                    console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
-                    
-                    var targetGameId = capturedGameId || celebrationData.gameId;
-                    console.log("[SignCard] targetGameId:", targetGameId);
-                    
-                    if (!targetGameId) {
-                        console.error("[SignCard] No gameId available for navigation");
-                        if (typeof Modal !== 'undefined') {
-                            Modal.alert("Unable to load handicap adjustment. Please try again.");
+                // v1.26: Remove any existing listeners (to prevent duplicates)
+                // We can't remove specific listeners, but we can track if it's already attached
+                if (!btn._listenerAttached) {
+                    btn.addEventListener('click', function(e) {
+                        console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
+                        
+                        var targetGameId = capturedGameId || celebrationData.gameId;
+                        console.log("[SignCard] targetGameId:", targetGameId);
+                        
+                        if (!targetGameId) {
+                            console.error("[SignCard] No gameId available for navigation");
+                            if (typeof Modal !== 'undefined') {
+                                Modal.alert("Unable to load handicap adjustment. Please try again.");
+                            }
+                            return;
                         }
-                        return;
-                    }
-                    
-                    try {
-                        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-                        console.log("[SignCard] Celebration data saved to sessionStorage");
-                    } catch(e) {
-                        console.warn("[SignCard] Failed to save celebration data:", e.message);
-                    }
-                    
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                        WaitingScreen.show("Loading Handicap Adjustment...");
-                        console.log("[SignCard] Waiting screen shown");
-                    } else {
-                        var overlay = document.createElement('div');
-                        overlay.id = 'waitingScreenOverlay';
-                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
-                        overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
-                        document.body.appendChild(overlay);
-                        console.log("[SignCard] Fallback waiting screen shown");
-                    }
-                    
-                    var modal = document.getElementById('celebrationModal');
-                    if (modal) {
-                        modal.remove();
-                        console.log("[SignCard] Celebration modal removed");
-                    }
-                    
-                    clearConfetti();
-                    console.log("[SignCard] Confetti cleared");
-                    
-                    setTimeout(function() {
-                        var navigateUrl = 'hcp-adjust.html?gameId=' + targetGameId;
-                        console.log("[SignCard] Navigating to:", navigateUrl);
-                        window.location.href = navigateUrl;
-                    }, 300);
-                });
+                        
+                        try {
+                            sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+                            console.log("[SignCard] Celebration data saved to sessionStorage");
+                        } catch(e) {
+                            console.warn("[SignCard] Failed to save celebration data:", e.message);
+                        }
+                        
+                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                            WaitingScreen.show("Loading Handicap Adjustment...");
+                            console.log("[SignCard] Waiting screen shown");
+                        } else {
+                            var overlay = document.createElement('div');
+                            overlay.id = 'waitingScreenOverlay';
+                            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                            overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
+                            document.body.appendChild(overlay);
+                            console.log("[SignCard] Fallback waiting screen shown");
+                        }
+                        
+                        var modal = document.getElementById('celebrationModal');
+                        if (modal) {
+                            modal.remove();
+                            console.log("[SignCard] Celebration modal removed");
+                        }
+                        
+                        clearConfetti();
+                        console.log("[SignCard] Confetti cleared");
+                        
+                        setTimeout(function() {
+                            var navigateUrl = 'hcp-adjust.html?gameId=' + targetGameId;
+                            console.log("[SignCard] Navigating to:", navigateUrl);
+                            window.location.href = navigateUrl;
+                        }, 300);
+                    });
+                    btn._listenerAttached = true;
+                }
             }
             
             window._currentCelebrationData = celebrationData;
@@ -751,15 +755,14 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - FIXED: Now writes the ENTIRE signatures object instead of dot notation paths
-   - REMOVED: Dot notation that was causing flat fields in Firestore
-   - CHANGED: Reads current signatures first, then updates nested object
-   - ADDED: Error handling for missing document
-   - PRESERVED: signedAt remains null (matches schema v4.0)
-   - PRESERVED: ALL other functionality from v1.24 unchanged
-   - This eliminates flat fields while keeping WRV verification working
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - FIXED: "HANDICAP ADJUSTMENT" button now responds to physical clicks
+   - REMOVED: Button cloning (cloneNode + replaceChild) that was breaking event listeners
+   - CHANGED: Now uses direct event listener on the existing button element
+   - PRESERVED: ALL other functionality from v1.25 unchanged
+   - PRESERVED: Nested signatures structure, entire object write
+   - This ensures the button works on actual device touch/click events
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
