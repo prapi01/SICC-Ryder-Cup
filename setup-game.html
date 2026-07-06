@@ -1,13 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.64
-KEY CHANGES from v1.63:
-   - FIXED: Starting Hole dropdown width reduced to 60px (was taking too much space)
-   - FIXED: Team Game field now takes remaining space (was truncated)
-   - REVERTED: Team (A/B) field back to previous version (left-aligned, no changes)
-   - REVERTED: Flight (F1/F2) field back to previous version (right-aligned, no changes)
-   - PRESERVED: Green arrow remains on all dropdowns
-   - PRESERVED: All other functionality from v1.63 unchanged
+VERSION: 1.65
+KEY CHANGES from v1.64:
+   - FIXED: Label alignment for "Starting Hole" and "Team Game" - both now have consistent width (78px)
+   - FIXED: Team Game field no longer touches right border (added padding to container)
+   - CHANGED: .form-row-inline padding to prevent field from touching border
+   - CHANGED: .field-group label flex: 0 0 78px for consistent alignment
+   - PRESERVED: All other functionality from v1.64 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -175,11 +174,13 @@ STATUS: Ready for integration
             opacity: 0.7;
         }
         
+        /* v1.65: Consistent label width and proper spacing */
         .form-row-inline {
             display: flex;
             gap: 12px;
             align-items: center;
             flex-wrap: wrap;
+            padding: 0 2px;
         }
         .form-row-inline .field-group {
             display: flex;
@@ -188,23 +189,27 @@ STATUS: Ready for integration
             flex: 1;
             min-width: 140px;
         }
+        /* Both labels get the same width for perfect alignment */
         .form-row-inline .field-group label {
             font-size: 0.75rem;
             color: #4caf50;
             white-space: nowrap;
             font-weight: 500;
+            flex: 0 0 78px;
+            text-align: left;
         }
         .form-row-inline .field-group .select-wrapper {
             flex: 1;
             min-width: 80px;
         }
         
-        /* v1.64: Starting Hole narrow, Team Game takes remaining space */
+        /* Starting Hole - narrow (58px for "H18" + arrow) */
         .form-row-inline .field-group.starting-hole .select-wrapper {
             flex: 0 0 58px;
             min-width: 58px;
             max-width: 58px;
         }
+        /* Team Game - takes remaining space */
         .form-row-inline .field-group.team-game .select-wrapper {
             flex: 1;
             min-width: 100px;
@@ -659,11 +664,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.64</div>
+<div class="version-tag">v1.65</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.64
+// VERSION: 1.65
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -671,8 +676,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.64";
-var CACHE_KEY = "setup_game_version_v164";
+var VERSION = "1.65";
+var CACHE_KEY = "setup_game_version_v165";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1984,7 +1989,7 @@ function render() {
         return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>H' + h + '</option>';
     }).join('');
     
-    // v1.64: Add classes for field width control
+    // v1.65: Added proper label alignment and field spacing
     var html = `
         <div class="header">
             <div class="title">${modeTitle} ${modeBadge}</div>
@@ -2181,14 +2186,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.64
-KEY CHANGES from v1.63:
-   - FIXED: Starting Hole dropdown width reduced to 60px (was taking too much space)
-   - FIXED: Team Game field now takes remaining space (was truncated)
-   - REVERTED: Team (A/B) field back to previous version (left-aligned, no changes)
-   - REVERTED: Flight (F1/F2) field back to previous version (right-aligned, no changes)
-   - PRESERVED: Green arrow remains on all dropdowns
-   - PRESERVED: All other functionality from v1.63 unchanged
+VERSION: 1.65
+KEY CHANGES from v1.64:
+   - FIXED: Label alignment for "Starting Hole" and "Team Game" - both now have consistent width (78px)
+   - FIXED: Team Game field no longer touches right border (added padding to container)
+   - CHANGED: .form-row-inline padding to prevent field from touching border
+   - CHANGED: .field-group label flex: 0 0 78px for consistent alignment
+   - PRESERVED: All other functionality from v1.64 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
