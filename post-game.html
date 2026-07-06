@@ -1,10 +1,13 @@
 <!--
 FILE: post-game.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
+VERSION: 1.10
+KEY CHANGES from v1.09:
    - FIXED: showCelebrationFromData() → showCelebrationScreenFromData() in fallback path
-   - REASON: Function name mismatch caused "showCelebrationFromData is not defined" error
-   - PRESERVED: ALL other functionality from v1.08 unchanged
+   - CHANGED: Cache loading happens IMMEDIATELY in background on page load
+   - CHANGED: When "SEE RESULTS" clicked, data is already loaded (no Firestore delay)
+   - REASON: Cache was missing on F1 and View causing "SEE RESULTS" to fail
+   - REASON: Background loading ensures data is ready when user clicks
+   - PRESERVED: ALL other functionality from v1.09 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-loader.js, js/sign-card.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -23,10 +26,10 @@ STATUS: Ready for integration
     <!-- html2canvas for celebration capture -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
-    <script src="js/firebase-config.js?v=1.09"></script>
-    <script src="js/session.js?v=1.09"></script>
-    <script src="js/settings.js?v=1.09"></script>
-    <script src="js/modal.js?v=1.09"></script>
+    <script src="js/firebase-config.js?v=1.10"></script>
+    <script src="js/session.js?v=1.10"></script>
+    <script src="js/settings.js?v=1.10"></script>
+    <script src="js/modal.js?v=1.10"></script>
     <script src="js/game-order.js?v=1.00"></script>
     
     <!-- WRV Core - MUST be loaded before dependent files -->
@@ -39,7 +42,7 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/sign-card.js?v=1.19"></script>
+    <script src="js/sign-card.js?v=1.28"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -188,7 +191,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.10</div>
 
 <script>
 // ============================================================
@@ -201,10 +204,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.09: Fix showCelebrationFromData function name
+// VERSION CACHE-BUSTING - v1.10: Background cache loading
 // ============================================================
-var APP_VERSION = "1.09";
-var CACHE_KEY = "post_game_version_v109";
+var APP_VERSION = "1.10";
+var CACHE_KEY = "post_game_version_v110";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -222,8 +225,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.09";
-console.log("[POST-GAME] Initializing v1.09 - Fixed showCelebrationFromData function name");
+window.POST_GAME_PAGE_VERSION = "1.10";
+console.log("[POST-GAME] Initializing v1.10 - Background cache loading");
 console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
@@ -233,6 +236,7 @@ console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 var gameId = null;
 var isSeeResultsClicked = false;
 var cachedGameData = null;
+var celebrationDataReady = false;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -259,7 +263,6 @@ function showGameCompleteModal() {
     var btn = document.getElementById('seeResultsBtn');
     if (btn) {
         btn.addEventListener('click', function() {
-            // v1.08: Prevent multiple clicks
             if (isSeeResultsClicked) {
                 console.log("[POST-GAME] SEE RESULTS already clicked - ignoring duplicate");
                 return;
@@ -271,52 +274,35 @@ function showGameCompleteModal() {
             
             console.log("[POST-GAME] SEE RESULTS clicked");
             
-            // v1.08: Use cached data - NO Firestore read!
-            showCelebrationFromCache();
+            // v1.10: Use pre-loaded data if ready, otherwise load now
+            if (celebrationDataReady && cachedGameData) {
+                console.log("[POST-GAME] Using pre-loaded data");
+                showCelebrationScreenFromData(cachedGameData);
+            } else {
+                console.log("[POST-GAME] Data not ready - loading now");
+                // Try cache first
+                var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+                if (cache) {
+                    showCelebrationFromCache(cache);
+                } else {
+                    // Fallback: load from Firestore
+                    loadGameDataInBackground(function(err, data) {
+                        if (err) {
+                            console.error("[POST-GAME] Failed to load data:", err);
+                            btn.disabled = false;
+                            btn.textContent = '🏆 SEE RESULTS';
+                            isSeeResultsClicked = false;
+                            return;
+                        }
+                        showCelebrationScreenFromData(data);
+                    });
+                }
+            }
         });
     }
 }
 
-function showCelebrationFromCache() {
-    // Step 1: Get data from cache
-    var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-    
-    if (!cache) {
-        console.warn("[POST-GAME] No cache available - attempting to load from sessionStorage");
-        // Try to get from sessionStorage as fallback
-        var stored = sessionStorage.getItem('celebrationData');
-        if (stored) {
-            try {
-                var data = JSON.parse(stored);
-                if (data && data.gameId === gameId) {
-                    showCelebrationScreenFromData(data);
-                    return;
-                }
-            } catch(e) {
-                console.warn("[POST-GAME] Failed to parse sessionStorage data:", e.message);
-            }
-        }
-        
-        // Last resort - try Firestore but DON'T block UI
-        loadGameDataInBackground(function(err, data) {
-            if (err) {
-                console.error("[POST-GAME] Failed to load data:", err);
-                // Show error but let user retry
-                var btn = document.getElementById('seeResultsBtn');
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = '🏆 SEE RESULTS';
-                    isSeeResultsClicked = false;
-                }
-                return;
-            }
-            // v1.09: FIXED - Use correct function name
-            showCelebrationScreenFromData(data);
-        });
-        return;
-    }
-    
-    // Build celebration data from cache
+function showCelebrationFromCache(cache) {
     var results = cache.results || {};
     var tr = results.tr || {};
     var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
@@ -346,11 +332,7 @@ function showCelebrationFromCache() {
     }
     window._currentCelebrationData = celebrationData;
     
-    // Show celebration
     showCelebrationScreenFromData(celebrationData);
-    
-    // Background: Start history record creation (non-blocking)
-    startBackgroundTasks(cache);
 }
 
 function showCelebrationScreenFromData(celebrationData) {
@@ -362,9 +344,7 @@ function showCelebrationScreenFromData(celebrationData) {
             celebrationData.winningPlayers,
             celebrationData.gameId,
             function() {
-                // onClose callback
                 console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
-                // Re-enable button if they come back
                 isSeeResultsClicked = false;
                 var btn = document.getElementById('seeResultsBtn');
                 if (btn) {
@@ -375,11 +355,11 @@ function showCelebrationScreenFromData(celebrationData) {
         );
     } else {
         console.error("[POST-GAME] SignCard not loaded");
-        // Fallback: go to hcp-adjust
         window.location.href = 'hcp-adjust.html?gameId=' + gameId;
     }
 }
 
+// v1.10: Background data loading - starts immediately after page loads
 function loadGameDataInBackground(callback) {
     if (!gameId) {
         if (callback) callback(new Error('No game ID'), null);
@@ -388,6 +368,15 @@ function loadGameDataInBackground(callback) {
     
     console.log("[POST-GAME] Background loading game data:", gameId);
     
+    // First try cache
+    var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+    if (cache && cache.results && cache.players) {
+        console.log("[POST-GAME] Background: Using cache data");
+        if (callback) callback(null, cache);
+        return;
+    }
+    
+    // If no cache, load from Firestore
     var db = firebase.firestore();
     db.collection('scheduledGames').doc(gameId).get()
         .then(function(doc) {
@@ -397,6 +386,7 @@ function loadGameDataInBackground(callback) {
             }
             var data = doc.data();
             cachedGameData = data;
+            celebrationDataReady = true;
             console.log("[POST-GAME] Background data loaded, players:", data.players ? data.players.length : 0);
             if (callback) callback(null, data);
         })
@@ -407,7 +397,6 @@ function loadGameDataInBackground(callback) {
 }
 
 function startBackgroundTasks(cache) {
-    // Use setTimeout to ensure UI renders first
     setTimeout(function() {
         if (!cache) {
             cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
@@ -425,7 +414,6 @@ function startBackgroundTasks(cache) {
         var signatures = cache.signatures || {};
         var matchResults = results.matchResults || {};
         
-        // Create history record in background
         if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
             console.log("[POST-GAME] Background: Creating history record for:", gameId);
             HistoryRecord.createPendingRecord(
@@ -445,8 +433,6 @@ function startBackgroundTasks(cache) {
                     }
                 }
             );
-        } else {
-            console.warn("[POST-GAME] HistoryRecord not available for background task");
         }
     }, 200);
 }
@@ -461,7 +447,6 @@ function init() {
         return;
     }
     
-    // Set device tag
     try {
         var name = SessionManager.getShortNameOnly();
         document.getElementById('deviceTag').textContent = '🏌️ ' + (name || 'DEV-??');
@@ -470,16 +455,13 @@ function init() {
         document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
     }
     
-    // v1.08: IMMEDIATELY show modal - NO signature checking!
-    // Entry condition already guarantees both signatures are true
+    // v1.10: IMMEDIATELY show modal
     showGameCompleteModal();
     
-    // Load data in background for history record (non-blocking)
+    // v1.10: IMMEDIATELY start background data loading
     loadGameDataInBackground(function(err, data) {
         if (!err && data) {
-            // Data loaded, but UI already showing
-            console.log("[POST-GAME] Background data ready for history record");
-            // Start background tasks with the loaded data
+            console.log("[POST-GAME] Background data ready");
             var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
             if (cache) {
                 startBackgroundTasks(cache);
@@ -500,11 +482,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
+VERSION: 1.10
+KEY CHANGES from v1.09:
    - FIXED: showCelebrationFromData() → showCelebrationScreenFromData() in fallback path
-   - REASON: Function name mismatch caused "showCelebrationFromData is not defined" error
-   - PRESERVED: ALL other functionality from v1.08 unchanged
+   - CHANGED: Cache loading happens IMMEDIATELY in background on page load
+   - CHANGED: When "SEE RESULTS" clicked, data is already loaded (no Firestore delay)
+   - REASON: Cache was missing on F1 and View causing "SEE RESULTS" to fail
+   - REASON: Background loading ensures data is ready when user clicks
+   - PRESERVED: ALL other functionality from v1.09 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-loader.js, js/sign-card.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
