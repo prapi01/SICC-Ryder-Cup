@@ -1,14 +1,14 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - CHANGED: loadHcpData() now uses HandicapAdjustment.initForViewer() instead of calculate()
-   - REMOVED: renderHcpScreen() - initForViewer() handles rendering directly
-   - REMOVED: hcpData variable - no longer needed
-   - REASON: calculate() method doesn't exist - it's calculateAllAdjustments()
-   - REASON: initForViewer() is the correct API for standalone hcp-adjust page
-   - REASON: This is the production code path that was working before
-   - PRESERVED: ALL UI design, dark theme, and modal-based layout unchanged
+VERSION: 1.27
+KEY CHANGES from v1.24:
+   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustments()
+   - ADDED: restoreCacheFromSession() for cache persistence
+   - CHANGED: init() now restores cache from sessionStorage before loading
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout from v1.24
+   - PRESERVED: renderHcpScreen(), loadHcpData() EXACTLY as v1.24
+   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustments()
+   - REASON: Cache must be restored for post-game transition to work
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -25,11 +25,11 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.26"></script>
-    <script src="js/session.js?v=1.26"></script>
-    <script src="js/settings.js?v=1.26"></script>
-    <script src="js/modal.js?v=1.26"></script>
-    <script src="js/waiting-screen.js?v=1.26"></script>
+    <script src="js/firebase-config.js?v=1.27"></script>
+    <script src="js/session.js?v=1.27"></script>
+    <script src="js/settings.js?v=1.27"></script>
+    <script src="js/modal.js?v=1.27"></script>
+    <script src="js/waiting-screen.js?v=1.27"></script>
     <script src="js/firebase-retry.js"></script>
     
     <!-- WRV Core -->
@@ -313,7 +313,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.26</div>
+<div class="version-tag">v1.27</div>
 
 <script>
 // ============================================================
@@ -326,10 +326,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.26: Use initForViewer
+// VERSION CACHE-BUSTING - v1.27: Fix calculate method name + restore cache
 // ============================================================
-var APP_VERSION = "1.26";
-var CACHE_KEY = "hcp_adjust_version_v126";
+var APP_VERSION = "1.27";
+var CACHE_KEY = "hcp_adjust_version_v127";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 var urlParams = new URLSearchParams(window.location.search);
@@ -349,21 +349,12 @@ if (!hasVersionParam || hasVersionParam !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.26";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.26 - Use initForViewer");
+window.HCP_ADJUST_PAGE_VERSION = "1.27";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.27 - Fixed calculate method, restore cache");
 console.log("[HCP-ADJUST-PAGE] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
-// Main Logic
-// ============================================================
-
-var gameId = null;
-var gameData = null;
-var celebrationData = null;
-var fromHistoryMode = false;
-
-// ============================================================
-// v1.25: Restore cache from sessionStorage
+// v1.27: Restore cache from sessionStorage
 // ============================================================
 
 function restoreCacheFromSession() {
@@ -384,6 +375,16 @@ function restoreCacheFromSession() {
     }
     return false;
 }
+
+// ============================================================
+// Main Logic - UNCHANGED from v1.24 except calculate → calculateAllAdjustments
+// ============================================================
+
+var gameId = null;
+var gameData = null;
+var hcpData = null;
+var celebrationData = null;
+var fromHistoryMode = false;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -414,15 +415,108 @@ function showError(message) {
     document.getElementById('debug').textContent = 'Error: ' + message;
 }
 
+function renderHcpScreen() {
+    if (!hcpData) {
+        showError('No handicap data available');
+        return;
+    }
+    
+    var players = hcpData.players || [];
+    var winner = celebrationData ? celebrationData.winner : 'Tie';
+    var teamAScore = celebrationData ? celebrationData.teamAScore : 9.5;
+    var teamBScore = celebrationData ? celebrationData.teamBScore : 9.5;
+    
+    var winnerText = winner === 'A' ? '🏆 Team A Wins!' : (winner === 'B' ? '🏆 Team B Wins!' : '🤝 Tie Game!');
+    var winnerColor = winner === 'A' || winner === 'B' ? '#4caf50' : '#ffaa44';
+    
+    var playersHtml = '';
+    players.forEach(function(p) {
+        var change = p.finalHcp - p.startingHcp;
+        var changeClass = 'hcp-change-neutral';
+        var changeDisplay = '0';
+        
+        if (change > 0) {
+            changeClass = 'hcp-change-positive';
+            changeDisplay = '+' + change.toFixed(1);
+        } else if (change < 0) {
+            changeClass = 'hcp-change-negative';
+            changeDisplay = change.toFixed(1);
+        }
+        
+        playersHtml += `
+            <tr>
+                <td class="player-name">${escapeHtml(p.name)}</td>
+                <td class="hcp-value">${p.startingHcp}</td>
+                <td class="hcp-value">${p.finalHcp.toFixed(1)}</td>
+                <td class="hcp-change ${changeClass}">${changeDisplay}</td>
+            </tr>
+        `;
+    });
+    
+    var html = `
+        <div class="hcp-container">
+            <div class="hcp-title">🏌️ Handicap Adjustment</div>
+            <div class="hcp-subtitle">Performance-based handicap updates for all players</div>
+            
+            <div class="hcp-winner-banner">
+                <div class="winner-text">${winnerText}</div>
+                <div class="winner-score">Team A ${teamAScore} - ${teamBScore} Team B</div>
+            </div>
+            
+            <div class="hcp-card">
+                <div class="hcp-card-title">📊 Adjusted Handicaps</div>
+                <table class="hcp-table">
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th style="text-align:center;">Before</th>
+                            <th style="text-align:center;">After</th>
+                            <th style="text-align:center;">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${playersHtml}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="hcp-btn-group">
+                <button class="hcp-btn hcp-btn-secondary" id="hcpBackBtn">← Back</button>
+                <button class="hcp-btn hcp-btn-primary" id="hcpCommitBtn">✓ Save Changes</button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+    
+    if (fromHistoryMode) {
+        var commitBtn = document.getElementById('hcpCommitBtn');
+        if (commitBtn) {
+            commitBtn.disabled = true;
+            commitBtn.style.opacity = '0.5';
+            commitBtn.style.cursor = 'not-allowed';
+            commitBtn.textContent = '✓ Archived';
+        }
+    }
+    
+    document.getElementById('hcpBackBtn').addEventListener('click', function() {
+        window.location.href = 'index.html';
+    });
+    
+    document.getElementById('hcpCommitBtn').addEventListener('click', function() {
+        commitHandicapAdjustment();
+    });
+}
+
 function commitHandicapAdjustment() {
-    if (!gameId) {
+    if (!gameId || !hcpData) {
         Modal.alert('No data to save');
         return;
     }
     
     AuthPin.requireAuth('hcp-adjust', gameId, null, function() {
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.save) {
-            HandicapAdjustment.save(gameId, null, function(success) {
+            HandicapAdjustment.save(gameId, hcpData, function(success) {
                 if (success) {
                     Modal.alert('✅ Handicaps updated successfully!');
                     var checkModal = setInterval(function() {
@@ -450,15 +544,10 @@ function loadHcpData() {
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
     
-    // v1.25: Restore cache if not already restored
+    // v1.27: Restore cache if not already in memory
     var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
     if (!cache) {
-        console.log("[HCP-ADJUST-PAGE] No cache in memory - attempting restore from sessionStorage");
         restoreCacheFromSession();
-        cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-        if (cache) {
-            console.log("[HCP-ADJUST-PAGE] Cache restored successfully");
-        }
     }
     
     if (typeof FirebaseRetry === 'undefined') {
@@ -483,7 +572,6 @@ function loadHcpData() {
         gameData = doc.data();
         console.log("[HCP-ADJUST-PAGE] Game loaded:", gameData);
         
-        // Check if game is complete
         var signatures = gameData.signatures || {};
         var f1Signed = signatures.f1?.signed === true;
         var f2Signed = signatures.f2?.signed === true;
@@ -493,38 +581,12 @@ function loadHcpData() {
             return;
         }
         
-        // v1.26: Use initForViewer (correct API for standalone mode)
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
-            // Get data from cache if available, otherwise from gameData
-            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-            var players = cache ? cache.players : (gameData.players || []);
-            var results = cache ? cache.results : (gameData.results || {});
-            var f1DataString = cache ? cache.f1DataString : (gameData.f1?.d || '');
-            var f2DataString = cache ? cache.f2DataString : (gameData.f2?.d || '');
-            var courseSi = cache ? cache.course?.si : (gameData.course?.si || []);
-            var coursePar = cache ? cache.course?.par : (gameData.course?.par || []);
-            var startingHole = cache ? cache.startingHole : (gameData.startingHole || 1);
-            
-            console.log("[HCP-ADJUST-PAGE] Calling HandicapAdjustment.initForViewer...");
-            console.log("[HCP-ADJUST-PAGE] players:", players.length);
-            console.log("[HCP-ADJUST-PAGE] f1DataString length:", f1DataString.length);
-            console.log("[HCP-ADJUST-PAGE] f2DataString length:", f2DataString.length);
-            
-            // initForViewer renders the table directly
-            HandicapAdjustment.initForViewer(
-                gameId,
-                players,
-                f1DataString,
-                f2DataString,
-                courseSi,
-                coursePar,
-                startingHole,
-                results
-            );
-            
-            console.log("[HCP-ADJUST-PAGE] initForViewer called successfully");
+        // v1.27: FIXED - calculate() → calculateAllAdjustments()
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustments) {
+            hcpData = HandicapAdjustment.calculateAllAdjustments(gameData);
+            renderHcpScreen();
         } else {
-            showError('Handicap adjustment not available');
+            showError('Handicap calculation not available');
         }
     }).catch(function(err) {
         WaitingScreen.hide();
@@ -554,7 +616,6 @@ function loadFromHistory(gameId) {
         var historyData = doc.data();
         console.log("[HCP-ADJUST-PAGE] History data loaded:", historyData);
         
-        // Extract game data from history record
         gameData = {
             players: historyData.players || [],
             results: historyData.results || {},
@@ -563,7 +624,6 @@ function loadFromHistory(gameId) {
             date: historyData.gameInfo?.date || ''
         };
         
-        // Use celebration data from sessionStorage
         var stored = sessionStorage.getItem('celebrationData');
         if (stored) {
             try {
@@ -573,30 +633,10 @@ function loadFromHistory(gameId) {
             }
         }
         
-        // v1.26: Use initForHistory for history mode
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForHistory) {
-            HandicapAdjustment.initForHistory(gameId, historyId, 'view-game.html');
-        } else if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
-            // Fallback: use initForViewer with history data
-            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-            var players = cache ? cache.players : (gameData.players || []);
-            var results = cache ? cache.results : (gameData.results || {});
-            var f1DataString = cache ? cache.f1DataString : (gameData.f1?.d || '');
-            var f2DataString = cache ? cache.f2DataString : (gameData.f2?.d || '');
-            var courseSi = cache ? cache.course?.si : (gameData.course?.si || []);
-            var coursePar = cache ? cache.course?.par : (gameData.course?.par || []);
-            var startingHole = cache ? cache.startingHole : (gameData.startingHole || 1);
-            
-            HandicapAdjustment.initForViewer(
-                gameId,
-                players,
-                f1DataString,
-                f2DataString,
-                courseSi,
-                coursePar,
-                startingHole,
-                results
-            );
+        // v1.27: FIXED - calculate() → calculateAllAdjustments()
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustments) {
+            hcpData = HandicapAdjustment.calculateAllAdjustments(gameData);
+            renderHcpScreen();
         } else {
             showError('Handicap calculation not available');
         }
@@ -619,15 +659,9 @@ function init() {
         return;
     }
     
-    // v1.25: Restore cache from sessionStorage BEFORE loading
-    var cacheRestored = restoreCacheFromSession();
-    if (cacheRestored) {
-        console.log("[HCP-ADJUST-PAGE] ✅ Cache ready for handicap calculation");
-    } else {
-        console.log("[HCP-ADJUST-PAGE] No cache in sessionStorage - will attempt to load from Firestore");
-    }
+    // v1.27: Restore cache from sessionStorage BEFORE loading
+    restoreCacheFromSession();
     
-    // Check for celebration data in sessionStorage
     var stored = sessionStorage.getItem('celebrationData');
     if (stored) {
         try {
@@ -640,7 +674,6 @@ function init() {
         }
     }
     
-    // Check if this is history mode
     var urlParams = new URLSearchParams(window.location.search);
     var mode = urlParams.get('mode');
     fromHistoryMode = (mode === 'history');
@@ -670,16 +703,15 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - CHANGED: loadHcpData() now uses HandicapAdjustment.initForViewer() instead of calculate()
-   - REMOVED: renderHcpScreen() - initForViewer() handles rendering directly
-   - REMOVED: hcpData variable - no longer needed
-   - REMOVED: commitHandicapAdjustment() now uses HandicapAdjustment.save()
-   - REASON: calculate() method doesn't exist - it's calculateAllAdjustments()
-   - REASON: initForViewer() is the correct API for standalone hcp-adjust page
-   - REASON: This restores the production code path that was working before
-   - PRESERVED: ALL UI design, dark theme, and modal-based layout unchanged
+VERSION: 1.27
+KEY CHANGES from v1.24:
+   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustments()
+   - ADDED: restoreCacheFromSession() for cache persistence
+   - CHANGED: init() now restores cache from sessionStorage before loading
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout from v1.24
+   - PRESERVED: renderHcpScreen(), loadHcpData() EXACTLY as v1.24
+   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustments()
+   - REASON: Cache must be restored for post-game transition to work
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
