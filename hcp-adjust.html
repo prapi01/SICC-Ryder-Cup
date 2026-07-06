@@ -1,13 +1,14 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: Cache-busting redirect now only triggers when version parameter is missing
-   - CHANGED: Now checks for existing 'v' parameter before redirecting
-   - This eliminates the double page load that was causing long transition delays
-   - PRESERVED: ALL other functionality from v1.23 unchanged
-   - PRESERVED: All UI design, dark theme, and modal-based layout
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: restoreCacheFromSession() - restores GameLoader cache from sessionStorage
+   - CHANGED: init() now restores cache from sessionStorage before loading handicap data
+   - CHANGED: loadHcpData() now attempts to restore cache if GameLoader returns null
+   - REASON: HandicapAdjustment.initForViewer() requires cache to render the table
+   - REASON: Without cache, handicap calculation shows "Handicap calculation not available"
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js
 STATUS: Ready for integration
 -->
 
@@ -23,11 +24,11 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.24"></script>
-    <script src="js/session.js?v=1.24"></script>
-    <script src="js/settings.js?v=1.24"></script>
-    <script src="js/modal.js?v=1.24"></script>
-    <script src="js/waiting-screen.js?v=1.24"></script>
+    <script src="js/firebase-config.js?v=1.25"></script>
+    <script src="js/session.js?v=1.25"></script>
+    <script src="js/settings.js?v=1.25"></script>
+    <script src="js/modal.js?v=1.25"></script>
+    <script src="js/waiting-screen.js?v=1.25"></script>
     <script src="js/firebase-retry.js"></script>
     
     <!-- WRV Core -->
@@ -41,7 +42,7 @@ STATUS: Ready for integration
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
     
-    <script src="js/sign-card.js?v=1.26"></script>
+    <script src="js/sign-card.js?v=1.29"></script>
     <script src="js/history-record.js?v=3.04"></script>
     <script src="js/hcp-adjust.js?v=2.51"></script>
     
@@ -311,7 +312,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.24</div>
+<div class="version-tag">v1.25</div>
 
 <script>
 // ============================================================
@@ -324,10 +325,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.24: Fix double load
+// VERSION CACHE-BUSTING - v1.25: Restore cache from sessionStorage
 // ============================================================
-var APP_VERSION = "1.24";
-var CACHE_KEY = "hcp_adjust_version_v124";
+var APP_VERSION = "1.25";
+var CACHE_KEY = "hcp_adjust_version_v125";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 var urlParams = new URLSearchParams(window.location.search);
@@ -349,8 +350,8 @@ if (!hasVersionParam || hasVersionParam !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.24";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.24 - Fixed cache-busting redirect");
+window.HCP_ADJUST_PAGE_VERSION = "1.25";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.25 - Restore cache from sessionStorage");
 console.log("[HCP-ADJUST-PAGE] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
@@ -362,6 +363,29 @@ var gameData = null;
 var hcpData = null;
 var celebrationData = null;
 var fromHistoryMode = false;
+
+// ============================================================
+// v1.25: Restore cache from sessionStorage
+// ============================================================
+
+function restoreCacheFromSession() {
+    var stored = sessionStorage.getItem('gameCache');
+    if (stored) {
+        try {
+            var cache = JSON.parse(stored);
+            if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
+                GameLoader.setLocalCache(cache);
+                console.log('[HCP-ADJUST-PAGE] ✅ Cache restored from sessionStorage');
+                return true;
+            }
+        } catch(e) {
+            console.warn('[HCP-ADJUST-PAGE] Failed to restore cache:', e.message);
+        }
+    } else {
+        console.log('[HCP-ADJUST-PAGE] No gameCache in sessionStorage');
+    }
+    return false;
+}
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -523,6 +547,17 @@ function loadHcpData() {
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
     
+    // v1.25: Restore cache if not already restored
+    var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+    if (!cache) {
+        console.log("[HCP-ADJUST-PAGE] No cache in memory - attempting restore from sessionStorage");
+        restoreCacheFromSession();
+        cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (cache) {
+            console.log("[HCP-ADJUST-PAGE] Cache restored successfully");
+        }
+    }
+    
     if (typeof FirebaseRetry === 'undefined') {
         showError('FirebaseRetry not loaded');
         return;
@@ -636,6 +671,14 @@ function init() {
         return;
     }
     
+    // v1.25: Restore cache from sessionStorage BEFORE loading
+    var cacheRestored = restoreCacheFromSession();
+    if (cacheRestored) {
+        console.log("[HCP-ADJUST-PAGE] ✅ Cache ready for handicap calculation");
+    } else {
+        console.log("[HCP-ADJUST-PAGE] No cache in sessionStorage - will attempt to load from Firestore");
+    }
+    
     // Check for celebration data in sessionStorage
     var stored = sessionStorage.getItem('celebrationData');
     if (stored) {
@@ -679,13 +722,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: Cache-busting redirect now only triggers when version parameter is missing
-   - CHANGED: Now checks for existing 'v' parameter before redirecting
-   - This eliminates the double page load that was causing long transition delays
-   - PRESERVED: ALL other functionality from v1.23 unchanged
-   - PRESERVED: All UI design, dark theme, and modal-based layout
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: restoreCacheFromSession() - restores GameLoader cache from sessionStorage
+   - CHANGED: init() now restores cache from sessionStorage before loading handicap data
+   - CHANGED: loadHcpData() now attempts to restore cache if GameLoader returns null
+   - REASON: HandicapAdjustment.initForViewer() requires cache to render the table
+   - REASON: Without cache, handicap calculation shows "Handicap calculation not available"
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js
 STATUS: Ready for integration
 -->
