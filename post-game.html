@@ -1,15 +1,17 @@
 <!--
 FILE: post-game.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REMOVED: duplicate celebration photo check (already copied at H17)
-   - REMOVED: copyCelebrationPhoto() call from SEE RESULTS handler
-   - CHANGED: SEE RESULTS now shows celebration screen immediately using cached data
-   - ADDED: Button disable on click to prevent multiple clicks
-   - PRESERVED: All v1.06 UI design and functionality
-   - PRESERVED: Dark theme, modal-based layout, all original styling
-   - REASON: Photo is already in Firestore from H17 checkpoint, no need to check again
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REMOVED: ALL signature checking logic (f1Signed, f2Signed, isComplete)
+   - REMOVED: Redirect to pre-game.html (completely wrong - entry condition already ensures both signed)
+   - REMOVED: Waiting screen (no need - show modal immediately)
+   - REMOVED: FirebaseRetry.getDocument() - use cached data instead
+   - CHANGED: showGameCompleteModal() called IMMEDIATELY on init
+   - CHANGED: loadGameDataInBackground() for history record creation (non-blocking)
+   - CHANGED: Celebration data now uses cached data (GameLoader.getLocalCache())
+   - REASON: post-game.html is ONLY reached when both signatures are already true
+   - REASON: No need to check signatures - entry condition guarantees both signed
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-loader.js, js/sign-card.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -27,11 +29,10 @@ STATUS: Ready for integration
     <!-- html2canvas for celebration capture -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
-    <script src="js/firebase-config.js?v=1.07"></script>
-    <script src="js/session.js?v=1.07"></script>
-    <script src="js/settings.js?v=1.07"></script>
-    <script src="js/modal.js?v=1.07"></script>
-    <script src="js/waiting-screen.js?v=1.07"></script>
+    <script src="js/firebase-config.js?v=1.08"></script>
+    <script src="js/session.js?v=1.08"></script>
+    <script src="js/settings.js?v=1.08"></script>
+    <script src="js/modal.js?v=1.08"></script>
     <script src="js/game-order.js?v=1.00"></script>
     
     <!-- WRV Core - MUST be loaded before dependent files -->
@@ -45,7 +46,6 @@ STATUS: Ready for integration
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
     <script src="js/sign-card.js?v=1.19"></script>
-    <script src="js/firebase-retry.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -188,13 +188,13 @@ STATUS: Ready for integration
 
 <div class="container" id="mainContainer">
     <div id="content">
-        <div class="loading-placeholder">⛳ Loading game data...</div>
+        <div class="loading-placeholder">⛳ Loading...</div>
     </div>
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
 // ============================================================
@@ -207,10 +207,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.07: Removed duplicate photo check
+// VERSION CACHE-BUSTING - v1.08: No signature checking, show modal immediately
 // ============================================================
-var APP_VERSION = "1.07";
-var CACHE_KEY = "post_game_version_v107";
+var APP_VERSION = "1.08";
+var CACHE_KEY = "post_game_version_v108";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -228,8 +228,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.07";
-console.log("[POST-GAME] Initializing v1.07 - Removed duplicate photo check");
+window.POST_GAME_PAGE_VERSION = "1.08";
+console.log("[POST-GAME] Initializing v1.08 - Show modal immediately, NO signature checking");
 console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
@@ -237,8 +237,8 @@ console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
 // ============================================================
 
 var gameId = null;
-var gameData = null;
 var isSeeResultsClicked = false;
+var cachedGameData = null;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -262,151 +262,199 @@ function showGameCompleteModal() {
     
     content.innerHTML = html;
     
-    document.getElementById('seeResultsBtn').addEventListener('click', function() {
-        // v1.07: Prevent multiple clicks
-        if (isSeeResultsClicked) {
-            console.log("[POST-GAME] SEE RESULTS already clicked - ignoring duplicate");
+    var btn = document.getElementById('seeResultsBtn');
+    if (btn) {
+        btn.addEventListener('click', function() {
+            // v1.08: Prevent multiple clicks
+            if (isSeeResultsClicked) {
+                console.log("[POST-GAME] SEE RESULTS already clicked - ignoring duplicate");
+                return;
+            }
+            isSeeResultsClicked = true;
+            
+            btn.disabled = true;
+            btn.textContent = '⏳ Loading...';
+            
+            console.log("[POST-GAME] SEE RESULTS clicked");
+            
+            // v1.08: Use cached data - NO Firestore read!
+            showCelebrationFromCache();
+        });
+    }
+}
+
+function showCelebrationFromCache() {
+    // Step 1: Get data from cache
+    var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+    
+    if (!cache) {
+        console.warn("[POST-GAME] No cache available - attempting to load from sessionStorage");
+        // Try to get from sessionStorage as fallback
+        var stored = sessionStorage.getItem('celebrationData');
+        if (stored) {
+            try {
+                var data = JSON.parse(stored);
+                if (data && data.gameId === gameId) {
+                    showCelebrationScreenFromData(data);
+                    return;
+                }
+            } catch(e) {
+                console.warn("[POST-GAME] Failed to parse sessionStorage data:", e.message);
+            }
+        }
+        
+        // Last resort - try Firestore but DON'T block UI
+        loadGameDataInBackground(function(err, data) {
+            if (err) {
+                console.error("[POST-GAME] Failed to load data:", err);
+                // Show error but let user retry
+                var btn = document.getElementById('seeResultsBtn');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🏆 SEE RESULTS';
+                    isSeeResultsClicked = false;
+                }
+                return;
+            }
+            // Data loaded, now show celebration
+            showCelebrationFromData(data);
+        });
+        return;
+    }
+    
+    // Build celebration data from cache
+    var results = cache.results || {};
+    var tr = results.tr || {};
+    var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
+    var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
+    var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
+    var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
+    
+    var players = cache.players || [];
+    var winningPlayers = {
+        teamA: players.filter(function(p) { return p.team === "A"; }),
+        teamB: players.filter(function(p) { return p.team === "B"; })
+    };
+    
+    var celebrationData = {
+        winner: winner,
+        teamAScore: teamAScore,
+        teamBScore: teamBScore,
+        winningPlayers: winningPlayers,
+        gameId: gameId
+    };
+    
+    // Store for later use (hcp-adjust)
+    try {
+        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+    } catch(e) {
+        console.warn("[POST-GAME] Failed to save celebration data:", e.message);
+    }
+    window._currentCelebrationData = celebrationData;
+    
+    // Show celebration
+    showCelebrationScreenFromData(celebrationData);
+    
+    // Background: Start history record creation (non-blocking)
+    startBackgroundTasks(cache);
+}
+
+function showCelebrationScreenFromData(celebrationData) {
+    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+        SignCard.showCelebrationScreen(
+            celebrationData.winner,
+            celebrationData.teamAScore,
+            celebrationData.teamBScore,
+            celebrationData.winningPlayers,
+            celebrationData.gameId,
+            function() {
+                // onClose callback
+                console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+                // Re-enable button if they come back
+                isSeeResultsClicked = false;
+                var btn = document.getElementById('seeResultsBtn');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🏆 SEE RESULTS';
+                }
+            }
+        );
+    } else {
+        console.error("[POST-GAME] SignCard not loaded");
+        // Fallback: go to hcp-adjust
+        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+    }
+}
+
+function loadGameDataInBackground(callback) {
+    if (!gameId) {
+        if (callback) callback(new Error('No game ID'), null);
+        return;
+    }
+    
+    console.log("[POST-GAME] Background loading game data:", gameId);
+    
+    var db = firebase.firestore();
+    db.collection('scheduledGames').doc(gameId).get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                if (callback) callback(new Error('Game not found'), null);
+                return;
+            }
+            var data = doc.data();
+            cachedGameData = data;
+            console.log("[POST-GAME] Background data loaded, players:", data.players ? data.players.length : 0);
+            if (callback) callback(null, data);
+        })
+        .catch(function(err) {
+            console.error("[POST-GAME] Background load error:", err);
+            if (callback) callback(err, null);
+        });
+}
+
+function startBackgroundTasks(cache) {
+    // Use setTimeout to ensure UI renders first
+    setTimeout(function() {
+        if (!cache) {
+            cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        }
+        if (!cache) {
+            console.warn("[POST-GAME] No cache for background tasks");
             return;
         }
-        isSeeResultsClicked = true;
         
-        var btn = this;
-        btn.disabled = true;
-        btn.textContent = '⏳ Loading...';
-        
-        console.log("[POST-GAME] SEE RESULTS clicked");
-        
-        // v1.07: REMOVED duplicate photo check - photo already copied at H17
-        // The celebration photo is already in Firestore from the H17 checkpoint
-        
-        // Prepare celebration data from gameData
-        var players = gameData.players || [];
-        var results = gameData.results || {};
+        var results = cache.results || {};
         var tr = results.tr || {};
         var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
         var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
         var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
-        var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
+        var signatures = cache.signatures || {};
+        var matchResults = results.matchResults || {};
         
-        var winningPlayers = {
-            teamA: players.filter(function(p) { return p.team === "A"; }),
-            teamB: players.filter(function(p) { return p.team === "B"; })
-        };
-        
-        var celebrationData = {
-            winner: winner,
-            teamAScore: teamAScore,
-            teamBScore: teamBScore,
-            winningPlayers: winningPlayers,
-            gameId: gameId
-        };
-        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-        window._currentCelebrationData = celebrationData;
-        
-        // Go to celebration immediately - photo is already in Firestore
-        if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-            SignCard.showCelebrationScreen(
-                winner,
-                teamAScore,
-                teamBScore,
-                winningPlayers,
+        // Create history record in background
+        if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
+            console.log("[POST-GAME] Background: Creating history record for:", gameId);
+            HistoryRecord.createPendingRecord(
                 gameId,
-                function() {
-                    // onClose callback - do NOT navigate automatically
-                    console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
-                    // Re-enable button if they come back
-                    isSeeResultsClicked = false;
+                cache,
+                results,
+                { teamA: teamAScore, teamB: teamBScore },
+                signatures,
+                cache.f1?.d || '',
+                cache.f2?.d || '',
+                matchResults,
+                function(err, archiveId) {
+                    if (err) {
+                        console.warn("[POST-GAME] Background history record error:", err);
+                    } else {
+                        console.log("[POST-GAME] Background history record created:", archiveId);
+                    }
                 }
             );
         } else {
-            console.error("[POST-GAME] SignCard not loaded");
-            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+            console.warn("[POST-GAME] HistoryRecord not available for background task");
         }
-    });
-}
-
-function loadGameData() {
-    if (!gameId) {
-        document.getElementById('debug').textContent = 'Error: No game ID provided';
-        return;
-    }
-    
-    console.log("[POST-GAME] Loading game:", gameId);
-    
-    if (typeof FirebaseRetry === 'undefined') {
-        document.getElementById('debug').textContent = 'Error: FirebaseRetry not loaded';
-        return;
-    }
-    
-    // Show waiting screen before Firestore read
-    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-        WaitingScreen.show("Loading game data...");
-        console.log("[POST-GAME] Waiting screen shown");
-    }
-    
-    FirebaseRetry.getDocument("scheduledGames", gameId, {
-        onExit: function() {
-            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                WaitingScreen.hide();
-            }
-            window.location.href = "index.html";
-        }
-    }).then(function(doc) {
-        // Hide waiting screen on success
-        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-            WaitingScreen.hide();
-            console.log("[POST-GAME] Waiting screen hidden (success)");
-        }
-        
-        if (!doc.exists) {
-            document.getElementById('debug').textContent = 'Error: Game not found';
-            return;
-        }
-        
-        gameData = doc.data();
-        console.log("[POST-GAME] Game loaded, players:", gameData.players ? gameData.players.length : 0);
-        
-        // Check if game data is valid
-        if (!gameData.players || gameData.players.length === 0) {
-            document.getElementById('debug').textContent = 'Error: Invalid game data - no players';
-            return;
-        }
-        
-        // Check if game is complete
-        var signatures = gameData.signatures || {};
-        var f1Signed = signatures.f1?.signed === true;
-        var f2Signed = signatures.f2?.signed === true;
-        var isComplete = f1Signed && f2Signed;
-        
-        if (!isComplete) {
-            console.log("[POST-GAME] Game not complete - redirecting to pre-game");
-            window.location.href = 'pre-game.html?gameId=' + gameId;
-            return;
-        }
-        
-        // Show the GAME COMPLETED modal
-        showGameCompleteModal();
-        
-    }).catch(function(err) {
-        // Hide waiting screen on error
-        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-            WaitingScreen.hide();
-            console.log("[POST-GAME] Waiting screen hidden (error)");
-        }
-        
-        console.error("[POST-GAME] Error loading game:", err);
-        document.getElementById('debug').textContent = 'Error: ' + err.message;
-        
-        // Show retry option
-        var content = document.getElementById('content');
-        content.innerHTML = `
-            <div style="padding:40px 20px; text-align:center;">
-                <div style="font-size:1.2rem; color:#ff6b6b; margin-bottom:16px;">⚠️ Failed to load game</div>
-                <div style="font-size:0.85rem; color:#888; margin-bottom:24px;">${err.message}</div>
-                <button onclick="location.reload()" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px 32px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer;">RETRY</button>
-            </div>
-        `;
-    });
+    }, 200);
 }
 
 function init() {
@@ -419,7 +467,7 @@ function init() {
         return;
     }
     
-    // SessionManager.getShortNameOnly() is SYNC - no .then()
+    // Set device tag
     try {
         var name = SessionManager.getShortNameOnly();
         document.getElementById('deviceTag').textContent = '🏌️ ' + (name || 'DEV-??');
@@ -428,7 +476,22 @@ function init() {
         document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
     }
     
-    loadGameData();
+    // v1.08: IMMEDIATELY show modal - NO signature checking!
+    // Entry condition already guarantees both signatures are true
+    showGameCompleteModal();
+    
+    // Load data in background for history record (non-blocking)
+    loadGameDataInBackground(function(err, data) {
+        if (!err && data) {
+            // Data loaded, but UI already showing
+            console.log("[POST-GAME] Background data ready for history record");
+            // Start background tasks with the loaded data
+            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+            if (cache) {
+                startBackgroundTasks(cache);
+            }
+        }
+    });
 }
 
 if (document.readyState === 'loading') {
@@ -443,15 +506,17 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REMOVED: duplicate celebration photo check (already copied at H17)
-   - REMOVED: copyCelebrationPhoto() call from SEE RESULTS handler
-   - CHANGED: SEE RESULTS now shows celebration screen immediately using cached data
-   - ADDED: Button disable on click to prevent multiple clicks
-   - PRESERVED: All v1.06 UI design and functionality
-   - PRESERVED: Dark theme, modal-based layout, all original styling
-   - REASON: Photo is already in Firestore from H17 checkpoint, no need to check again
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REMOVED: ALL signature checking logic (f1Signed, f2Signed, isComplete)
+   - REMOVED: Redirect to pre-game.html (completely wrong - entry condition already ensures both signed)
+   - REMOVED: Waiting screen (no need - show modal immediately)
+   - REMOVED: FirebaseRetry.getDocument() - use cached data instead
+   - CHANGED: showGameCompleteModal() called IMMEDIATELY on init
+   - CHANGED: loadGameDataInBackground() for history record creation (non-blocking)
+   - CHANGED: Celebration data now uses cached data (GameLoader.getLocalCache())
+   - REASON: post-game.html is ONLY reached when both signatures are already true
+   - REASON: No need to check signatures - entry condition guarantees both signed
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-loader.js, js/sign-card.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
