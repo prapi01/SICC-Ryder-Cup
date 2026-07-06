@@ -1,13 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - FIXED: "HANDICAP ADJUSTMENT" button now responds to physical clicks
-   - REMOVED: Button cloning (cloneNode + replaceChild) that was breaking event listeners
-   - CHANGED: Now uses direct event listener on the existing button element
-   - PRESERVED: ALL other functionality from v1.25 unchanged
-   - PRESERVED: Nested signatures structure, entire object write
-   - This ensures the button works on actual device touch/click events
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - FIXED: Losing team score now displays in RED instead of green
+   - CHANGED: Only the winning team score remains GREEN
+   - This makes it visually clear which team won
+   - PRESERVED: ALL other functionality from v1.26 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -198,7 +196,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.26: Fixed button listener
+    // Celebration Screen - v1.27: Losing team score RED
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -223,6 +221,12 @@ var SignCard = (function() {
         
         var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
         var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
+        
+        // v1.27: Losing team score RED, winning team GREEN
+        var teamALost = (winner === 'B');
+        var teamBLost = (winner === 'A');
+        var teamAColor = teamALost ? '#ff4444' : '#4caf50';
+        var teamBColor = teamBLost ? '#ff4444' : '#4caf50';
         
         var celebrationData = {
             winner: winner,
@@ -256,9 +260,9 @@ var SignCard = (function() {
                         </div>
                         <div class="celebration-score" style="display:flex; justify-content:center; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a;">
                             <span class="score-team-a" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</span>
-                            <span class="score-number-a" style="font-size:2.4rem; font-weight:700; color:#4caf50; margin-left:8px;">${teamADisplay}</span>
+                            <span class="score-number-a" style="font-size:2.4rem; font-weight:700; color:${teamAColor}; margin-left:8px;">${teamADisplay}</span>
                             <span class="score-vs" style="font-size:1.6rem; color:#555; margin:0 12px;">|</span>
-                            <span class="score-number-b" style="font-size:2.4rem; font-weight:700; color:#4caf50; margin-right:8px;">${teamBDisplay}</span>
+                            <span class="score-number-b" style="font-size:2.4rem; font-weight:700; color:${teamBColor}; margin-right:8px;">${teamBDisplay}</span>
                             <span class="score-team-b" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</span>
                         </div>
                         <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
@@ -271,7 +275,6 @@ var SignCard = (function() {
             launchConfetti();
             
             // v1.26: Use direct event listener on the existing button
-            // Store the gameId for the handler
             var capturedGameId = gameId;
             
             setTimeout(function() {
@@ -284,8 +287,6 @@ var SignCard = (function() {
             // v1.26: Find the button directly and add the listener
             var btn = document.getElementById('handicapAdjustBtn');
             if (btn) {
-                // v1.26: Remove any existing listeners (to prevent duplicates)
-                // We can't remove specific listeners, but we can track if it's already attached
                 if (!btn._listenerAttached) {
                     btn.addEventListener('click', function(e) {
                         console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
@@ -755,14 +756,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - FIXED: "HANDICAP ADJUSTMENT" button now responds to physical clicks
-   - REMOVED: Button cloning (cloneNode + replaceChild) that was breaking event listeners
-   - CHANGED: Now uses direct event listener on the existing button element
-   - PRESERVED: ALL other functionality from v1.25 unchanged
-   - PRESERVED: Nested signatures structure, entire object write
-   - This ensures the button works on actual device touch/click events
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - FIXED: Losing team score now displays in RED instead of green
+   - CHANGED: Only the winning team score remains GREEN
+   - This makes it visually clear which team won
+   - PRESERVED: ALL other functionality from v1.26 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
