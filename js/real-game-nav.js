@@ -1,22 +1,26 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: showSignCardModal() now updates cache with nested signatures structure
-   - CHANGED: Uses nested path cache.signatures.f1.signed = true
-   - CHANGED: Uses nested path cache.signatures.f2.signed = true
-   - PRESERVED: ALL other functionality from v1.11 unchanged
-   - This matches the nested structure written by sign-card.js v1.22
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: WRV operations now NEVER block UI (User Never Waits for WRV)
+   - REMOVED: `await` from SignCard.submitSignature() - UI updates immediately
+   - REMOVED: `await` from createHistoryRecord() - history record writes in background
+   - CHANGED: showSignCardModal() now shows waiting screen BEFORE WRV starts
+   - CHANGED: Cache updates happen optimistically (immediately after sign)
+   - CHANGED: Game completion triggered immediately (no waiting for WRV)
+   - This ensures users never wait for WRV operations to complete
+   - WRV runs in background with unlimited retries until success
+   - PRESERVED: ALL other functionality from v1.12 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.12";
+window.REAL_GAME_NAV_VERSION = "1.13";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.12 - Nested signatures cache update");
+    console.log("[REAL-GAME-NAV] Initializing v1.13 - WRV never blocks UI");
     
     // ============================================================
     // Private Helpers
@@ -239,7 +243,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showSignCardModal - v1.12: Nested signatures cache update
+    // showSignCardModal - v1.13: WRV NEVER BLOCKS UI
     // ============================================================
     
     function showSignCardModal() {
@@ -268,36 +272,37 @@ var RealGameNav = (function() {
             document.getElementById('signModalNew').remove();
         };
         
-        document.getElementById('signConfirmBtnNew').onclick = async function() {
+        // v1.13: NO async - UI updates immediately, WRV runs in background
+        document.getElementById('signConfirmBtnNew').onclick = function() {
             document.getElementById('signModalNew').remove();
             
+            // ✅ IMMEDIATELY show waiting screen (no await)
+            showWaitingScreen();
+            
+            // ✅ Fire WRV in background (no await, no .then)
             if (typeof SignCard !== 'undefined' && SignCard.submitSignature) {
-                var success = await SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
-                if (success) {
-                    var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-                    if (cache) {
-                        // v1.12: Update nested signatures structure
-                        if (editableFlight === 1) {
-                            cache.signatures.f1.signed = true;
-                        } else {
-                            cache.signatures.f2.signed = true;
-                        }
-                        // Check if both flights are signed using nested structure
-                        if (cache.signatures.f1.signed && cache.signatures.f2.signed) {
-                            await createHistoryRecord();
-                            setGameComplete(true);
-                            setCelebrationTriggered(false);
-                            showGameCompleteScreen();
-                            if (typeof RealGameUI !== 'undefined') {
-                                RealGameUI.renderAll();
-                            }
-                        } else {
-                            showWaitingScreen();
-                        }
-                    }
+                SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
+            }
+            
+            // ✅ Update cache immediately (optimistic)
+            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+            if (cache) {
+                // v1.12: Update nested signatures structure
+                if (editableFlight === 1) {
+                    cache.signatures.f1.signed = true;
                 } else {
-                    if (typeof Modal !== 'undefined') {
-                        Modal.alert("Error signing card.");
+                    cache.signatures.f2.signed = true;
+                }
+                
+                // ✅ Check if both flights are signed (using cache)
+                if (cache.signatures.f1.signed && cache.signatures.f2.signed) {
+                    // ✅ Fire history record in background (no await)
+                    createHistoryRecord();
+                    setGameComplete(true);
+                    setCelebrationTriggered(false);
+                    showGameCompleteScreen();
+                    if (typeof RealGameUI !== 'undefined') {
+                        RealGameUI.renderAll();
                     }
                 }
             }
@@ -342,7 +347,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.11: Updated to GAME COMPLETED
+    // showGameCompleteScreen - v1.13: UNCHANGED
     // ============================================================
     
     function showGameCompleteScreen() {
@@ -386,7 +391,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // createHistoryRecord
+    // createHistoryRecord - v1.13: Still async but never awaited
     // ============================================================
     
     async function createHistoryRecord() {
@@ -435,11 +440,17 @@ var RealGameNav = (function() {
                     cache.f2DataString,
                     allMatchResults,
                     function(err, recordId) {
-                        if (err) reject(err);
-                        else resolve(recordId);
+                        if (err) {
+                            console.warn('[NAV] History record creation failed:', err);
+                            reject(err);
+                        } else {
+                            console.log('[NAV] History record created:', recordId);
+                            resolve(recordId);
+                        }
                     }
                 );
             } else {
+                console.warn('[NAV] HistoryRecord not available');
                 reject(new Error("HistoryRecord not available"));
             }
         });
@@ -542,13 +553,17 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: showSignCardModal() now updates cache with nested signatures structure
-   - CHANGED: Uses nested path cache.signatures.f1.signed = true
-   - CHANGED: Uses nested path cache.signatures.f2.signed = true
-   - PRESERVED: ALL other functionality from v1.11 unchanged
-   - This matches the nested structure written by sign-card.js v1.22
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: WRV operations now NEVER block UI (User Never Waits for WRV)
+   - REMOVED: `await` from SignCard.submitSignature() - UI updates immediately
+   - REMOVED: `await` from createHistoryRecord() - history record writes in background
+   - CHANGED: showSignCardModal() now shows waiting screen BEFORE WRV starts
+   - CHANGED: Cache updates happen optimistically (immediately after sign)
+   - CHANGED: Game completion triggered immediately (no waiting for WRV)
+   - This ensures users never wait for WRV operations to complete
+   - WRV runs in background with unlimited retries until success
+   - PRESERVED: ALL other functionality from v1.12 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
