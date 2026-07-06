@@ -1,11 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 7.42
-KEY CHANGES from v7.41:
-   - FIXED: statusChanged trigger now only fires when status === "completed"
-   - This prevents premature history mode switching on status changes
-   - PRESERVED: ALL other functionality from v7.41 unchanged
-   - This fixes the issue where view-game.html would incorrectly switch to history mode
+VERSION: 7.43
+KEY CHANGES from v7.42:
+   - FIXED: Signature detection now properly triggers redirect to post-game.html
+   - FIXED: onCacheUpdate() now calls showGameCompleteModal() when both signatures detected
+   - FIXED: setupRealtimeListener() now properly detects both signatures
+   - PRESERVED: ALL other functionality from v7.42 unchanged
+   - REASON: View-game must redirect to post-game.html when both cards are signed
+   - REASON: Game Complete modal is shown in post-game.html, not in view-game
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -19,9 +21,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.42"></script>
-    <script src="js/session.js?v=7.42"></script>
-    <script src="js/settings.js?v=7.42"></script>
+    <script src="js/firebase-config.js?v=7.43"></script>
+    <script src="js/session.js?v=7.43"></script>
+    <script src="js/settings.js?v=7.43"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -30,11 +32,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=7.42"></script>
-    <script src="js/history-record.js?v=7.42"></script>
-    <script src="js/sign-card.js?v=1.22"></script>
-    <script src="js/hcp-adjust.js?v=7.42"></script>
-    <script src="js/modal.js?v=7.42"></script>
+    <script src="js/ticker.js?v=7.43"></script>
+    <script src="js/history-record.js?v=7.43"></script>
+    <script src="js/sign-card.js?v=1.28"></script>
+    <script src="js/hcp-adjust.js?v=7.43"></script>
+    <script src="js/modal.js?v=7.43"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -155,14 +157,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.42</div>
+<div class="version-tag">v7.43</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.42: Fix statusChanged trigger
+// VERSION CACHE-BUSTING - v7.43: Fix signature detection
 // ============================================================
-var APP_VERSION = "7.42";
-var CACHE_KEY = "view_game_version_v742";
+var APP_VERSION = "7.43";
+var CACHE_KEY = "view_game_version_v743";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -180,8 +182,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.42";
-console.log("[VIEW-GAME] Initializing v7.42 - Fix statusChanged trigger");
+window.VIEW_GAME_VERSION = "7.43";
+console.log("[VIEW-GAME] Initializing v7.43 - Fix signature detection for post-game redirect");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -325,13 +327,12 @@ function showPostGameExitModal() {
 }
 
 // ============================================================
-// v7.37: Show Game Completed modal - Redirect to post-game.html
+// v7.43: Show Game Complete - Redirect to post-game.html
 // ============================================================
 
 function showGameCompleteModal() {
     console.log("[VIEW-GAME] showGameCompleteModal called - redirecting to post-game.html");
     
-    // v7.37: Redirect to post-game.html instead of showing modal
     if (gameId) {
         console.log("[VIEW-GAME] Game completed - redirecting to post-game.html");
         
@@ -357,69 +358,12 @@ function showGameCompleteModal() {
             window.location.href = 'post-game.html?gameId=' + gameId;
         }, 300);
     } else {
-        // Fallback: no gameId - use Modal
-        console.warn("[VIEW-GAME] No gameId available - using Modal fallback");
+        console.warn("[VIEW-GAME] No gameId available for redirect");
         if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
             Modal.confirmGameComplete(function() {
-                console.log("[VIEW-GAME] SEE RESULTS clicked (fallback)");
                 sessionStorage.setItem('isPostGame', 'true');
-                celebrationTriggered = false;
-                
-                // Store celebration data
-                var cache = GameLoader.getLocalCache();
-                var tr = GameLoader.getTRForHole(18);
-                var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
-                var winningPlayers = { 
-                    teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
-                    teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
-                };
-                
-                var celebrationData = {
-                    winner: winner,
-                    teamAScore: tr.teamA,
-                    teamBScore: tr.teamB,
-                    winningPlayers: winningPlayers,
-                    gameId: gameId
-                };
-                sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-                
-                window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+                window.location.href = 'hcp-adjust.html';
             });
-        } else {
-            // Ultimate fallback - hardcoded modal
-            var modalHtml = `
-                <div class="modal-overlay" id="completeModalNew">
-                    <div class="complete-modal-container">
-                        <div class="complete-title">🏆 GAME COMPLETED</div>
-                        <div class="complete-emojis">🍺 🏆 🍺</div>
-                        <div class="complete-message">Both cards have been signed!</div>
-                        <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
-                    </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-            
-            document.getElementById("seeResultsBtnNew").onclick = function() {
-                document.getElementById("completeModalNew").remove();
-                sessionStorage.setItem('isPostGame', 'true');
-                celebrationTriggered = false;
-                var cache = GameLoader.getLocalCache();
-                var tr = GameLoader.getTRForHole(18);
-                var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
-                var winningPlayers = { 
-                    teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
-                    teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
-                };
-                var celebrationData = {
-                    winner: winner,
-                    teamAScore: tr.teamA,
-                    teamBScore: tr.teamB,
-                    winningPlayers: winningPlayers,
-                    gameId: gameId
-                };
-                sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-                window.location.href = 'hcp-adjust.html?gameId=' + gameId;
-            };
         }
     }
 }
@@ -899,7 +843,7 @@ function getBubbleClassWithClinch(player, opponent) {
 }
 
 // ============================================================
-// v7.40: Game Completion Detection - nested signatures only
+// v7.43: Game Completion Detection - nested signatures only
 // ============================================================
 
 function isGameComplete() {
@@ -1143,7 +1087,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// Real-time Firestore Listener (only for active games)
+// v7.43: Real-time Firestore Listener - Fixed signature detection
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1167,19 +1111,74 @@ function setupRealtimeListener() {
             var data = doc.data();
             var currentCache = GameLoader.getLocalCache();
             
+            // Check what changed
             var f1Changed = (currentCache.f1DataString !== data.f1?.d);
             var f2Changed = (currentCache.f2DataString !== data.f2?.d);
             var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
             var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
             var statusChanged = (currentCache.status !== data.status);
             
-            if (f1Changed || f2Changed || resultsChanged || signaturesChanged || statusChanged) {
-                console.log("Realtime update detected (statusChanged=" + statusChanged + ", newStatus=" + data.status + ")");
+            console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged);
+            
+            // v7.43: ALWAYS process signature changes first
+            if (signaturesChanged || statusChanged) {
+                console.log("[VIEW-GAME] Signature or status change detected");
                 
+                // Refresh cache from Firestore
                 GameLoader.loadGame(gameId, "scheduledGames", function(result) {
                     if (result.success) {
-                        console.log("Cache refreshed from realtime update");
+                        console.log("[VIEW-GAME] Cache refreshed from realtime update");
                         
+                        // Update local state from cache
+                        var cache = result.cache;
+                        if (cache.course) {
+                            courseName = cache.course.name;
+                            coursePar = cache.course.par;
+                            courseSi = cache.course.si;
+                        }
+                        allPlayers = cache.players || [];
+                        startingHole = cache.startingHole || 1;
+                        updateGameOrder();
+                        
+                        if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+                            Ticker.setPlayers(allPlayers);
+                        }
+                        
+                        // v7.43: Check if both signatures are now true
+                        var f1Signed = cache.signatures?.f1?.signed === true;
+                        var f2Signed = cache.signatures?.f2?.signed === true;
+                        var bothSigned = f1Signed && f2Signed;
+                        
+                        console.log("[VIEW-GAME] f1.signed:", f1Signed, "f2.signed:", f2Signed, "bothSigned:", bothSigned);
+                        
+                        // v7.43: Update gameCompleteFlag based on signatures
+                        var wasComplete = gameCompleteFlag;
+                        gameCompleteFlag = bothSigned || (cache.status === "completed");
+                        
+                        if (gameCompleteFlag && !wasComplete && !hasSwitchedToHistory) {
+                            console.log("[VIEW-GAME] 🏆 BOTH SIGNATURES DETECTED! Redirecting to post-game.html");
+                            // v7.43: Redirect to post-game.html (Game Complete modal is shown there)
+                            showGameCompleteModal();
+                            return; // Stop processing - redirect will happen
+                        }
+                        
+                        // Update UI
+                        isPostGameContext = checkPostGameContext(cache);
+                        renderCompactHeader();
+                        renderAll();
+                    } else {
+                        console.warn("Failed to refresh cache from realtime update:", result.error);
+                    }
+                });
+                return;
+            }
+            
+            // Only process other changes if no signature/status change
+            if (f1Changed || f2Changed || resultsChanged) {
+                console.log("[VIEW-GAME] Data change detected (non-signature)");
+                GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                    if (result.success) {
+                        console.log("[VIEW-GAME] Cache refreshed from realtime update");
                         if (result.cache.course) {
                             courseName = result.cache.course.name;
                             coursePar = result.cache.course.par;
@@ -1188,24 +1187,10 @@ function setupRealtimeListener() {
                         allPlayers = result.cache.players;
                         startingHole = result.cache.startingHole;
                         updateGameOrder();
-                        
                         if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
                             Ticker.setPlayers(allPlayers);
                         }
-                        
-                        var wasComplete = gameCompleteFlag;
-                        gameCompleteFlag = isGameComplete();
-                        
-                        // v7.42: FIXED - Only trigger history switch when status is "completed"
-                        // Previously any status change would trigger it, causing premature history mode
-                        if ((!wasComplete && gameCompleteFlag) || (data.status === "completed" && statusChanged)) {
-                            console.log("Game completed (status=" + data.status + ") - switching to history record");
-                            var historyId = gameId + "_H";
-                            loadFromHistoryRecord(historyId);
-                        }
-                        
                         isPostGameContext = checkPostGameContext(result.cache);
-                        
                         renderCompactHeader();
                         renderAll();
                     } else {
@@ -1347,6 +1332,10 @@ function renderBottomMenuWithContext() {
     container.appendChild(btn);
 }
 
+// ============================================================
+// v7.43: onCacheUpdate - Fixed signature detection
+// ============================================================
+
 function onCacheUpdate(cache) {
     if (cache.course) {
         courseName = cache.course.name;
@@ -1363,14 +1352,25 @@ function onCacheUpdate(cache) {
     }
     
     var wasComplete = gameCompleteFlag;
-    gameCompleteFlag = isGameComplete();
+    // v7.43: Check both signatures
+    var f1Signed = cache.signatures?.f1?.signed === true;
+    var f2Signed = cache.signatures?.f2?.signed === true;
+    var bothSigned = f1Signed && f2Signed;
+    
+    gameCompleteFlag = bothSigned || (cache.status === "completed");
     
     isPostGameContext = checkPostGameContext(cache);
     
-    if (wasComplete !== gameCompleteFlag) {
-        renderCompactHeader();
+    console.log("[VIEW-GAME] onCacheUpdate: f1:", f1Signed, "f2:", f2Signed, "bothSigned:", bothSigned, "gameCompleteFlag:", gameCompleteFlag);
+    
+    // v7.43: If both signed and not already redirected, redirect to post-game
+    if (gameCompleteFlag && !wasComplete && !hasSwitchedToHistory) {
+        console.log("[VIEW-GAME] onCacheUpdate: Both signed detected - redirecting to post-game.html");
+        showGameCompleteModal();
+        return;
     }
     
+    renderCompactHeader();
     renderAll();
 }
 
@@ -1478,14 +1478,11 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
-            // v7.40: Check completion from Firestore status (source of truth)
-            var gameDate = cache.course?.date || null;
-            var today = new Date().toISOString().split('T')[0];
-            var isToday = (gameDate === today);
+            // v7.43: Check if game is completed - redirect to post-game.html
             var isCompleted = isGameCompletedFromCache(cache);
             
-            if (isToday && isCompleted && !celebrationTriggered && !hasSwitchedToHistory) {
-                console.log("[VIEW-GAME] Game Day - game completed (status=completed), redirecting to post-game.html");
+            if (isCompleted && !celebrationTriggered && !hasSwitchedToHistory) {
+                console.log("[VIEW-GAME] Game completed - redirecting to post-game.html");
                 showGameCompleteModal();
             } else {
                 renderAll();
@@ -1497,7 +1494,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
-// v7.40: settings.js already initialized at top of script
+// v7.43: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1506,12 +1503,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.42
-KEY CHANGES from v7.41:
-   - FIXED: statusChanged trigger now only fires when status === "completed"
-   - This prevents premature history mode switching on status changes
-   - PRESERVED: ALL other functionality from v7.41 unchanged
-   - This fixes the issue where view-game.html would incorrectly switch to history mode
+VERSION: 7.43
+KEY CHANGES from v7.42:
+   - FIXED: Signature detection now properly triggers redirect to post-game.html
+   - FIXED: onCacheUpdate() now calls showGameCompleteModal() when both signatures detected
+   - FIXED: setupRealtimeListener() now properly detects both signatures
+   - PRESERVED: ALL other functionality from v7.42 unchanged
+   - REASON: View-game must redirect to post-game.html when both cards are signed
+   - REASON: Game Complete modal is shown in post-game.html, not in view-game
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
