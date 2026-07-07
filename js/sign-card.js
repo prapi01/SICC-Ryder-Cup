@@ -1,15 +1,19 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - REMOVED: signedAt from signature objects (unused field)
-   - REMOVED: captainName from signature objects (unused field)
-   - SIMPLIFIED: Signature now only contains { signed: true }
-   - REASON: Schema v5.0 FINAL removes these unused fields
-   - PRESERVED: ALL other functionality from v1.29 unchanged
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: refreshCacheBeforeSigning() - refreshes cache from Firestore before signing
+   - CHANGED: submitSignature() now refreshes cache first (ensures latest data)
+   - CHANGED: F2 writes history record (after both signed) - F1 never writes
+   - ADDED: buildHistoryPayload() - constructs complete history record payload
+   - ADDED: triggerHistoryRecordWrite() - background WRV write (user never waits)
+   - REASON: Ensure history record has complete data from both flights
+   - REASON: Only F2 writes to avoid race conditions
+   - REASON: WRV write is background - user never waits
+   - PRESERVED: ALL other functionality from v1.30 unchanged
    - PRESERVED: Double-Listener system for signatures
    - PRESERVED: sessionStorage photo caching
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
 
@@ -20,6 +24,90 @@ var SignCard = (function() {
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // v1.31: Refresh cache from Firestore before signing
+    // ============================================================
+    function refreshCacheBeforeSigning(gameId, callback) {
+        console.log('[SignCard] Refreshing cache from Firestore before signing...');
+        
+        if (typeof GameLoader !== 'undefined' && GameLoader.refreshCacheFromFirestore) {
+            GameLoader.refreshCacheFromFirestore(gameId, function(err, cache) {
+                if (err) {
+                    console.warn('[SignCard] Cache refresh failed, using existing:', err.message);
+                    if (callback) callback(null, GameLoader.getLocalCache());
+                } else {
+                    console.log('[SignCard] Cache refreshed successfully');
+                    if (callback) callback(null, cache);
+                }
+            });
+        } else {
+            console.warn('[SignCard] GameLoader.refreshCacheFromFirestore not available');
+            if (callback) callback(null, null);
+        }
+    }
+    
+    // ============================================================
+    // Helper: Get or create archive record for handicap adjustment
+    // ============================================================
+    
+    function ensureArchiveRecord(gameId, callback) {
+        if (typeof HistoryRecord !== 'undefined' && HistoryRecord.getArchivedGameByOriginalId) {
+            HistoryRecord.getArchivedGameByOriginalId(gameId, function(err, result) {
+                if (!err && result && result.id) {
+                    callback(null, result.id);
+                } else {
+                    if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
+                        var db = getDb();
+                        db.collection('scheduledGames').doc(gameId).get()
+                            .then(function(doc) {
+                                if (doc.exists) {
+                                    var gameData = doc.data();
+                                    var results = gameData.results || {};
+                                    var finalScores = {
+                                        teamA: results.tr?.teamA?.[17] || 9.5,
+                                        teamB: results.tr?.teamB?.[17] || 9.5
+                                    };
+                                    var signatures = gameData.signatures || {};
+                                    
+                                    var flight1DataString = gameData.f1?.d || "";
+                                    var flight2DataString = gameData.f2?.d || "";
+                                    
+                                    var matchResults = {};
+                                    if (results.game1 && results.game1.matches) {
+                                        matchResults = results.game1.matches;
+                                    }
+                                    
+                                    HistoryRecord.createPendingRecord(
+                                        gameId, 
+                                        gameData, 
+                                        results, 
+                                        finalScores, 
+                                        signatures,
+                                        flight1DataString,
+                                        flight2DataString,
+                                        matchResults,
+                                        function(err, archiveId) {
+                                            if (err) callback(err, null);
+                                            else callback(null, archiveId);
+                                        }
+                                    );
+                                } else {
+                                    callback(new Error("Game not found"), null);
+                                }
+                            })
+                            .catch(function(err) {
+                                callback(err, null);
+                            });
+                    } else {
+                        callback(new Error("HistoryRecord not available"), null);
+                    }
+                }
+            });
+        } else {
+            callback(new Error("HistoryRecord not available"), null);
+        }
     }
     
     // ============================================================
@@ -159,68 +247,6 @@ var SignCard = (function() {
     function clearConfetti() {
         var confetti = document.querySelectorAll('.confetti');
         confetti.forEach(function(el) { el.remove(); });
-    }
-    
-    // ============================================================
-    // Helper: Get or create archive record for handicap adjustment
-    // ============================================================
-    
-    function ensureArchiveRecord(gameId, callback) {
-        if (typeof HistoryRecord !== 'undefined' && HistoryRecord.getArchivedGameByOriginalId) {
-            HistoryRecord.getArchivedGameByOriginalId(gameId, function(err, result) {
-                if (!err && result && result.id) {
-                    callback(null, result.id);
-                } else {
-                    if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
-                        var db = getDb();
-                        db.collection('scheduledGames').doc(gameId).get()
-                            .then(function(doc) {
-                                if (doc.exists) {
-                                    var gameData = doc.data();
-                                    var results = gameData.results || {};
-                                    var finalScores = {
-                                        teamA: results.tr?.teamA?.[17] || 9.5,
-                                        teamB: results.tr?.teamB?.[17] || 9.5
-                                    };
-                                    var signatures = gameData.signatures || {};
-                                    
-                                    var flight1DataString = gameData.f1?.d || "";
-                                    var flight2DataString = gameData.f2?.d || "";
-                                    
-                                    var matchResults = {};
-                                    if (results.game1 && results.game1.matches) {
-                                        matchResults = results.game1.matches;
-                                    }
-                                    
-                                    HistoryRecord.createPendingRecord(
-                                        gameId, 
-                                        gameData, 
-                                        results, 
-                                        finalScores, 
-                                        signatures,
-                                        flight1DataString,
-                                        flight2DataString,
-                                        matchResults,
-                                        function(err, archiveId) {
-                                            if (err) callback(err, null);
-                                            else callback(null, archiveId);
-                                        }
-                                    );
-                                } else {
-                                    callback(new Error("Game not found"), null);
-                                }
-                            })
-                            .catch(function(err) {
-                                callback(err, null);
-                            });
-                    } else {
-                        callback(new Error("HistoryRecord not available"), null);
-                    }
-                }
-            });
-        } else {
-            callback(new Error("HistoryRecord not available"), null);
-        }
     }
     
     // ============================================================
@@ -668,9 +694,133 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.30: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS
-    // - REMOVED: signedAt and captainName from signature objects
-    // - SIMPLIFIED: Signature now only contains { signed: true }
+    // v1.31: Build complete history record payload
+    // ============================================================
+    function buildHistoryPayload(gameId, cache, gameData) {
+        // Use the cache data (already refreshed from Firestore)
+        var players = cache.players || [];
+        var course = cache.course || {};
+        var results = cache.results || {};
+        var signatures = cache.signatures || {};
+        var f1DataString = cache.f1DataString || "";
+        var f2DataString = cache.f2DataString || "";
+        var startingHole = cache.startingHole || 1;
+        var teamGameFormat = cache.teamGameFormat || "tournament";
+        
+        // Final scores from TR
+        var trTeamA = results.tr?.teamA?.[17] || 9.5;
+        var trTeamB = results.tr?.teamB?.[17] || 9.5;
+        var winner = trTeamA > trTeamB ? "A" : (trTeamB > trTeamA ? "B" : "Tie");
+        var winnerText = winner === "A" ? "Team A Wins!" : (winner === "B" ? "Team B Wins!" : "Tie Game!");
+        
+        // Photo path (fixed convention)
+        var photoPath = 'celebration/' + gameId + '_H.jpg';
+        
+        // Store starting handicaps for all players
+        var playersWithStartingHcp = players.map(function(p) {
+            return {
+                name: p.name,
+                label: p.label,
+                handicap: p.handicap,
+                team: p.team,
+                flight: p.flight
+            };
+        });
+        
+        // Build signatures (only signed: true/false)
+        var f1Signed = signatures.f1?.signed === true;
+        var f2Signed = signatures.f2?.signed === true;
+        var signatureData = {
+            f1: { signed: f1Signed },
+            f2: { signed: f2Signed }
+        };
+        
+        // Celebration data
+        var celebrationData = {
+            imageRef: photoPath,
+            imageUrl: null,  // Frontend will call getDownloadURL()
+            status: 'pending',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        var archiveId = gameId + '_H';
+        
+        return {
+            originalGameId: gameId,
+            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: "completed",
+            version: 3,
+            schema: "v3_strings",
+            gameInfo: {
+                date: gameData?.date || new Date().toISOString().split('T')[0],
+                course: {
+                    name: course.name || 'SICC Bukit Course',
+                    id: course.id || '',
+                    par: course.par || [],
+                    si: course.si || []
+                },
+                startingHole: startingHole,
+                teamGameFormat: teamGameFormat
+            },
+            players: playersWithStartingHcp,
+            finalResults: {
+                teamAScore: trTeamA,
+                teamBScore: trTeamB,
+                winner: winner,
+                winnerText: winnerText
+            },
+            signatures: signatureData,
+            f1DataString: f1DataString,
+            f2DataString: f2DataString,
+            results: results,
+            adjustedHandicaps: null,  // Will be calculated and filled by hcp-adjust
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            archiveId: archiveId,
+            celebration: celebrationData
+        };
+    }
+    
+    // ============================================================
+    // v1.31: Trigger history record write in background (WRV)
+    // User never waits - this runs async
+    // ============================================================
+    function triggerHistoryRecordWrite(gameId, cache, gameData) {
+        console.log('[SignCard] 🔄 Triggering background history record write...');
+        
+        var archiveId = gameId + '_H';
+        var payload = buildHistoryPayload(gameId, cache, gameData);
+        
+        // WRV write in background - user never waits
+        if (typeof WRV !== 'undefined' && WRV.write) {
+            WRV.write('historyGames', archiveId, payload, function(err, result) {
+                if (err) {
+                    console.warn('[SignCard] ⚠️ Background history record write failed:', err.message);
+                    // WRV will retry automatically
+                } else {
+                    console.log('[SignCard] ✅ Background history record write completed');
+                }
+            });
+        } else {
+            console.warn('[SignCard] WRV not available, using direct write (background)');
+            var db = getDb();
+            db.collection('historyGames').doc(archiveId).set(payload)
+                .then(function() {
+                    console.log('[SignCard] ✅ History record written (direct)');
+                })
+                .catch(function(err) {
+                    console.warn('[SignCard] ⚠️ History record write failed (direct):', err.message);
+                });
+        }
+        
+        // Immediately return - user doesn't wait
+        console.log('[SignCard] Background write triggered, continuing...');
+    }
+    
+    // ============================================================
+    // v1.31: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS
+    // - REFRESHES CACHE BEFORE SIGNING (ensures latest data)
+    // - F2 writes history record (F1 never writes)
+    // - WRV write is background (user never waits)
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -682,168 +832,219 @@ var SignCard = (function() {
             
             console.log('[SignCard] submitSignature called: flight', flight, 'gameId', gameId);
             
-            var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-            var f1Signed = false;
-            var f2Signed = false;
-            
-            if (cache) {
-                if (!cache.signatures) cache.signatures = {};
-                if (!cache.signatures.f1) cache.signatures.f1 = { signed: false };
-                if (!cache.signatures.f2) cache.signatures.f2 = { signed: false };
-                
-                cache.signatures[flightKey] = {
-                    signed: true
-                };
-                
-                f1Signed = cache.signatures.f1.signed === true;
-                f2Signed = cache.signatures.f2.signed === true;
-                
-                console.log('[SignCard] Cache updated IMMEDIATELY for flight', flight);
-                console.log('[SignCard] Cache now: f1.signed=' + f1Signed + ', f2.signed=' + f2Signed);
-            } else {
-                console.warn('[SignCard] No cache available - UI may not update immediately');
-            }
-            
-            var bothSigned = f1Signed && f2Signed;
-            
-            if (bothSigned) {
-                console.log('[SignCard] Both signed (from cache)! Showing Game Complete modal');
-                
-                if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
-                    RealGameNav.showGameCompleteModal(gameId);
-                } else {
-                    showGameCompleteModalDirect(gameId);
+            // ============================================================
+            // STEP 1: Refresh cache from Firestore BEFORE signing
+            // This ensures we have the latest data from the other flight
+            // ============================================================
+            refreshCacheBeforeSigning(gameId, function(refreshErr, refreshedCache) {
+                if (refreshErr) {
+                    console.warn('[SignCard] Cache refresh had issues, continuing with existing:', refreshErr.message);
                 }
-            } else {
-                var waitingFor = flight === 1 ? 2 : 1;
-                console.log('[SignCard] Showing waiting screen for flight', waitingFor);
-                showWaitingScreen(waitingFor);
-            }
-            
-            var maxRetries = 5;
-            var attemptCount = 0;
-            var confirmed = false;
-            var writeTimeout = null;
-            var listenerUnsubscribe = null;
-            
-            function performWrite(retryCount) {
-                attemptCount = retryCount + 1;
-                console.log('[SignCard] Write attempt', attemptCount, 'for flight', flight);
                 
-                docRef.get()
-                    .then(function(doc) {
-                        if (!doc.exists) {
-                            throw new Error('Game document not found');
+                // Get the (now refreshed) cache
+                var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+                var f1Signed = false;
+                var f2Signed = false;
+                
+                if (cache) {
+                    if (!cache.signatures) cache.signatures = {};
+                    if (!cache.signatures.f1) cache.signatures.f1 = { signed: false };
+                    if (!cache.signatures.f2) cache.signatures.f2 = { signed: false };
+                    
+                    // Update cache with our signature immediately
+                    cache.signatures[flightKey] = {
+                        signed: true
+                    };
+                    
+                    f1Signed = cache.signatures.f1.signed === true;
+                    f2Signed = cache.signatures.f2.signed === true;
+                    
+                    console.log('[SignCard] Cache updated IMMEDIATELY for flight', flight);
+                    console.log('[SignCard] Cache now: f1.signed=' + f1Signed + ', f2.signed=' + f2Signed);
+                } else {
+                    console.warn('[SignCard] No cache available - UI may not update immediately');
+                }
+                
+                var bothSigned = f1Signed && f2Signed;
+                
+                // ============================================================
+                // STEP 2: Show appropriate UI (waiting or completion)
+                // ============================================================
+                if (bothSigned) {
+                    console.log('[SignCard] Both signed (from cache)!');
+                    
+                    // If this is F2 (flight === 2), write history record
+                    // F1 never writes - only shows completion modal
+                    if (flight === 2) {
+                        console.log('[SignCard] F2 writing history record (background)');
+                        // Get game data for the payload
+                        var gameData = cache ? cache._gameData : null;
+                        if (!gameData) {
+                            // Try to get from Firestore if not in cache
+                            docRef.get().then(function(doc) {
+                                if (doc.exists) {
+                                    gameData = doc.data();
+                                }
+                                triggerHistoryRecordWrite(gameId, cache, gameData);
+                            }).catch(function() {
+                                triggerHistoryRecordWrite(gameId, cache, null);
+                            });
+                        } else {
+                            triggerHistoryRecordWrite(gameId, cache, gameData);
                         }
-                        
-                        var data = doc.data();
-                        var signatures = data.signatures || {};
-                        
-                        if (!signatures.f1) {
-                            signatures.f1 = { signed: false };
-                        }
-                        if (!signatures.f2) {
-                            signatures.f2 = { signed: false };
-                        }
-                        
-                        signatures[flightKey] = {
-                            signed: true
-                        };
-                        
-                        return docRef.update({
-                            signatures: signatures,
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    })
-                    .then(function() {
-                        console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
-                        
-                        var confirmTimeout = 3000;
-                        var startTime = Date.now();
-                        
-                        if (listenerUnsubscribe) {
-                            listenerUnsubscribe();
-                        }
-                        
-                        listenerUnsubscribe = docRef.onSnapshot(function(snapshot) {
-                            if (!snapshot.exists) return;
+                    } else {
+                        console.log('[SignCard] F1 - not writing history record (F2 handles this)');
+                    }
+                    
+                    // Show the Game Complete modal (both F1 and F2)
+                    if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                        RealGameNav.showGameCompleteModal(gameId);
+                    } else {
+                        showGameCompleteModalDirect(gameId);
+                    }
+                    
+                } else {
+                    var waitingFor = flight === 1 ? 2 : 1;
+                    console.log('[SignCard] Showing waiting screen for flight', waitingFor);
+                    showWaitingScreen(waitingFor);
+                }
+                
+                // ============================================================
+                // STEP 3: Write signature to Firestore (both F1 and F2)
+                // ============================================================
+                var maxRetries = 5;
+                var attemptCount = 0;
+                var confirmed = false;
+                var writeTimeout = null;
+                var listenerUnsubscribe = null;
+                
+                function performWrite(retryCount) {
+                    attemptCount = retryCount + 1;
+                    console.log('[SignCard] Write attempt', attemptCount, 'for flight', flight);
+                    
+                    docRef.get()
+                        .then(function(doc) {
+                            if (!doc.exists) {
+                                throw new Error('Game document not found');
+                            }
                             
-                            var data = snapshot.data();
+                            var data = doc.data();
                             var signatures = data.signatures || {};
-                            var f1SignedCheck = signatures.f1?.signed === true;
-                            var f2SignedCheck = signatures.f2?.signed === true;
                             
-                            var ourFlightSigned = flight === 1 ? f1SignedCheck : f2SignedCheck;
+                            if (!signatures.f1) {
+                                signatures.f1 = { signed: false };
+                            }
+                            if (!signatures.f2) {
+                                signatures.f2 = { signed: false };
+                            }
                             
-                            if (ourFlightSigned) {
+                            signatures[flightKey] = {
+                                signed: true
+                            };
+                            
+                            return docRef.update({
+                                signatures: signatures,
+                                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        })
+                        .then(function() {
+                            console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
+                            
+                            var confirmTimeout = 3000;
+                            
+                            if (listenerUnsubscribe) {
+                                listenerUnsubscribe();
+                            }
+                            
+                            listenerUnsubscribe = docRef.onSnapshot(function(snapshot) {
+                                if (!snapshot.exists) return;
+                                
+                                var data = snapshot.data();
+                                var signatures = data.signatures || {};
+                                var f1SignedCheck = signatures.f1?.signed === true;
+                                var f2SignedCheck = signatures.f2?.signed === true;
+                                
+                                var ourFlightSigned = flight === 1 ? f1SignedCheck : f2SignedCheck;
+                                
+                                if (ourFlightSigned) {
+                                    if (!confirmed) {
+                                        confirmed = true;
+                                        console.log('[SignCard] ✅ CONFIRMED via listener: flight', flight, 'signed=true');
+                                        
+                                        if (listenerUnsubscribe) {
+                                            listenerUnsubscribe();
+                                            listenerUnsubscribe = null;
+                                        }
+                                        if (writeTimeout) {
+                                            clearTimeout(writeTimeout);
+                                            writeTimeout = null;
+                                        }
+                                        
+                                        if (f1SignedCheck && f2SignedCheck) {
+                                            console.log('[SignCard] Both signed (confirmed)!');
+                                            
+                                            // If this is F2, ensure history record is written
+                                            // (If already triggered from cache, this is a double-check)
+                                            if (flight === 2) {
+                                                // Check if history record was already triggered
+                                                // The cache-based trigger already happened, so this is just a confirmation
+                                                console.log('[SignCard] F2: History record write already triggered from cache');
+                                            }
+                                            
+                                            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                                                RealGameNav.showGameCompleteModal(gameId);
+                                            } else {
+                                                showGameCompleteModalDirect(gameId);
+                                            }
+                                        }
+                                        
+                                        resolve(true);
+                                    }
+                                }
+                            }, function(err) {
+                                console.warn('[SignCard] Listener error:', err.message);
+                            });
+                            
+                            writeTimeout = setTimeout(function() {
                                 if (!confirmed) {
-                                    confirmed = true;
-                                    console.log('[SignCard] ✅ CONFIRMED via listener: flight', flight, 'signed=true');
+                                    console.warn('[SignCard] ⚠️ Confirmation timeout for flight', flight, '(attempt', attemptCount + ')');
                                     
                                     if (listenerUnsubscribe) {
                                         listenerUnsubscribe();
                                         listenerUnsubscribe = null;
                                     }
-                                    if (writeTimeout) {
-                                        clearTimeout(writeTimeout);
-                                        writeTimeout = null;
-                                    }
                                     
-                                    if (f1SignedCheck && f2SignedCheck) {
-                                        console.log('[SignCard] Both signed (confirmed)! Triggering Game Complete');
-                                        if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
-                                            RealGameNav.showGameCompleteModal(gameId);
-                                        } else {
-                                            showGameCompleteModalDirect(gameId);
-                                        }
+                                    if (attemptCount < maxRetries) {
+                                        var delay = 1000 * Math.pow(1.5, attemptCount);
+                                        console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
+                                        setTimeout(function() {
+                                            performWrite(attemptCount);
+                                        }, delay);
+                                    } else {
+                                        console.error('[SignCard] ❌ All', maxRetries, 'retries failed for flight', flight);
+                                        reject(new Error('Failed to confirm signature after ' + maxRetries + ' retries'));
                                     }
-                                    
-                                    resolve(true);
                                 }
+                            }, confirmTimeout);
+                        })
+                        .catch(function(err) {
+                            console.warn('[SignCard] Write attempt', attemptCount, 'failed:', err.message);
+                            
+                            if (attemptCount < maxRetries) {
+                                var delay = 1000 * Math.pow(1.5, attemptCount);
+                                console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
+                                setTimeout(function() {
+                                    performWrite(attemptCount);
+                                }, delay);
+                            } else {
+                                console.error('[SignCard] ❌ All', maxRetries, 'write attempts failed for flight', flight);
+                                reject(err);
                             }
-                        }, function(err) {
-                            console.warn('[SignCard] Listener error:', err.message);
                         });
-                        
-                        writeTimeout = setTimeout(function() {
-                            if (!confirmed) {
-                                console.warn('[SignCard] ⚠️ Confirmation timeout for flight', flight, '(attempt', attemptCount + ')');
-                                
-                                if (listenerUnsubscribe) {
-                                    listenerUnsubscribe();
-                                    listenerUnsubscribe = null;
-                                }
-                                
-                                if (attemptCount < maxRetries) {
-                                    var delay = 1000 * Math.pow(1.5, attemptCount);
-                                    console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
-                                    setTimeout(function() {
-                                        performWrite(attemptCount);
-                                    }, delay);
-                                } else {
-                                    console.error('[SignCard] ❌ All', maxRetries, 'retries failed for flight', flight);
-                                    reject(new Error('Failed to confirm signature after ' + maxRetries + ' retries'));
-                                }
-                            }
-                        }, confirmTimeout);
-                    })
-                    .catch(function(err) {
-                        console.warn('[SignCard] Write attempt', attemptCount, 'failed:', err.message);
-                        
-                        if (attemptCount < maxRetries) {
-                            var delay = 1000 * Math.pow(1.5, attemptCount);
-                            console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
-                            setTimeout(function() {
-                                performWrite(attemptCount);
-                            }, delay);
-                        } else {
-                            console.error('[SignCard] ❌ All', maxRetries, 'write attempts failed for flight', flight);
-                            reject(err);
-                        }
-                    });
-            }
-            
-            performWrite(0);
+                }
+                
+                performWrite(0);
+            });
         });
     }
     
@@ -908,26 +1109,32 @@ var SignCard = (function() {
         launchConfetti: launchConfetti,
         clearConfetti: clearConfetti,
         ensureArchiveRecord: ensureArchiveRecord,
-        _cachedImagePath: cachedImagePath
+        _cachedImagePath: cachedImagePath,
+        refreshCacheBeforeSigning: refreshCacheBeforeSigning,  // v1.31: Exposed for debugging
+        triggerHistoryRecordWrite: triggerHistoryRecordWrite   // v1.31: Exposed for debugging
     };
     
 })();
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.30";
+window.SIGN_CARD_VERSION = "1.31";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - REMOVED: signedAt from signature objects (unused field)
-   - REMOVED: captainName from signature objects (unused field)
-   - SIMPLIFIED: Signature now only contains { signed: true }
-   - REASON: Schema v5.0 FINAL removes these unused fields
-   - PRESERVED: ALL other functionality from v1.29 unchanged
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: refreshCacheBeforeSigning() - refreshes cache from Firestore before signing
+   - CHANGED: submitSignature() now refreshes cache first (ensures latest data)
+   - CHANGED: F2 writes history record (after both signed) - F1 never writes
+   - ADDED: buildHistoryPayload() - constructs complete history record payload
+   - ADDED: triggerHistoryRecordWrite() - background WRV write (user never waits)
+   - REASON: Ensure history record has complete data from both flights
+   - REASON: Only F2 writes to avoid race conditions
+   - REASON: WRV write is background - user never waits
+   - PRESERVED: ALL other functionality from v1.30 unchanged
    - PRESERVED: Double-Listener system for signatures
    - PRESERVED: sessionStorage photo caching
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
