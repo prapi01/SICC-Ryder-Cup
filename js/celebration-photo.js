@@ -1,19 +1,18 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: Store photo URL in localStorage after successful upload
-   - ADDED: localStorage key format: 'celebration_photo_url_' + gameId
-   - REASON: History record is created AFTER game completion, not at H17
-   - REASON: Photo URL must be available when history record is created
-   - REASON: localStorage persists across page reloads and sessions
-   - PRESERVED: ALL other functionality from v1.06 unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - CHANGED: checkAndRenameCelebrationPhoto() now ALWAYS uploads when ETag changes
+   - REMOVED: Check for existing destination file before upload
+   - REASON: If ETag changed on GitHub, the new photo must be uploaded regardless
+   - REASON: Existing file in Firebase Storage is stale and must be overwritten
+   - PRESERVED: ALL other functionality from v1.07 unchanged
    - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.07";
+window.CELEBRATION_PHOTO_VERSION = "1.08";
 
 // ============================================================
 // CONSTANTS
@@ -324,10 +323,9 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.06: Check if C.jpg exists and rename it to game ID
+// v1.08: Check if C.jpg exists and rename it to game ID
 // Called at EVERY hole save (ETag check makes it cheap)
-// v1.06: Uses GitHub for metadata check, uploads to Firebase Storage
-// v1.07: Stores photo URL in localStorage for history record
+// v1.08: ALWAYS uploads when ETag changes (overwrites stale file)
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -351,91 +349,73 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
             return;
         }
         
-        console.log('[CelebrationPhoto] Photo changed - downloading and renaming...');
+        console.log('[CelebrationPhoto] Photo changed - downloading and uploading...');
         
         var storage = firebase.storage();
         var archiveId = gameId + '_H';
         var sourceUrl = addCacheBuster(GITHUB_PHOTO_URL);
         var destRef = storage.ref('celebration/' + archiveId + '.jpg');
         
-        // Check if already renamed
-        destRef.getDownloadURL()
-            .then(function() {
-                console.log('[CelebrationPhoto] ✅ Already renamed:', archiveId + '.jpg');
-                // Update sessionStorage with existing photo
-                destRef.getDownloadURL()
-                    .then(function(url) {
-                        updatePhotoInSessionStorage(url);
-                        // v1.07: Store URL in localStorage for history record
-                        storePhotoUrlForHistory(gameId, url);
-                    })
-                    .catch(function(err) {
-                        console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
-                    });
-                if (callback) callback(null);
+        // v1.08: ALWAYS upload when ETag changed - overwrite existing file
+        console.log('[CelebrationPhoto] 📸 Downloading from GitHub:', sourceUrl);
+        loadAndCompressImage(sourceUrl, function(err, blob) {
+            if (err) {
+                console.warn('[CelebrationPhoto] ⚠️ Failed to load/compress from GitHub:', err.message);
+                if (callback) callback(err);
                 return;
-            })
-            .catch(function() {
-                // Not renamed yet - download from GitHub and upload
-                console.log('[CelebrationPhoto] 📸 Downloading from GitHub:', sourceUrl);
-                loadAndCompressImage(sourceUrl, function(err, blob) {
-                    if (err) {
-                        console.warn('[CelebrationPhoto] ⚠️ Failed to load/compress from GitHub:', err.message);
-                        if (callback) callback(err);
-                        return;
-                    }
+            }
+            
+            console.log('[CelebrationPhoto] Compressed size:', (blob.size / 1024).toFixed(1), 'KB');
+            
+            // v1.08: Upload directly - overwrite if exists
+            return destRef.put(blob)
+                .then(function(snapshot) {
+                    return snapshot.ref.getDownloadURL();
+                })
+                .then(function(destUrl) {
+                    var updateData = {
+                        'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
+                        'celebration.imageUrl': destUrl,
+                        'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+                    };
                     
-                    console.log('[CelebrationPhoto] Compressed size:', (blob.size / 1024).toFixed(1), 'KB');
-                    
-                    return destRef.put(blob)
-                        .then(function(snapshot) {
-                            return snapshot.ref.getDownloadURL();
-                        })
-                        .then(function(destUrl) {
-                            var updateData = {
-                                'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
-                                'celebration.imageUrl': destUrl,
-                                'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-                            };
-                            
-                            return new Promise(function(resolve, reject) {
-                                if (typeof WRV !== 'undefined' && WRV.update) {
-                                    WRV.update('historyGames', archiveId, updateData, function(err, result) {
-                                        if (err) {
-                                            reject(err);
-                                        } else {
-                                            resolve(result);
-                                        }
-                                    });
+                    return new Promise(function(resolve, reject) {
+                        if (typeof WRV !== 'undefined' && WRV.update) {
+                            WRV.update('historyGames', archiveId, updateData, function(err, result) {
+                                if (err) {
+                                    reject(err);
                                 } else {
-                                    console.warn('[CelebrationPhoto] WRV not available, using direct update');
-                                    var db = firebase.firestore();
-                                    db.collection('historyGames').doc(archiveId).update(updateData)
-                                        .then(resolve)
-                                        .catch(reject);
+                                    resolve(result);
                                 }
                             });
-                        })
-                        .then(function() {
-                            console.log('[CelebrationPhoto] ✅ Uploaded to:', archiveId + '.jpg');
-                            // Update sessionStorage with the uploaded photo
-                            destRef.getDownloadURL()
-                                .then(function(url) {
-                                    updatePhotoInSessionStorage(url);
-                                    // v1.07: Store URL in localStorage for history record
-                                    storePhotoUrlForHistory(gameId, url);
-                                })
-                                .catch(function(err) {
-                                    console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
-                                });
-                            if (callback) callback(null);
+                        } else {
+                            console.warn('[CelebrationPhoto] WRV not available, using direct update');
+                            var db = firebase.firestore();
+                            db.collection('historyGames').doc(archiveId).update(updateData)
+                                .then(resolve)
+                                .catch(reject);
+                        }
+                    });
+                })
+                .then(function() {
+                    console.log('[CelebrationPhoto] ✅ Uploaded to:', archiveId + '.jpg');
+                    // Update sessionStorage with the uploaded photo
+                    destRef.getDownloadURL()
+                        .then(function(url) {
+                            updatePhotoInSessionStorage(url);
+                            // v1.07: Store URL in localStorage for history record
+                            storePhotoUrlForHistory(gameId, url);
                         })
                         .catch(function(err) {
-                            console.warn('[CelebrationPhoto] ⚠️ Upload failed:', err.message);
-                            if (callback) callback(err);
+                            console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
                         });
+                    if (callback) callback(null);
+                })
+                .catch(function(err) {
+                    console.warn('[CelebrationPhoto] ⚠️ Upload failed:', err.message);
+                    if (callback) callback(err);
                 });
-            });
+        });
     });
 }
 
@@ -484,7 +464,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.07: Expose functions
+// v1.08: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -505,16 +485,13 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: Store photo URL in localStorage after successful upload
-   - ADDED: localStorage key format: 'celebration_photo_url_' + gameId
-   - ADDED: getStoredPhotoUrlForHistory() - retrieve stored URL
-   - ADDED: clearStoredPhotoUrlForHistory() - clear stored URL
-   - REASON: History record is created AFTER game completion, not at H17
-   - REASON: Photo URL must be available when history record is created
-   - REASON: localStorage persists across page reloads and sessions
-   - PRESERVED: ALL other functionality from v1.06 unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - CHANGED: checkAndRenameCelebrationPhoto() now ALWAYS uploads when ETag changes
+   - REMOVED: Check for existing destination file before upload
+   - REASON: If ETag changed on GitHub, the new photo must be uploaded regardless
+   - REASON: Existing file in Firebase Storage is stale and must be overwritten
+   - PRESERVED: ALL other functionality from v1.07 unchanged
    - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
