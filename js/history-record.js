@@ -1,19 +1,40 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.06
-KEY CHANGES from v3.05:
-   - ADDED: celebration field to archiveData when creating new record
-   - ADDED: celebration field to updateData when updating existing record
-   - REASON: History record must have a celebration field for photo pointer
-   - REASON: Photo URL will be updated when celebration-photo.js uploads the photo
-   - PRESERVED: ALL other functionality from v3.05 unchanged
-DEPENDS ON: Firebase Firestore, WRV.js
+VERSION: 3.07
+KEY CHANGES from v3.06:
+   - ADDED: Helper function getStoredPhotoUrlForHistory() - retrieves photo URL from localStorage
+   - CHANGED: upsertPendingRecord() CREATE now checks localStorage for existing photo URL
+   - CHANGED: upsertPendingRecord() UPDATE now checks localStorage for existing photo URL
+   - REASON: Photo is uploaded at H17, but history record is created AFTER game completion
+   - REASON: Photo URL must persist in localStorage until history record is created
+   - REASON: celebration-photo.js stores the URL, history-record.js retrieves it
+   - PRESERVED: ALL other functionality from v3.06 unchanged
+DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js (for localStorage key)
 STATUS: Ready for integration
 */
 
 var HistoryRecord = (function() {
     
     var COLLECTION = "historyGames";
+    
+    // ============================================================
+    // v3.07: Get stored photo URL from localStorage (from celebration-photo.js)
+    // ============================================================
+    function getStoredPhotoUrlForHistory(gameId) {
+        if (!gameId) return null;
+        
+        try {
+            var key = 'celebration_photo_url_' + gameId;
+            var url = localStorage.getItem(key);
+            if (url) {
+                console.log('[HistoryRecord] Retrieved photo URL from localStorage for game:', gameId);
+            }
+            return url;
+        } catch(e) {
+            console.warn('[HistoryRecord] Failed to retrieve photo URL from localStorage:', e.message);
+            return null;
+        }
+    }
     
     // ============================================================
     // v3.05: Get MULTIPLE_NEW_ANCHOR constant from HandicapAdjustment
@@ -148,6 +169,7 @@ var HistoryRecord = (function() {
     // NEW v3.02: Uses fixed document ID (gameId + "_H")
     // v3.04: Uses WRV for reliability
     // v3.06: Added celebration field for photo pointer
+    // v3.07: Retrieve photo URL from localStorage when creating/updating
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -159,6 +181,16 @@ var HistoryRecord = (function() {
         
         var docId = getHistoryDocId(gameId);
         
+        // v3.07: Check if there's a photo URL stored in localStorage
+        var storedPhotoUrl = getStoredPhotoUrlForHistory(gameId);
+        var hasPhoto = storedPhotoUrl !== null && storedPhotoUrl !== undefined;
+        
+        if (hasPhoto) {
+            console.log('[HistoryRecord] Found stored photo URL for game:', gameId);
+        } else {
+            console.log('[HistoryRecord] No stored photo URL found for game:', gameId);
+        }
+        
         // Check if record already exists
         firebase.firestore().collection(COLLECTION).doc(docId).get()
             .then(function(doc) {
@@ -167,6 +199,14 @@ var HistoryRecord = (function() {
                 if (isUpdate) {
                     // UPDATE existing record
                     console.log("Updating existing archive record:", docId);
+                    
+                    // v3.07: Build celebration field with stored photo URL if available
+                    var celebrationData = {
+                        imageRef: hasPhoto ? 'celebration/' + docId + '.jpg' : null,
+                        imageUrl: hasPhoto ? storedPhotoUrl : null,
+                        status: hasPhoto ? 'uploaded' : 'pending',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
                     
                     var updateData = {
                         status: "pending_handicap",
@@ -193,13 +233,8 @@ var HistoryRecord = (function() {
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
                         results: results,
-                        // v3.06: Add celebration field for photo pointer
-                        celebration: {
-                            imageUrl: null,
-                            imageRef: null,
-                            status: 'pending',
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }
+                        // v3.07: celebration field with stored photo URL
+                        celebration: celebrationData
                     };
                     
                     // Use WRV for reliable Firestore update
@@ -237,6 +272,14 @@ var HistoryRecord = (function() {
                             flight: p.flight
                         };
                     });
+                    
+                    // v3.07: Build celebration field with stored photo URL if available
+                    var celebrationData = {
+                        imageRef: hasPhoto ? 'celebration/' + docId + '.jpg' : null,
+                        imageUrl: hasPhoto ? storedPhotoUrl : null,
+                        status: hasPhoto ? 'uploaded' : 'pending',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
                     
                     var archiveData = {
                         originalGameId: gameId,
@@ -291,13 +334,8 @@ var HistoryRecord = (function() {
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                         archiveId: docId,
                         
-                        // v3.06: Add celebration field for photo pointer
-                        celebration: {
-                            imageUrl: null,
-                            imageRef: null,
-                            status: 'pending',
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }
+                        // v3.07: celebration field with stored photo URL
+                        celebration: celebrationData
                     };
                     
                     // Use WRV for reliable Firestore write
@@ -559,20 +597,23 @@ var HistoryRecord = (function() {
         deleteArchiveRecord: deleteArchiveRecord,
         getAdjustedHandicaps: getAdjustedHandicaps,
         getHistoryDocId: getHistoryDocId,
-        getMultipleNewAnchor: getMultipleNewAnchor  // v3.05: Exposed for other files
+        getMultipleNewAnchor: getMultipleNewAnchor,  // v3.05: Exposed for other files
+        getStoredPhotoUrlForHistory: getStoredPhotoUrlForHistory  // v3.07: Exposed for debugging
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 3.06
-KEY CHANGES from v3.05:
-   - ADDED: celebration field to archiveData when creating new record
-   - ADDED: celebration field to updateData when updating existing record
-   - REASON: History record must have a celebration field for photo pointer
-   - REASON: Photo URL will be updated when celebration-photo.js uploads the photo
-   - PRESERVED: ALL other functionality from v3.05 unchanged
-DEPENDS ON: Firebase Firestore, WRV.js
+VERSION: 3.07
+KEY CHANGES from v3.06:
+   - ADDED: Helper function getStoredPhotoUrlForHistory() - retrieves photo URL from localStorage
+   - CHANGED: upsertPendingRecord() CREATE now checks localStorage for existing photo URL
+   - CHANGED: upsertPendingRecord() UPDATE now checks localStorage for existing photo URL
+   - REASON: Photo is uploaded at H17, but history record is created AFTER game completion
+   - REASON: Photo URL must persist in localStorage until history record is created
+   - REASON: celebration-photo.js stores the URL, history-record.js retrieves it
+   - PRESERVED: ALL other functionality from v3.06 unchanged
+DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js (for localStorage key)
 STATUS: Ready for integration
 */
