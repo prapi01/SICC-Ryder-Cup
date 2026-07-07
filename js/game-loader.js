@@ -1,13 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - FIXED: buildCacheFromDoc() now reads nested signatures structure
-   - CHANGED: Reads signatures.f1.signed and signatures.f2.signed
-   - CHANGED: Normalizes flat fields to nested structure
-   - CHANGED: Adds compatibility for both flat and nested during transition
-   - PRESERVED: ALL other functionality from v1.15 unchanged
-   - This matches the nested structure written by sign-card.js v1.22
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - ADDED: refreshCacheFromFirestore(gameId, callback) - forces cache refresh from Firestore
+   - REASON: F2 needs to refresh cache before signing to get latest data from F1
+   - REASON: Ensures history record is written with complete data
+   - PRESERVED: ALL other functionality from v1.16 unchanged
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -506,6 +504,51 @@ var GameLoader = (function() {
     }
     
     // ============================================================
+    // v1.17: Force refresh cache from Firestore
+    // Used by F2 before signing to ensure latest data from F1
+    // ============================================================
+    function refreshCacheFromFirestore(gameId, callback) {
+        if (!gameId) {
+            if (callback) callback(new Error("No game ID provided"), null);
+            return;
+        }
+        
+        var db = getDb();
+        var collection = currentCollection || "scheduledGames";
+        var docRef = db.collection(collection).doc(gameId);
+        
+        console.log('[GAME-LOADER] refreshCacheFromFirestore: Refreshing cache from Firestore for:', gameId);
+        
+        docRef.get()
+            .then(function(doc) {
+                if (!doc.exists) {
+                    if (callback) callback(new Error("Game not found"), null);
+                    return;
+                }
+                
+                var docData = doc.data();
+                currentCache = buildCacheFromDoc(docData);
+                
+                console.log('[GAME-LOADER] refreshCacheFromFirestore: Cache refreshed successfully');
+                
+                // Notify callbacks
+                for (var i = 0; i < dataCallbacks.length; i++) {
+                    try {
+                        dataCallbacks[i](currentCache);
+                    } catch(e) {
+                        console.error("Callback error:", e);
+                    }
+                }
+                
+                if (callback) callback(null, currentCache);
+            })
+            .catch(function(error) {
+                console.error('[GAME-LOADER] refreshCacheFromFirestore: Error refreshing cache:', error);
+                if (callback) callback(error, null);
+            });
+    }
+    
+    // ============================================================
     // Get current cache
     // ============================================================
     function getLocalCache() {
@@ -608,6 +651,7 @@ var GameLoader = (function() {
     return {
         loadGame: loadGame,
         subscribe: subscribe,
+        refreshCacheFromFirestore: refreshCacheFromFirestore,  // v1.17
         getLocalCache: getLocalCache,
         setLocalCache: setLocalCache,
         addDataCallback: addDataCallback,
@@ -624,14 +668,12 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - FIXED: buildCacheFromDoc() now reads nested signatures structure
-   - CHANGED: Reads signatures.f1.signed and signatures.f2.signed
-   - CHANGED: Normalizes flat fields to nested structure
-   - CHANGED: Adds compatibility for both flat and nested during transition
-   - PRESERVED: ALL other functionality from v1.15 unchanged
-   - This matches the nested structure written by sign-card.js v1.22
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - ADDED: refreshCacheFromFirestore(gameId, callback) - forces cache refresh from Firestore
+   - REASON: F2 needs to refresh cache before signing to get latest data from F1
+   - REASON: Ensures history record is written with complete data
+   - PRESERVED: ALL other functionality from v1.16 unchanged
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
