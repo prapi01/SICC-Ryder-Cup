@@ -1,19 +1,20 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - REMOVED: PHOTO_CHECK_HOLES constant (no longer needed)
-   - REMOVED: isPhotoCheckHole() function (no longer needed)
-   - CHANGED: checkAndRenameCelebrationPhoto() now checks at EVERY hole
-   - REMOVED: Designated hole check logic
-   - REASON: ETag check makes photo check cheap and fast at every hole
-   - REASON: No need to limit to specific holes anymore
-   - PRESERVED: ALL other functionality from v1.04 unchanged
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - CHANGED: checkPhotoChanged() now checks GitHub C.jpg metadata (not Firebase Storage)
+   - CHANGED: Uses fetch HEAD request to get ETag/Last-Modified from GitHub
+   - CHANGED: On error, assumes changed to force download (safe fallback)
+   - REASON: C.jpg is hosted on GitHub, not Firebase Storage
+   - REASON: Firebase Storage was returning 404 for C.jpg
+   - REASON: Metadata check must work before download can happen
+   - PRESERVED: ALL other functionality from v1.05 unchanged
+   - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.05";
+window.CELEBRATION_PHOTO_VERSION = "1.06";
 
 // ============================================================
 // CONSTANTS
@@ -25,6 +26,9 @@ var SESSION_STORAGE_KEY = 'celebrationPhoto';
 // v1.04: ETag storage keys (preserved)
 var ETAG_STORAGE_KEY = 'celebration_photo_etag';
 var SIZE_STORAGE_KEY = 'celebration_photo_size';
+
+// v1.06: GitHub C.jpg URL
+var GITHUB_PHOTO_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg';
 
 // ============================================================
 // Helper: Add cache-busting to URL
@@ -74,20 +78,25 @@ function storeImageInSessionStorage(url, callback) {
 }
 
 // ============================================================
-// v1.04: Check if C.jpg has changed using ETag/MD5Hash
+// v1.06: Check if C.jpg has changed using GitHub ETag/Last-Modified
+// Uses fetch HEAD request (fast, no download)
 // ============================================================
 function checkPhotoChanged(callback) {
-    var storage = firebase.storage();
-    var photoRef = storage.ref('celebration/C.jpg');
-    
-    photoRef.getMetadata()
-        .then(function(metadata) {
-            var currentETag = metadata.md5Hash || metadata.etag || null;
-            var currentSize = metadata.size;
+    // v1.06: Use fetch HEAD to check GitHub C.jpg metadata
+    fetch(GITHUB_PHOTO_URL, { method: 'HEAD' })
+        .then(function(response) {
+            if (!response.ok) {
+                console.warn('[CelebrationPhoto] GitHub HEAD request failed:', response.status);
+                callback(true);
+                return;
+            }
+            
+            var currentETag = response.headers.get('etag') || response.headers.get('last-modified');
+            var currentSize = response.headers.get('content-length');
             
             if (!currentETag) {
                 console.warn('[CelebrationPhoto] No ETag available, forcing download');
-                callback(true, metadata);
+                callback(true);
                 return;
             }
             
@@ -95,22 +104,22 @@ function checkPhotoChanged(callback) {
             var cachedSize = localStorage.getItem(SIZE_STORAGE_KEY);
             
             var changed = (currentETag !== cachedETag) || 
-                          (currentSize !== parseInt(cachedSize || '0'));
+                          (currentSize !== cachedSize);
             
             if (changed) {
                 localStorage.setItem(ETAG_STORAGE_KEY, currentETag);
-                localStorage.setItem(SIZE_STORAGE_KEY, String(currentSize));
+                localStorage.setItem(SIZE_STORAGE_KEY, currentSize || '');
                 console.log('[CelebrationPhoto] Photo changed! ETag:', currentETag);
-                callback(true, metadata);
+                callback(true);
             } else {
                 console.log('[CelebrationPhoto] Photo unchanged, ETag:', currentETag);
-                callback(false, metadata);
+                callback(false);
             }
         })
         .catch(function(err) {
             console.warn('[CelebrationPhoto] Failed to check photo metadata:', err.message);
             // On error, assume changed to be safe
-            callback(true, null);
+            callback(true);
         });
 }
 
@@ -188,7 +197,7 @@ function copyCelebrationPhoto(gameId, callback) {
     var storage = firebase.storage();
     var archiveId = gameId + '_H';
     var destRef = storage.ref('celebration/' + archiveId + '.jpg');
-    var sourceUrl = addCacheBuster('https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg');
+    var sourceUrl = addCacheBuster(GITHUB_PHOTO_URL);
     
     console.log('[CelebrationPhoto] 📸 Copying C.jpg to:', archiveId + '.jpg');
     console.log('[CelebrationPhoto] Source URL:', sourceUrl);
@@ -261,9 +270,9 @@ function updatePhotoInSessionStorage(imageUrl, callback) {
 }
 
 // ============================================================
-// v1.05: Check if C.jpg exists and rename it to game ID
+// v1.06: Check if C.jpg exists and rename it to game ID
 // Called at EVERY hole save (ETag check makes it cheap)
-// v1.05: Removed designated hole check - checks every time
+// v1.06: Uses GitHub for metadata check, uploads to Firebase Storage
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -272,9 +281,6 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
         holeNumber = undefined;
     }
     
-    // v1.05: NO designated hole check - check at EVERY hole
-    // ETag makes it cheap and fast
-    
     if (!gameId) {
         if (callback) callback(null);
         return;
@@ -282,8 +288,8 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     
     console.log('[CelebrationPhoto] 📸 Checking photo for game:', gameId, 'at hole:', holeNumber || 'unknown');
     
-    // v1.04: First check if photo has changed using ETag
-    checkPhotoChanged(function(changed, metadata) {
+    // v1.06: First check if photo has changed using GitHub ETag
+    checkPhotoChanged(function(changed) {
         if (!changed) {
             console.log('[CelebrationPhoto] Photo unchanged - skipping download');
             if (callback) callback(null);
@@ -294,7 +300,7 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
         
         var storage = firebase.storage();
         var archiveId = gameId + '_H';
-        var sourceRef = storage.ref('celebration/C.jpg');
+        var sourceUrl = addCacheBuster(GITHUB_PHOTO_URL);
         var destRef = storage.ref('celebration/' + archiveId + '.jpg');
         
         // Check if already renamed
@@ -313,69 +319,63 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                 return;
             })
             .catch(function() {
-                // Not renamed yet - download and upload
-                sourceRef.getDownloadURL()
-                    .then(function(url) {
-                        console.log('[CelebrationPhoto] 📸 Found C.jpg, renaming to:', archiveId + '.jpg');
-                        return loadAndCompressImage(url, function(err, blob) {
-                            if (err) {
-                                console.warn('[CelebrationPhoto] ⚠️ Failed to load/compress:', err.message);
-                                return Promise.reject(err);
-                            }
+                // Not renamed yet - download from GitHub and upload
+                console.log('[CelebrationPhoto] 📸 Downloading from GitHub:', sourceUrl);
+                loadAndCompressImage(sourceUrl, function(err, blob) {
+                    if (err) {
+                        console.warn('[CelebrationPhoto] ⚠️ Failed to load/compress from GitHub:', err.message);
+                        if (callback) callback(err);
+                        return;
+                    }
+                    
+                    console.log('[CelebrationPhoto] Compressed size:', (blob.size / 1024).toFixed(1), 'KB');
+                    
+                    return destRef.put(blob)
+                        .then(function(snapshot) {
+                            return snapshot.ref.getDownloadURL();
+                        })
+                        .then(function(destUrl) {
+                            var updateData = {
+                                'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
+                                'celebration.imageUrl': destUrl,
+                                'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+                            };
                             
-                            console.log('[CelebrationPhoto] Compressed size:', (blob.size / 1024).toFixed(1), 'KB');
-                            
-                            return destRef.put(blob)
-                                .then(function(snapshot) {
-                                    return snapshot.ref.getDownloadURL();
-                                })
-                                .then(function(destUrl) {
-                                    var updateData = {
-                                        'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
-                                        'celebration.imageUrl': destUrl,
-                                        'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-                                    };
-                                    
-                                    return new Promise(function(resolve, reject) {
-                                        if (typeof WRV !== 'undefined' && WRV.update) {
-                                            WRV.update('historyGames', archiveId, updateData, function(err, result) {
-                                                if (err) {
-                                                    reject(err);
-                                                } else {
-                                                    resolve(result);
-                                                }
-                                            });
+                            return new Promise(function(resolve, reject) {
+                                if (typeof WRV !== 'undefined' && WRV.update) {
+                                    WRV.update('historyGames', archiveId, updateData, function(err, result) {
+                                        if (err) {
+                                            reject(err);
                                         } else {
-                                            console.warn('[CelebrationPhoto] WRV not available, using direct update');
-                                            var db = firebase.firestore();
-                                            db.collection('historyGames').doc(archiveId).update(updateData)
-                                                .then(resolve)
-                                                .catch(reject);
+                                            resolve(result);
                                         }
                                     });
-                                })
-                                .then(function() {
-                                    console.log('[CelebrationPhoto] ✅ Renamed to:', archiveId + '.jpg');
-                                    // Update sessionStorage with the renamed photo
-                                    destRef.getDownloadURL()
-                                        .then(function(url) {
-                                            updatePhotoInSessionStorage(url);
-                                        })
-                                        .catch(function(err) {
-                                            console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
-                                        });
-                                    if (callback) callback(null);
+                                } else {
+                                    console.warn('[CelebrationPhoto] WRV not available, using direct update');
+                                    var db = firebase.firestore();
+                                    db.collection('historyGames').doc(archiveId).update(updateData)
+                                        .then(resolve)
+                                        .catch(reject);
+                                }
+                            });
+                        })
+                        .then(function() {
+                            console.log('[CelebrationPhoto] ✅ Uploaded to:', archiveId + '.jpg');
+                            // Update sessionStorage with the uploaded photo
+                            destRef.getDownloadURL()
+                                .then(function(url) {
+                                    updatePhotoInSessionStorage(url);
                                 })
                                 .catch(function(err) {
-                                    console.warn('[CelebrationPhoto] ⚠️ Copy failed:', err.message);
-                                    if (callback) callback(err);
+                                    console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
                                 });
+                            if (callback) callback(null);
+                        })
+                        .catch(function(err) {
+                            console.warn('[CelebrationPhoto] ⚠️ Upload failed:', err.message);
+                            if (callback) callback(err);
                         });
-                    })
-                    .catch(function(err) {
-                        console.log('[CelebrationPhoto] ℹ️ No C.jpg found - using default photo');
-                        if (callback) callback(null);
-                    });
+                });
             });
     });
 }
@@ -394,10 +394,10 @@ function getCelebrationPhoto(gameId, callback) {
                 if (url) {
                     if (callback) callback(null, url);
                 } else {
-                    if (callback) callback(null, 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg');
+                    if (callback) callback(null, GITHUB_PHOTO_URL);
                 }
             } else {
-                if (callback) callback(null, 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg');
+                if (callback) callback(null, GITHUB_PHOTO_URL);
             }
         })
         .catch(function(err) {
@@ -413,7 +413,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.05: Expose functions (removed isPhotoCheckHole)
+// v1.06: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -426,18 +426,20 @@ window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
 window.SIZE_STORAGE_KEY = SIZE_STORAGE_KEY;
+window.GITHUB_PHOTO_URL = GITHUB_PHOTO_URL;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - REMOVED: PHOTO_CHECK_HOLES constant (no longer needed)
-   - REMOVED: isPhotoCheckHole() function (no longer needed)
-   - CHANGED: checkAndRenameCelebrationPhoto() now checks at EVERY hole
-   - REMOVED: Designated hole check logic
-   - REASON: ETag check makes photo check cheap and fast at every hole
-   - REASON: No need to limit to specific holes anymore
-   - PRESERVED: ALL other functionality from v1.04 unchanged
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - CHANGED: checkPhotoChanged() now checks GitHub C.jpg metadata (not Firebase Storage)
+   - CHANGED: Uses fetch HEAD request to get ETag/Last-Modified from GitHub
+   - CHANGED: On error, assumes changed to force download (safe fallback)
+   - REASON: C.jpg is hosted on GitHub, not Firebase Storage
+   - REASON: Firebase Storage was returning 404 for C.jpg
+   - REASON: Metadata check must work before download can happen
+   - PRESERVED: ALL other functionality from v1.05 unchanged
+   - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
