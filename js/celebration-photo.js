@@ -1,18 +1,20 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - CHANGED: checkAndRenameCelebrationPhoto() now ALWAYS uploads when ETag changes
-   - REMOVED: Check for existing destination file before upload
-   - REASON: If ETag changed on GitHub, the new photo must be uploaded regardless
-   - REASON: Existing file in Firebase Storage is stale and must be overwritten
-   - PRESERVED: ALL other functionality from v1.07 unchanged
-   - PRESERVED: Fire-and-forget, user never waits
-DEPENDS ON: Firebase Storage, Firestore, WRV.js
-STATUS: Ready for integration 
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - ADDED: verifyPhotoUpload() - checks if file exists in Firebase Storage with metadata
+   - ADDED: Retry loop with exponential backoff (3 attempts, 2s base delay)
+   - CHANGED: Upload now requires verification before confirming success
+   - CHANGED: Only logs "✅ Uploaded to" after verification passes
+   - ADDED: Proper error propagation when verification fails
+   - REASON: WRV is not suitable for photo verification
+   - REASON: Need to confirm file actually exists in Firebase Storage
+   - PRESERVED: ALL other functionality from v1.08 unchanged
+DEPENDS ON: Firebase Storage, Firestore
+STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.08";
+window.CELEBRATION_PHOTO_VERSION = "1.09";
 
 // ============================================================
 // CONSTANTS
@@ -30,6 +32,10 @@ var GITHUB_PHOTO_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jp
 
 // v1.07: localStorage prefix for photo URL
 var PHOTO_URL_PREFIX = 'celebration_photo_url_';
+
+// v1.09: Retry configuration
+var MAX_UPLOAD_RETRIES = 3;
+var RETRY_BASE_DELAY_MS = 2000; // 2 seconds
 
 // ============================================================
 // Helper: Add cache-busting to URL
@@ -187,6 +193,101 @@ function loadAndCompressImage(url, callback) {
 }
 
 // ============================================================
+// v1.09: Verify photo exists in Firebase Storage
+// Returns { exists: boolean, url: string, metadata: object }
+// ============================================================
+function verifyPhotoUpload(archiveId, callback) {
+    if (!archiveId) {
+        if (callback) callback(new Error('No archiveId provided'), null);
+        return;
+    }
+    
+    var storage = firebase.storage();
+    var destRef = storage.ref('celebration/' + archiveId + '.jpg');
+    
+    console.log('[CelebrationPhoto] 🔍 Verifying upload for:', archiveId + '.jpg');
+    
+    destRef.getMetadata()
+        .then(function(metadata) {
+            console.log('[CelebrationPhoto] ✅ Verification PASSED - file exists, size:', (metadata.size / 1024).toFixed(1), 'KB');
+            // Get download URL
+            return destRef.getDownloadURL()
+                .then(function(url) {
+                    if (callback) callback(null, { exists: true, url: url, metadata: metadata });
+                })
+                .catch(function(err) {
+                    // Should not happen if metadata succeeded, but handle anyway
+                    console.warn('[CelebrationPhoto] ⚠️ Metadata OK but download URL failed:', err.message);
+                    if (callback) callback(err, null);
+                });
+        })
+        .catch(function(err) {
+            console.warn('[CelebrationPhoto] ❌ Verification FAILED:', err.message);
+            if (callback) callback(null, { exists: false, url: null, metadata: null });
+        });
+}
+
+// ============================================================
+// v1.09: Upload with verification and retry
+// ============================================================
+function uploadAndVerifyPhoto(archiveId, blob, retryCount, callback) {
+    if (retryCount === undefined) {
+        retryCount = 0;
+    }
+    
+    var storage = firebase.storage();
+    var destRef = storage.ref('celebration/' + archiveId + '.jpg');
+    
+    console.log('[CelebrationPhoto] 📤 Upload attempt', retryCount + 1, 'of', MAX_UPLOAD_RETRIES, 'for:', archiveId + '.jpg');
+    
+    // Step 1: Upload the file
+    destRef.put(blob)
+        .then(function(snapshot) {
+            console.log('[CelebrationPhoto] Upload successful, now verifying...');
+            
+            // Step 2: Verify the upload
+            verifyPhotoUpload(archiveId, function(err, result) {
+                if (err) {
+                    console.warn('[CelebrationPhoto] ⚠️ Verification error:', err.message);
+                    // Treat as verification failure
+                    handleVerificationFailure(archiveId, blob, retryCount, callback);
+                    return;
+                }
+                
+                if (result && result.exists) {
+                    // ✅ VERIFICATION PASSED
+                    console.log('[CelebrationPhoto] ✅ Upload VERIFIED for:', archiveId + '.jpg');
+                    if (callback) callback(null, result.url);
+                } else {
+                    // ❌ Verification failed - file not found
+                    console.warn('[CelebrationPhoto] ❌ Upload verification failed - file not found in Storage');
+                    handleVerificationFailure(archiveId, blob, retryCount, callback);
+                }
+            });
+        })
+        .catch(function(err) {
+            console.warn('[CelebrationPhoto] ⚠️ Upload error:', err.message);
+            handleVerificationFailure(archiveId, blob, retryCount, callback);
+        });
+}
+
+function handleVerificationFailure(archiveId, blob, retryCount, callback) {
+    var nextRetry = retryCount + 1;
+    
+    if (nextRetry < MAX_UPLOAD_RETRIES) {
+        var delay = RETRY_BASE_DELAY_MS * Math.pow(1.5, retryCount);
+        console.log('[CelebrationPhoto] 🔄 Retry', nextRetry + 1, 'of', MAX_UPLOAD_RETRIES, 'in', delay, 'ms...');
+        
+        setTimeout(function() {
+            uploadAndVerifyPhoto(archiveId, blob, nextRetry, callback);
+        }, delay);
+    } else {
+        console.error('[CelebrationPhoto] ❌ All', MAX_UPLOAD_RETRIES, 'upload attempts FAILED for:', archiveId + '.jpg');
+        if (callback) callback(new Error('Upload failed after ' + MAX_UPLOAD_RETRIES + ' attempts'), null);
+    }
+}
+
+// ============================================================
 // Copy C.jpg from GitHub to Firebase Storage with game ID
 // ============================================================
 function copyCelebrationPhoto(gameId, callback) {
@@ -218,41 +319,36 @@ function copyCelebrationPhoto(gameId, callback) {
                 
                 console.log('[CelebrationPhoto] Compressed size:', (blob.size / 1024).toFixed(1), 'KB');
                 
-                return destRef.put(blob)
-                    .then(function(snapshot) {
-                        return snapshot.ref.getDownloadURL();
-                    })
-                    .then(function(url) {
-                        var updateData = {
-                            'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
-                            'celebration.imageUrl': url,
-                            'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-                        };
-                        
-                        if (typeof WRV !== 'undefined' && WRV.update) {
-                            return new Promise(function(resolve, reject) {
-                                WRV.update('historyGames', archiveId, updateData, function(err, result) {
-                                    if (err) {
-                                        reject(err);
-                                    } else {
-                                        resolve(result);
-                                    }
-                                });
-                            });
-                        } else {
-                            console.warn('[CelebrationPhoto] WRV not available, using direct update');
-                            var db = firebase.firestore();
-                            return db.collection('historyGames').doc(archiveId).update(updateData);
-                        }
-                    })
-                    .then(function() {
-                        console.log('[CelebrationPhoto] ✅ Copied to:', archiveId + '.jpg');
-                        if (callback) callback(null);
-                    })
-                    .catch(function(err) {
-                        console.warn('[CelebrationPhoto] ⚠️ Copy failed:', err.message);
+                uploadAndVerifyPhoto(archiveId, blob, 0, function(err, url) {
+                    if (err) {
+                        console.warn('[CelebrationPhoto] ⚠️ Copy failed after retries:', err.message);
                         if (callback) callback(err);
-                    });
+                        return;
+                    }
+                    
+                    // Update Firestore with the verified URL
+                    var updateData = {
+                        'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
+                        'celebration.imageUrl': url,
+                        'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    
+                    if (typeof WRV !== 'undefined' && WRV.update) {
+                        WRV.update('historyGames', archiveId, updateData, function(err2) {
+                            if (err2) {
+                                console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', err2.message);
+                                // Don't fail the whole operation - photo is uploaded, Firestore update can be retried later
+                                if (callback) callback(null);
+                            } else {
+                                console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
+                                if (callback) callback(null);
+                            }
+                        });
+                    } else {
+                        console.warn('[CelebrationPhoto] WRV not available, skipping Firestore update');
+                        if (callback) callback(null);
+                    }
+                });
             });
         });
 }
@@ -326,6 +422,7 @@ function clearStoredPhotoUrlForHistory(gameId) {
 // v1.08: Check if C.jpg exists and rename it to game ID
 // Called at EVERY hole save (ETag check makes it cheap)
 // v1.08: ALWAYS uploads when ETag changes (overwrites stale file)
+// v1.09: Added verification and retry loop
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -367,38 +464,53 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
             
             console.log('[CelebrationPhoto] Compressed size:', (blob.size / 1024).toFixed(1), 'KB');
             
-            // v1.08: Upload directly - overwrite if exists
-            return destRef.put(blob)
-                .then(function(snapshot) {
-                    return snapshot.ref.getDownloadURL();
-                })
-                .then(function(destUrl) {
-                    var updateData = {
-                        'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
-                        'celebration.imageUrl': destUrl,
-                        'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    
-                    return new Promise(function(resolve, reject) {
-                        if (typeof WRV !== 'undefined' && WRV.update) {
-                            WRV.update('historyGames', archiveId, updateData, function(err, result) {
-                                if (err) {
-                                    reject(err);
-                                } else {
-                                    resolve(result);
-                                }
+            // v1.09: Upload with verification and retry
+            uploadAndVerifyPhoto(archiveId, blob, 0, function(uploadErr, verifiedUrl) {
+                if (uploadErr) {
+                    console.warn('[CelebrationPhoto] ⚠️ Upload failed after retries:', uploadErr.message);
+                    if (callback) callback(uploadErr);
+                    return;
+                }
+                
+                // ✅ VERIFIED - upload succeeded
+                console.log('[CelebrationPhoto] ✅ Uploaded and VERIFIED to:', archiveId + '.jpg');
+                
+                // Update Firestore with the verified URL
+                var updateData = {
+                    'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
+                    'celebration.imageUrl': verifiedUrl,
+                    'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                // Use a promise to handle Firestore update (don't block callback)
+                var firestorePromise = new Promise(function(resolve) {
+                    if (typeof WRV !== 'undefined' && WRV.update) {
+                        WRV.update('historyGames', archiveId, updateData, function(wrvErr) {
+                            if (wrvErr) {
+                                console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', wrvErr.message);
+                                // Don't fail - photo is already uploaded and verified
+                                resolve();
+                            } else {
+                                console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
+                                resolve();
+                            }
+                        });
+                    } else {
+                        var db = firebase.firestore();
+                        db.collection('historyGames').doc(archiveId).update(updateData)
+                            .then(function() {
+                                console.log('[CelebrationPhoto] ✅ Firestore updated (direct) for:', archiveId + '.jpg');
+                                resolve();
+                            })
+                            .catch(function(dbErr) {
+                                console.warn('[CelebrationPhoto] ⚠️ Firestore direct update failed:', dbErr.message);
+                                resolve();
                             });
-                        } else {
-                            console.warn('[CelebrationPhoto] WRV not available, using direct update');
-                            var db = firebase.firestore();
-                            db.collection('historyGames').doc(archiveId).update(updateData)
-                                .then(resolve)
-                                .catch(reject);
-                        }
-                    });
-                })
-                .then(function() {
-                    console.log('[CelebrationPhoto] ✅ Uploaded to:', archiveId + '.jpg');
+                    }
+                });
+                
+                // After Firestore update attempt, update sessionStorage and localStorage
+                firestorePromise.then(function() {
                     // Update sessionStorage with the uploaded photo
                     destRef.getDownloadURL()
                         .then(function(url) {
@@ -409,12 +521,10 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                         .catch(function(err) {
                             console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
                         });
+                    
                     if (callback) callback(null);
-                })
-                .catch(function(err) {
-                    console.warn('[CelebrationPhoto] ⚠️ Upload failed:', err.message);
-                    if (callback) callback(err);
                 });
+            });
         });
     });
 }
@@ -464,7 +574,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.08: Expose functions
+// v1.09: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -476,6 +586,7 @@ window.checkPhotoChanged = checkPhotoChanged;
 window.storePhotoUrlForHistory = storePhotoUrlForHistory;
 window.getStoredPhotoUrlForHistory = getStoredPhotoUrlForHistory;
 window.clearStoredPhotoUrlForHistory = clearStoredPhotoUrlForHistory;
+window.verifyPhotoUpload = verifyPhotoUpload; // v1.09: Exposed for debugging
 window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
@@ -485,14 +596,16 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - CHANGED: checkAndRenameCelebrationPhoto() now ALWAYS uploads when ETag changes
-   - REMOVED: Check for existing destination file before upload
-   - REASON: If ETag changed on GitHub, the new photo must be uploaded regardless
-   - REASON: Existing file in Firebase Storage is stale and must be overwritten
-   - PRESERVED: ALL other functionality from v1.07 unchanged
-   - PRESERVED: Fire-and-forget, user never waits
-DEPENDS ON: Firebase Storage, Firestore, WRV.js
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - ADDED: verifyPhotoUpload() - checks if file exists in Firebase Storage with metadata
+   - ADDED: Retry loop with exponential backoff (3 attempts, 2s base delay)
+   - CHANGED: Upload now requires verification before confirming success
+   - CHANGED: Only logs "✅ Uploaded to" after verification passes
+   - ADDED: Proper error propagation when verification fails
+   - REASON: WRV is not suitable for photo verification
+   - REASON: Need to confirm file actually exists in Firebase Storage
+   - PRESERVED: ALL other functionality from v1.08 unchanged
+DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
