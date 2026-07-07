@@ -1,12 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.05
-KEY CHANGES from v3.04:
-   - ADDED: Support for MULTIPLE_NEW_ANCHOR = "*multiple*" from hcp-adjust.js
-   - CHANGED: updateWithHandicap() now preserves "*multiple*" value as-is
-   - CHANGED: newAnchor field now uses MULTIPLE_NEW_ANCHOR constant if available
-   - PRESERVED: All v3.04 functions and API unchanged
-   - PRESERVED: All existing functionality
+VERSION: 3.06
+KEY CHANGES from v3.05:
+   - ADDED: celebration field to archiveData when creating new record
+   - ADDED: celebration field to updateData when updating existing record
+   - REASON: History record must have a celebration field for photo pointer
+   - REASON: Photo URL will be updated when celebration-photo.js uploads the photo
+   - PRESERVED: ALL other functionality from v3.05 unchanged
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
@@ -147,6 +147,7 @@ var HistoryRecord = (function() {
     // Stores data strings directly - NO conversion
     // NEW v3.02: Uses fixed document ID (gameId + "_H")
     // v3.04: Uses WRV for reliability
+    // v3.06: Added celebration field for photo pointer
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -191,7 +192,14 @@ var HistoryRecord = (function() {
                         // Store data strings directly - NO conversion
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
-                        results: results
+                        results: results,
+                        // v3.06: Add celebration field for photo pointer
+                        celebration: {
+                            imageUrl: null,
+                            imageRef: null,
+                            status: 'pending',
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }
                     };
                     
                     // Use WRV for reliable Firestore update
@@ -281,7 +289,15 @@ var HistoryRecord = (function() {
                         adjustedHandicaps: null,
                         
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        archiveId: docId
+                        archiveId: docId,
+                        
+                        // v3.06: Add celebration field for photo pointer
+                        celebration: {
+                            imageUrl: null,
+                            imageRef: null,
+                            status: 'pending',
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }
                     };
                     
                     // Use WRV for reliable Firestore write
@@ -550,13 +566,13 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.05
-KEY CHANGES from v3.04:
-   - ADDED: Support for MULTIPLE_NEW_ANCHOR = "*multiple*" from hcp-adjust.js
-   - CHANGED: updateWithHandicap() now preserves "*multiple*" value as-is
-   - CHANGED: newAnchor field now uses MULTIPLE_NEW_ANCHOR constant if available
-   - PRESERVED: All v3.04 functions and API unchanged
-   - PRESERVED: All existing functionality
+VERSION: 3.06
+KEY CHANGES from v3.05:
+   - ADDED: celebration field to archiveData when creating new record
+   - ADDED: celebration field to updateData when updating existing record
+   - REASON: History record must have a celebration field for photo pointer
+   - REASON: Photo URL will be updated when celebration-photo.js uploads the photo
+   - PRESERVED: ALL other functionality from v3.05 unchanged
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
