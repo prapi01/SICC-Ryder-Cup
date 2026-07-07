@@ -1,16 +1,18 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.08
-KEY CHANGES from v3.07:
-   - REMOVED: signedAt from signature objects (unused field)
-   - REMOVED: captainName from signature objects (unused field)
-   - SIMPLIFIED: Signature now only contains { signed: true/false }
-   - FIXED: Status now set to "completed" when BOTH f1 and f2 have signed
-   - REASON: Schema v5.0 FINAL removes these unused fields
-   - REASON: Both signed means game is completed, not pending_handicap
-   - PRESERVED: ALL other functionality from v3.07 unchanged
-   - PRESERVED: localStorage photo URL retrieval
-DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js (for localStorage key)
+VERSION: 3.09
+KEY CHANGES from v3.08:
+   - REMOVED: getStoredPhotoUrlForHistory() - no longer needed
+   - REMOVED: localStorage checks for photo URL (device-specific, unreliable)
+   - ADDED: getPhotoPathForHistory() - constructs photo path from game ID
+   - CHANGED: celebration.imageRef set to 'celebration/{gameId}_H.jpg'
+   - CHANGED: celebration.imageUrl set to null (frontend uses getDownloadURL)
+   - REASON: Photo ID is fixed by convention - no need to store URL
+   - REASON: localStorage is device-specific and caused cross-device issues
+   - PRESERVED: ALL other functionality from v3.08 unchanged
+   - PRESERVED: Status="completed" when both signed
+   - PRESERVED: Signatures simplified (only signed: true/false)
+DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
@@ -19,22 +21,12 @@ var HistoryRecord = (function() {
     var COLLECTION = "historyGames";
     
     // ============================================================
-    // v3.07: Get stored photo URL from localStorage (from celebration-photo.js)
+    // v3.09: Get photo path from game ID (fixed convention)
+    // Photo is always at: celebration/{gameId}_H.jpg
     // ============================================================
-    function getStoredPhotoUrlForHistory(gameId) {
+    function getPhotoPathForHistory(gameId) {
         if (!gameId) return null;
-        
-        try {
-            var key = 'celebration_photo_url_' + gameId;
-            var url = localStorage.getItem(key);
-            if (url) {
-                console.log('[HistoryRecord] Retrieved photo URL from localStorage for game:', gameId);
-            }
-            return url;
-        } catch(e) {
-            console.warn('[HistoryRecord] Failed to retrieve photo URL from localStorage:', e.message);
-            return null;
-        }
+        return 'celebration/' + gameId + '_H.jpg';
     }
     
     // ============================================================
@@ -171,7 +163,8 @@ var HistoryRecord = (function() {
     // v3.04: Uses WRV for reliability
     // v3.06: Added celebration field for photo pointer
     // v3.07: Retrieve photo URL from localStorage when creating/updating
-    // v3.08: Removed signedAt/captainName from signatures, fixed status to "completed" when both signed
+    // v3.08: Removed signedAt/captainName, fixed status to "completed" when both signed
+    // v3.09: REMOVED localStorage photo URL check - use fixed convention instead
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -183,15 +176,8 @@ var HistoryRecord = (function() {
         
         var docId = getHistoryDocId(gameId);
         
-        // v3.07: Check if there's a photo URL stored in localStorage
-        var storedPhotoUrl = getStoredPhotoUrlForHistory(gameId);
-        var hasPhoto = storedPhotoUrl !== null && storedPhotoUrl !== undefined;
-        
-        if (hasPhoto) {
-            console.log('[HistoryRecord] Found stored photo URL for game:', gameId);
-        } else {
-            console.log('[HistoryRecord] No stored photo URL found for game:', gameId);
-        }
+        // v3.09: Photo path is fixed by convention - no localStorage check needed
+        var photoPath = getPhotoPathForHistory(gameId);
         
         // v3.08: Determine status based on signatures
         var f1Signed = signatures?.f1?.signed === true;
@@ -210,11 +196,11 @@ var HistoryRecord = (function() {
                     // UPDATE existing record
                     console.log("Updating existing archive record:", docId);
                     
-                    // v3.07: Build celebration field with stored photo URL if available
+                    // v3.09: Build celebration field with photo path (no URL)
                     var celebrationData = {
-                        imageRef: hasPhoto ? 'celebration/' + docId + '.jpg' : null,
-                        imageUrl: hasPhoto ? storedPhotoUrl : null,
-                        status: hasPhoto ? 'uploaded' : 'pending',
+                        imageRef: photoPath,
+                        imageUrl: null,  // Frontend will call getDownloadURL()
+                        status: 'pending',
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     
@@ -242,7 +228,7 @@ var HistoryRecord = (function() {
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
                         results: results,
-                        // v3.07: celebration field with stored photo URL
+                        // v3.09: celebration field with photo path (no URL)
                         celebration: celebrationData
                     };
                     
@@ -282,11 +268,11 @@ var HistoryRecord = (function() {
                         };
                     });
                     
-                    // v3.07: Build celebration field with stored photo URL if available
+                    // v3.09: Build celebration field with photo path (no URL)
                     var celebrationData = {
-                        imageRef: hasPhoto ? 'celebration/' + docId + '.jpg' : null,
-                        imageUrl: hasPhoto ? storedPhotoUrl : null,
-                        status: hasPhoto ? 'uploaded' : 'pending',
+                        imageRef: photoPath,
+                        imageUrl: null,  // Frontend will call getDownloadURL()
+                        status: 'pending',
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     
@@ -342,7 +328,7 @@ var HistoryRecord = (function() {
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                         archiveId: docId,
                         
-                        // v3.07: celebration field with stored photo URL
+                        // v3.09: celebration field with photo path (no URL)
                         celebration: celebrationData
                     };
                     
@@ -590,7 +576,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Public API
+    // v3.09: Public API
     // ============================================================
     
     return {
@@ -606,23 +592,25 @@ var HistoryRecord = (function() {
         getAdjustedHandicaps: getAdjustedHandicaps,
         getHistoryDocId: getHistoryDocId,
         getMultipleNewAnchor: getMultipleNewAnchor,  // v3.05: Exposed for other files
-        getStoredPhotoUrlForHistory: getStoredPhotoUrlForHistory  // v3.07: Exposed for debugging
+        getPhotoPathForHistory: getPhotoPathForHistory  // v3.09: Exposed for other files
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 3.08
-KEY CHANGES from v3.07:
-   - REMOVED: signedAt from signature objects (unused field)
-   - REMOVED: captainName from signature objects (unused field)
-   - SIMPLIFIED: Signature now only contains { signed: true/false }
-   - FIXED: Status now set to "completed" when BOTH f1 and f2 have signed
-   - REASON: Schema v5.0 FINAL removes these unused fields
-   - REASON: Both signed means game is completed, not pending_handicap
-   - PRESERVED: ALL other functionality from v3.07 unchanged
-   - PRESERVED: localStorage photo URL retrieval
-DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js (for localStorage key)
+VERSION: 3.09
+KEY CHANGES from v3.08:
+   - REMOVED: getStoredPhotoUrlForHistory() - no longer needed
+   - REMOVED: localStorage checks for photo URL (device-specific, unreliable)
+   - ADDED: getPhotoPathForHistory() - constructs photo path from game ID
+   - CHANGED: celebration.imageRef set to 'celebration/{gameId}_H.jpg'
+   - CHANGED: celebration.imageUrl set to null (frontend uses getDownloadURL)
+   - REASON: Photo ID is fixed by convention - no need to store URL
+   - REASON: localStorage is device-specific and caused cross-device issues
+   - PRESERVED: ALL other functionality from v3.08 unchanged
+   - PRESERVED: Status="completed" when both signed
+   - PRESERVED: Signatures simplified (only signed: true/false)
+DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
