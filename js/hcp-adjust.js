@@ -1,15 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.57
-KEY CHANGES from v2.56:
-   - FIXED: usedLabels update logic now reads existing usedLabels and adds new labels
-   - CHANGED: updatePlayerRecordsInBackground() now reads current document first
-   - CHANGED: Merges new labels with existing usedLabels (doesn't overwrite)
-   - FIXED: Uses playerInformation/players.usedLabels (not separate collection)
-   - FIXED: No longer uses dot notation for usedLabels
-   - PRESERVED: ALL v2.56 functions and API unchanged
-   - PRESERVED: ALL existing functionality
-   - PRESERVED: WRV integration for reliable Firestore writes
+VERSION: 2.58
+KEY CHANGES from v2.57:
+   - ADDED: Zero-rise detection in renderTableToContainer()
+   - ADDED: NEW TABLE with Raw column when needsZeroRise === true
+   - ADDED: Horizontal scroll for new table (overflow-x: auto)
+   - PRESERVED: OLD TABLE (5 columns) for when no zero-rise needed
+   - PRESERVED: ALL existing functionality and API unchanged
+   - REASON: Raw column shows handicap before zero-rise
+   - REASON: Only show Raw column when zero-rise is actually applied
+   - REASON: Keep existing UI intact for non-zero-rise cases
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -376,7 +376,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.50: renderTableToContainer - creates container dynamically
+    // v2.58: renderTableToContainer - NEW TABLE with Raw column when zero-rise needed
     // ============================================================
     
     function renderTableToContainer(calculationResult, anchorName, containerId) {
@@ -398,6 +398,7 @@ var HandicapAdjustment = (function() {
         
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
+        var needsZeroRise = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         
         players.sort(function(a, b) {
             var teamA = a.team || 'B';
@@ -410,120 +411,248 @@ var HandicapAdjustment = (function() {
             return hcpA - hcpB;
         });
         
-        var html = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
-        html += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 340px;">';
+        var html = '';
         
-        html += '<thead><tr style="background:#1a3a1a;">';
-        html += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
-        html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';
-        html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Anc</th>';
-        html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Perf</th>';
-        html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
-        html += '<tr></thead><tbody>';
-        
-        var currentTeam = null;
-        
-        for (var i = 0; i < players.length; i++) {
-            var p = players[i];
+        // ============================================================
+        // NEW TABLE: Zero-rise needed → 6 columns (Label, Old, Anc, Perf, Raw, New)
+        // ============================================================
+        if (needsZeroRise) {
+            html += '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
+            html += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 400px;">';
             
-            var displayHcp = null;
-            if (p.finalHcp !== undefined && p.finalHcp !== null) {
-                displayHcp = p.finalHcp;
-            } else if (p.newHcp !== undefined && p.newHcp !== null) {
-                displayHcp = p.newHcp;
-            } else if (p.newAnchor !== undefined && p.newAnchor !== null) {
-                displayHcp = p.newAnchor;
-            } else if (p.rawNew !== undefined && p.rawNew !== null) {
-                if (hasNewAnchor && calculationResult.zeroRiseAmount) {
-                    displayHcp = p.rawNew + calculationResult.zeroRiseAmount;
-                } else {
-                    displayHcp = p.rawNew;
+            html += '<thead><tr style="background:#1a3a1a;">';
+            html += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Anc</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Perf</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem; background:#2a2a2a; color:#ffaa44;">Raw</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
+            html += '<tr></thead><tbody>';
+            
+            var currentTeam = null;
+            
+            for (var i = 0; i < players.length; i++) {
+                var p = players[i];
+                
+                // Determine displayHcp (zero-rised)
+                var displayHcp = null;
+                if (p.finalHcp !== undefined && p.finalHcp !== null) {
+                    displayHcp = p.finalHcp;
+                } else if (p.newHcp !== undefined && p.newHcp !== null) {
+                    displayHcp = p.newHcp;
+                } else if (p.newAnchor !== undefined && p.newAnchor !== null) {
+                    displayHcp = p.newAnchor;
+                } else if (p.rawNew !== undefined && p.rawNew !== null) {
+                    if (hasNewAnchor && calculationResult.zeroRiseAmount) {
+                        displayHcp = p.rawNew + calculationResult.zeroRiseAmount;
+                    } else {
+                        displayHcp = p.rawNew;
+                    }
                 }
+                
+                if (displayHcp === null || displayHcp === undefined) {
+                    displayHcp = p.currentHcp;
+                }
+                
+                var startingHcp = p.currentHcp;
+                if (startingHcp === undefined || startingHcp === null) {
+                    startingHcp = p.startingHcp;
+                }
+                var stDisplayValue = (startingHcp !== undefined && startingHcp !== null) ? startingHcp : "?";
+                
+                var playerTeam = p.team || 'B';
+                var isAnchor = (p.name === anchorName);
+                var isFinalZero = (displayHcp === 0);
+                
+                if (playerTeam !== currentTeam) {
+                    currentTeam = playerTeam;
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    html += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
+                    html += '<td colspan="6" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
+                    html += '<tr>';
+                }
+                
+                var ancAdj = p.anchorAdj;
+                var ancRaw = p.anchorRaw;
+                var ancRawAbs = Math.abs(ancRaw);
+                var ancRawDisplay = ancRawAbs;
+                
+                var ancRawColor = '#888';
+                if (ancRaw > 0) {
+                    ancRawColor = '#4caf50';
+                } else if (ancRaw < 0) {
+                    ancRawColor = '#ff6b6b';
+                }
+                
+                var ancDisplayValue = '';
+                var ancAdjColor = '#888';
+                if (ancAdj < 0) {
+                    ancDisplayValue = Math.abs(ancAdj).toString();
+                    ancAdjColor = '#ff6b6b';
+                } else if (ancAdj > 0) {
+                    ancDisplayValue = ancAdj.toString();
+                    ancAdjColor = '#4caf50';
+                } else {
+                    ancDisplayValue = '0';
+                    ancAdjColor = '#888';
+                }
+                
+                var ancDisplay = ancDisplayValue + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
+                
+                var perfAdj = p.perfAdj;
+                var perfRaw = p.perfRaw;
+                var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
+                
+                var perfDisplayValue = '';
+                var perfAdjColor = '#888';
+                if (perfAdj < 0) {
+                    perfDisplayValue = Math.abs(perfAdj).toString();
+                    perfAdjColor = '#ff6b6b';
+                } else if (perfAdj > 0) {
+                    perfDisplayValue = perfAdj.toString();
+                    perfAdjColor = '#4caf50';
+                } else {
+                    perfDisplayValue = '0';
+                    perfAdjColor = '#888';
+                }
+                
+                var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
+                
+                // Raw value (before zero-rise)
+                var rawValue = p.rawNew !== undefined && p.rawNew !== null ? p.rawNew : '?';
+                
+                var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
+                var stColor = isAnchor ? '#ffaa44' : '#ffffff';
+                
+                html += '<tr style="border-bottom:1px solid #333;">';
+                html += '<td style="padding:6px 4px; text-align:left;">' + escapeHtml(p.label || p.name.substring(0, 3).toUpperCase()) + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + stColor + '; font-weight:600;">' + stDisplayValue + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + ancAdjColor + '; font-weight:600;">' + ancDisplay + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + perfAdjColor + '; font-weight:600;">' + perfDisplay + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: #ffaa44; font-weight:600;">' + rawValue + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + finalColor + '; font-weight:700;">' + displayHcp + '</td>';
+                html += '</tr>';
             }
             
-            if (displayHcp === null || displayHcp === undefined) {
-                displayHcp = p.currentHcp;
+            html += '</tbody></table></div>';
+            
+        // ============================================================
+        // OLD TABLE: No zero-rise → 5 columns (Label, Old, Anc, Perf, New)
+        // ============================================================
+        } else {
+            html += '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
+            html += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 340px;">';
+            
+            html += '<thead><tr style="background:#1a3a1a;">';
+            html += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Anc</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Perf</th>';
+            html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
+            html += '<tr></thead><tbody>';
+            
+            var currentTeam = null;
+            
+            for (var i = 0; i < players.length; i++) {
+                var p = players[i];
+                
+                var displayHcp = null;
+                if (p.finalHcp !== undefined && p.finalHcp !== null) {
+                    displayHcp = p.finalHcp;
+                } else if (p.newHcp !== undefined && p.newHcp !== null) {
+                    displayHcp = p.newHcp;
+                } else if (p.newAnchor !== undefined && p.newAnchor !== null) {
+                    displayHcp = p.newAnchor;
+                } else if (p.rawNew !== undefined && p.rawNew !== null) {
+                    if (hasNewAnchor && calculationResult.zeroRiseAmount) {
+                        displayHcp = p.rawNew + calculationResult.zeroRiseAmount;
+                    } else {
+                        displayHcp = p.rawNew;
+                    }
+                }
+                
+                if (displayHcp === null || displayHcp === undefined) {
+                    displayHcp = p.currentHcp;
+                }
+                
+                var startingHcp = p.currentHcp;
+                if (startingHcp === undefined || startingHcp === null) {
+                    startingHcp = p.startingHcp;
+                }
+                var stDisplayValue = (startingHcp !== undefined && startingHcp !== null) ? startingHcp : "?";
+                
+                var playerTeam = p.team || 'B';
+                var isAnchor = (p.name === anchorName);
+                var isFinalZero = (displayHcp === 0);
+                
+                if (playerTeam !== currentTeam) {
+                    currentTeam = playerTeam;
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    html += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
+                    html += '<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
+                    html += '<tr>';
+                }
+                
+                var ancAdj = p.anchorAdj;
+                var ancRaw = p.anchorRaw;
+                var ancRawAbs = Math.abs(ancRaw);
+                var ancRawDisplay = ancRawAbs;
+                
+                var ancRawColor = '#888';
+                if (ancRaw > 0) {
+                    ancRawColor = '#4caf50';
+                } else if (ancRaw < 0) {
+                    ancRawColor = '#ff6b6b';
+                }
+                
+                var ancDisplayValue = '';
+                var ancAdjColor = '#888';
+                if (ancAdj < 0) {
+                    ancDisplayValue = Math.abs(ancAdj).toString();
+                    ancAdjColor = '#ff6b6b';
+                } else if (ancAdj > 0) {
+                    ancDisplayValue = ancAdj.toString();
+                    ancAdjColor = '#4caf50';
+                } else {
+                    ancDisplayValue = '0';
+                    ancAdjColor = '#888';
+                }
+                
+                var ancDisplay = ancDisplayValue + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
+                
+                var perfAdj = p.perfAdj;
+                var perfRaw = p.perfRaw;
+                var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
+                
+                var perfDisplayValue = '';
+                var perfAdjColor = '#888';
+                if (perfAdj < 0) {
+                    perfDisplayValue = Math.abs(perfAdj).toString();
+                    perfAdjColor = '#ff6b6b';
+                } else if (perfAdj > 0) {
+                    perfDisplayValue = perfAdj.toString();
+                    perfAdjColor = '#4caf50';
+                } else {
+                    perfDisplayValue = '0';
+                    perfAdjColor = '#888';
+                }
+                
+                var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
+                
+                var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
+                var stColor = isAnchor ? '#ffaa44' : '#ffffff';
+                
+                html += '<tr style="border-bottom:1px solid #333;">';
+                html += '<td style="padding:6px 4px; text-align:left;">' + escapeHtml(p.label || p.name.substring(0, 3).toUpperCase()) + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + stColor + '; font-weight:600;">' + stDisplayValue + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + ancAdjColor + '; font-weight:600;">' + ancDisplay + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + perfAdjColor + '; font-weight:600;">' + perfDisplay + '</td>';
+                html += '<td style="padding:6px 4px; text-align:center; color: ' + finalColor + '; font-weight:700;">' + displayHcp + '</td>';
+                html += '</tr>';
             }
             
-            var startingHcp = p.currentHcp;
-            if (startingHcp === undefined || startingHcp === null) {
-                startingHcp = p.startingHcp;
-            }
-            var stDisplayValue = (startingHcp !== undefined && startingHcp !== null) ? startingHcp : "?";
-            
-            var playerTeam = p.team || 'B';
-            var isAnchor = (p.name === anchorName);
-            var isFinalZero = (displayHcp === 0);
-            
-            if (playerTeam !== currentTeam) {
-                currentTeam = playerTeam;
-                var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
-                html += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
-                html += '<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
-                html += '<tr>';
-            }
-            
-            var ancAdj = p.anchorAdj;
-            var ancRaw = p.anchorRaw;
-            var ancRawAbs = Math.abs(ancRaw);
-            
-            var ancRawDisplay = ancRawAbs;
-            
-            var ancRawColor = '#888';
-            if (ancRaw > 0) {
-                ancRawColor = '#4caf50';
-            } else if (ancRaw < 0) {
-                ancRawColor = '#ff6b6b';
-            }
-            
-            var ancDisplayValue = '';
-            var ancAdjColor = '#888';
-            if (ancAdj < 0) {
-                ancDisplayValue = Math.abs(ancAdj).toString();
-                ancAdjColor = '#ff6b6b';
-            } else if (ancAdj > 0) {
-                ancDisplayValue = ancAdj.toString();
-                ancAdjColor = '#4caf50';
-            } else {
-                ancDisplayValue = '0';
-                ancAdjColor = '#888';
-            }
-            
-            var ancDisplay = ancDisplayValue + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
-            
-            var perfAdj = p.perfAdj;
-            var perfRaw = p.perfRaw;
-            
-            var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
-            
-            var perfDisplayValue = '';
-            var perfAdjColor = '#888';
-            if (perfAdj < 0) {
-                perfDisplayValue = Math.abs(perfAdj).toString();
-                perfAdjColor = '#ff6b6b';
-            } else if (perfAdj > 0) {
-                perfDisplayValue = perfAdj.toString();
-                perfAdjColor = '#4caf50';
-            } else {
-                perfDisplayValue = '0';
-                perfAdjColor = '#888';
-            }
-            
-            var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
-            
-            var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
-            var stColor = isAnchor ? '#ffaa44' : '#ffffff';
-            
-            html += '<tr style="border-bottom:1px solid #333;">';
-            html += '<td style="padding:6px 4px; text-align:left;">' + escapeHtml(p.label || p.name.substring(0, 3).toUpperCase()) + '</td>';
-            html += '<td style="padding:6px 4px; text-align:center; color: ' + stColor + '; font-weight:600;">' + stDisplayValue + '</td>';
-            html += '<td style="padding:6px 4px; text-align:center; color: ' + ancAdjColor + '; font-weight:600;">' + ancDisplay + '</td>';
-            html += '<td style="padding:6px 4px; text-align:center; color: ' + perfAdjColor + '; font-weight:600;">' + perfDisplay + '</td>';
-            html += '<td style="padding:6px 4px; text-align:center; color: ' + finalColor + '; font-weight:700;">' + displayHcp + '</td>';
-            html += '</tr>';
+            html += '</tbody></table></div>';
         }
-        
-        html += '</tbody></table></div>';
         
         // v2.50: Set container HTML and make visible
         container.innerHTML = html;
@@ -531,6 +660,11 @@ var HandicapAdjustment = (function() {
         container.style.opacity = '1';
         
         console.log('[HCP-ADJUST] Table rendered to container:', containerId);
+        if (needsZeroRise) {
+            console.log('[HCP-ADJUST] Zero-rise applied - Raw column shown');
+        } else {
+            console.log('[HCP-ADJUST] No zero-rise - standard 5-column table');
+        }
     }
     
     // ============================================================
@@ -547,6 +681,7 @@ var HandicapAdjustment = (function() {
         // Original modal mode - preserve existing behavior
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
+        var needsZeroRise = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         
         players.sort(function(a, b) {
             var teamA = a.team || 'B';
@@ -1487,14 +1622,14 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.57";
+    window.HANDICAP_ADJUST_VERSION = "2.58";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
     // ============================================================
-    // v2.57: EXPOSE MULTIPLE_NEW_ANCHOR and background updater
+    // v2.58: EXPOSE MULTIPLE_NEW_ANCHOR and background updater
     // ============================================================
     return {
         init: init,
@@ -1516,16 +1651,16 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.57
-KEY CHANGES from v2.56:
-   - FIXED: usedLabels update logic now reads existing usedLabels and adds new labels
-   - CHANGED: updatePlayerRecordsInBackground() now reads current document first
-   - CHANGED: Merges new labels with existing usedLabels (doesn't overwrite)
-   - FIXED: Uses playerInformation/players.usedLabels (not separate collection)
-   - FIXED: No longer uses dot notation for usedLabels
-   - PRESERVED: ALL v2.56 functions and API unchanged
-   - PRESERVED: ALL existing functionality
-   - PRESERVED: WRV integration for reliable Firestore writes
+VERSION: 2.58
+KEY CHANGES from v2.57:
+   - ADDED: Zero-rise detection in renderTableToContainer()
+   - ADDED: NEW TABLE with Raw column when needsZeroRise === true
+   - ADDED: Horizontal scroll for new table (overflow-x: auto)
+   - PRESERVED: OLD TABLE (5 columns) for when no zero-rise needed
+   - PRESERVED: ALL existing functionality and API unchanged
+   - REASON: Raw column shows handicap before zero-rise
+   - REASON: Only show Raw column when zero-rise is actually applied
+   - REASON: Keep existing UI intact for non-zero-rise cases
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
