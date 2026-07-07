@@ -1,24 +1,22 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.37
-KEY CHANGES from v1.36:
-   - ADDED: ensureGameDataInitialized() helper to check GameData state
-   - FIXED: performSave() now verifies GameData is initialized before saving
-   - ADDED: Automatic GameData initialization from cache if not initialized
-   - ADDED: Better error handling for uninitialized GameData
-   - This prevents saves when GameData is not properly initialized
-   - Works with the fixes in GameData v4.13 and RealGameInit v1.07
-   - PRESERVED: ALL other functionality from v1.36 (nested flight data structure)
-DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
+VERSION: 1.38
+KEY CHANGES from v1.37:
+   - ADDED: Celebration photo check at EVERY hole save (fire-and-forget)
+   - CHANGED: performSave() now calls checkAndRenameCelebrationPhoto() after successful save
+   - REASON: Photo check must run in background at every hole, celebration-photo.js decides which holes to check
+   - REASON: Photo upload must start at H17 (or earlier) to complete before post-game
+   - PRESERVED: ALL other functionality from v1.37 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.37";
+window.REAL_GAME_SAVE_VERSION = "1.38";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.37 - GameData initialization verification");
+    console.log("[REAL-GAME-SAVE] Initializing v1.38 - Celebration photo check at every hole");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -245,7 +243,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.37] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.38] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -1018,7 +1016,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.37: Added GameData initialization verification
+    // performSave - v1.38: Added celebration photo check at every hole
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1272,6 +1270,28 @@ var RealGameSave = (function() {
                             Ticker.refresh();
                         }
                         
+                        // ============================================================
+                        // v1.38: CELEBRATION PHOTO CHECK AT EVERY HOLE
+                        // Fire-and-forget - runs in background after UI is updated
+                        // celebration-photo.js decides if this hole is a check hole
+                        // ============================================================
+                        if (typeof checkAndRenameCelebrationPhoto === 'function') {
+                            // Small delay to ensure UI is fully rendered before background work
+                            setTimeout(function() {
+                                var photoGameId = RealGameState.getGameId();
+                                console.log('[SAVE] 📸 Background photo check for hole', currentHole);
+                                checkAndRenameCelebrationPhoto(photoGameId, currentHole, function(err) {
+                                    if (err) {
+                                        console.warn('[SAVE] ❌ Photo check failed at H' + currentHole + ':', err.message || err);
+                                    } else {
+                                        console.log('[SAVE] ✅ Photo check completed at H' + currentHole);
+                                    }
+                                });
+                            }, 200);
+                        } else {
+                            console.log('[SAVE] ℹ️ checkAndRenameCelebrationPhoto not available - skipping photo check');
+                        }
+                        
                         console.log(`[DEBUG-SAVE] =========================================`);
                         console.log(`[DEBUG-SAVE] performSave COMPLETE for hole ${currentHole}`);
                         console.log(`[DEBUG-SAVE] =========================================`);
@@ -1411,8 +1431,7 @@ var RealGameSave = (function() {
             debugDiv.innerHTML = `⏳ Resuming ${pendingData.pendingWrites.length} pending updates...`;
         }
         
-        // v1.36: Get full cache with all required fields
-        var resultsCache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        // v1.36: Get full cache with all required fields        var resultsCache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (!resultsCache) {
             // Initialize a complete cache structure with all required fields
             resultsCache = { 
@@ -1525,15 +1544,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.37
-KEY CHANGES from v1.36:
-   - ADDED: ensureGameDataInitialized() helper to check GameData state
-   - FIXED: performSave() now verifies GameData is initialized before saving
-   - ADDED: Automatic GameData initialization from cache if not initialized
-   - ADDED: Better error handling for uninitialized GameData
-   - This prevents saves when GameData is not properly initialized
-   - Works with the fixes in GameData v4.13 and RealGameInit v1.07
-   - PRESERVED: ALL other functionality from v1.36 (nested flight data structure)
-DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
+VERSION: 1.38
+KEY CHANGES from v1.37:
+   - ADDED: Celebration photo check at EVERY hole save (fire-and-forget)
+   - CHANGED: performSave() now calls checkAndRenameCelebrationPhoto() after successful save
+   - REASON: Photo check must run in background at every hole, celebration-photo.js decides which holes to check
+   - REASON: Photo upload must start at H17 (or earlier) to complete before post-game
+   - PRESERVED: ALL other functionality from v1.37 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
