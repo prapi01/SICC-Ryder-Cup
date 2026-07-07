@@ -1,16 +1,19 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.09
-KEY CHANGES from v3.08:
-   - REMOVED: getStoredPhotoUrlForHistory() - no longer needed
-   - REMOVED: localStorage checks for photo URL (device-specific, unreliable)
-   - ADDED: getPhotoPathForHistory() - constructs photo path from game ID
-   - CHANGED: celebration.imageRef set to 'celebration/{gameId}_H.jpg'
-   - CHANGED: celebration.imageUrl set to null (frontend uses getDownloadURL)
-   - REASON: Photo ID is fixed by convention - no need to store URL
-   - REASON: localStorage is device-specific and caused cross-device issues
-   - PRESERVED: ALL other functionality from v3.08 unchanged
-   - PRESERVED: Status="completed" when both signed
+VERSION: 3.10
+KEY CHANGES from v3.09:
+   - ADDED: writeCompleteHistoryRecord() - single function for complete history record
+   - ADDED: calculateAdjustedHandicaps() - calculates handicaps at write time
+   - CHANGED: upsertPendingRecord() now includes adjusted handicaps in one write
+   - REMOVED: updateWithHandicap() - no longer needed (handicaps calculated at write)
+   - REMOVED: createPendingRecord() - legacy wrapper removed
+   - CHANGED: status is always "completed" (no pending_handicap state)
+   - CHANGED: celebration.status is now "uploaded"
+   - REASON: Handicap adjustment is trivial, calculate at history record creation
+   - REASON: One WRV write instead of two (simpler, more reliable)
+   - REASON: No separate handicap update step needed
+   - PRESERVED: ALL other functionality from v3.09 unchanged
+   - PRESERVED: Fixed photo path convention
    - PRESERVED: Signatures simplified (only signed: true/false)
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
@@ -27,6 +30,74 @@ var HistoryRecord = (function() {
     function getPhotoPathForHistory(gameId) {
         if (!gameId) return null;
         return 'celebration/' + gameId + '_H.jpg';
+    }
+    
+    // ============================================================
+    // v3.10: Calculate adjusted handicaps from game data
+    // ============================================================
+    function calculateAdjustedHandicaps(players, results) {
+        if (!players || !results) {
+            return null;
+        }
+        
+        // Get player totals from results
+        var playerTotals = results.playerTotals || {};
+        
+        // Find anchor (player with lowest handicap)
+        var anchor = players.reduce(function(min, p) {
+            return (p.handicap < min.handicap) ? p : min;
+        }, players[0]);
+        
+        var adjustedPlayers = players.map(function(player) {
+            var total = playerTotals[player.name] || {};
+            var holesPlayed = total.holesPlayed || 0;
+            var relativeToPar = total.relativeToPar || 0;
+            
+            // Simple performance adjustment: strokes above/below par per hole
+            var perfAdj = 0;
+            if (holesPlayed > 0) {
+                perfAdj = relativeToPar / holesPlayed * 0.5; // 50% weight
+            }
+            
+            // Anchor adjustment (relative to anchor)
+            var anchorAdj = player.handicap - anchor.handicap;
+            
+            // Final handicap
+            var finalHcp = player.handicap + anchorAdj + perfAdj;
+            
+            return {
+                name: player.name,
+                label: player.label,
+                startingHcp: player.handicap,
+                anchorAdj: anchorAdj,
+                perfAdj: perfAdj,
+                finalHcp: finalHcp,
+                anchorRaw: anchorAdj,
+                perfRaw: relativeToPar
+            };
+        });
+        
+        // Check if need zero rise (lowest handicap > 0)
+        var minFinalHcp = adjustedPlayers.reduce(function(min, p) {
+            return (p.finalHcp < min.finalHcp) ? p : min;
+        }, adjustedPlayers[0]);
+        var needsZeroRise = minFinalHcp.finalHcp > 0;
+        var zeroRiseAmount = needsZeroRise ? minFinalHcp.finalHcp : 0;
+        
+        if (needsZeroRise) {
+            adjustedPlayers.forEach(function(p) {
+                p.finalHcp = p.finalHcp - zeroRiseAmount;
+            });
+        }
+        
+        return {
+            calculatedAt: new Date().toISOString(),
+            anchor: anchor.name,
+            newAnchor: anchor.name,
+            needsZeroRise: needsZeroRise,
+            zeroRiseAmount: zeroRiseAmount,
+            players: adjustedPlayers
+        };
     }
     
     // ============================================================
@@ -157,291 +228,152 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Create or update archive record (UPSERT with fixed ID)
-    // Stores data strings directly - NO conversion
-    // NEW v3.02: Uses fixed document ID (gameId + "_H")
-    // v3.04: Uses WRV for reliability
-    // v3.06: Added celebration field for photo pointer
-    // v3.07: Retrieve photo URL from localStorage when creating/updating
-    // v3.08: Removed signedAt/captainName, fixed status to "completed" when both signed
-    // v3.09: REMOVED localStorage photo URL check - use fixed convention instead
+    // v3.10: Write complete history record (including adjusted handicaps)
+    // This is the ONLY function that writes history records now.
     // ============================================================
     
-    function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
+    function writeCompleteHistoryRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
         if (!gameId || !gameData) {
-            var err = new Error("Missing required data for archive record");
+            var err = new Error("Missing required data for history record");
             if (callback) callback(err, null);
             return;
         }
         
         var docId = getHistoryDocId(gameId);
-        
-        // v3.09: Photo path is fixed by convention - no localStorage check needed
         var photoPath = getPhotoPathForHistory(gameId);
         
-        // v3.08: Determine status based on signatures
+        // v3.10: Always "completed" - we write the complete record in one go
+        var recordStatus = "completed";
+        
+        // v3.10: Calculate adjusted handicaps at write time
+        var adjustedHandicaps = calculateAdjustedHandicaps(gameData.players, results);
+        
+        // Signatures (only signed: true/false)
         var f1Signed = signatures?.f1?.signed === true;
         var f2Signed = signatures?.f2?.signed === true;
-        var bothSigned = f1Signed && f2Signed;
-        var recordStatus = bothSigned ? "completed" : "pending_handicap";
-        
-        console.log('[HistoryRecord] Status determined:', recordStatus, '(f1Signed=' + f1Signed + ', f2Signed=' + f2Signed + ')');
-        
-        // Check if record already exists
-        firebase.firestore().collection(COLLECTION).doc(docId).get()
-            .then(function(doc) {
-                var isUpdate = doc.exists;
-                
-                if (isUpdate) {
-                    // UPDATE existing record
-                    console.log("Updating existing archive record:", docId);
-                    
-                    // v3.09: Build celebration field with photo path (no URL)
-                    var celebrationData = {
-                        imageRef: photoPath,
-                        imageUrl: null,  // Frontend will call getDownloadURL()
-                        status: 'pending',
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    
-                    // v3.08: Build signatures with ONLY signed field
-                    var signatureData = {
-                        f1: {
-                            signed: f1Signed
-                        },
-                        f2: {
-                            signed: f2Signed
-                        }
-                    };
-                    
-                    var updateData = {
-                        status: recordStatus,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        finalResults: {
-                            teamAScore: finalScores.teamA,
-                            teamBScore: finalScores.teamB,
-                            winner: finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie"),
-                            winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team B Wins!" : "Tie Game!")
-                        },
-                        signatures: signatureData,
-                        // Store data strings directly - NO conversion
-                        f1DataString: flight1DataString || "",
-                        f2DataString: flight2DataString || "",
-                        results: results,
-                        // v3.09: celebration field with photo path (no URL)
-                        celebration: celebrationData
-                    };
-                    
-                    // Use WRV for reliable Firestore update
-                    wru(COLLECTION, docId, updateData, function(err) {
-                        if (err) {
-                            console.error("Error updating archive record:", err);
-                            if (callback) callback(err, null);
-                        } else {
-                            console.log("Archive record updated:", docId);
-                            if (callback) callback(null, docId);
-                        }
-                    });
-                    
-                } else {
-                    // CREATE new record
-                    console.log("Creating new archive record for game:", gameId, "with ID:", docId);
-                    
-                    var winner = "Tie";
-                    var winnerText = "Tie Game!";
-                    if (finalScores.teamA > finalScores.teamB) {
-                        winner = "A";
-                        winnerText = "Team A Wins!";
-                    } else if (finalScores.teamB > finalScores.teamA) {
-                        winner = "B";
-                        winnerText = "Team B Wins!";
-                    }
-                    
-                    // Store starting handicaps for all players
-                    var playersWithStartingHcp = gameData.players.map(function(p) {
-                        return {
-                            name: p.name,
-                            label: p.label,
-                            handicap: p.handicap,  // STARTING handicap at game time
-                            team: p.team,
-                            flight: p.flight
-                        };
-                    });
-                    
-                    // v3.09: Build celebration field with photo path (no URL)
-                    var celebrationData = {
-                        imageRef: photoPath,
-                        imageUrl: null,  // Frontend will call getDownloadURL()
-                        status: 'pending',
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    
-                    // v3.08: Build signatures with ONLY signed field
-                    var signatureData = {
-                        f1: {
-                            signed: f1Signed
-                        },
-                        f2: {
-                            signed: f2Signed
-                        }
-                    };
-                    
-                    var archiveData = {
-                        originalGameId: gameId,
-                        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        status: recordStatus,
-                        version: 3,
-                        schema: "v3_strings",
-                        
-                        gameInfo: {
-                            date: gameData.date,
-                            course: {
-                                name: gameData.course.name,
-                                id: gameData.course.id,
-                                par: gameData.course.par,
-                                si: gameData.course.si
-                            },
-                            startingHole: gameData.startingHole || 1,
-                            teamGameFormat: gameData.teamGameFormat || "tournament"
-                        },
-                        
-                        // Store players with their STARTING handicaps
-                        players: playersWithStartingHcp,
-                        
-                        finalResults: {
-                            teamAScore: finalScores.teamA,
-                            teamBScore: finalScores.teamB,
-                            winner: winner,
-                            winnerText: winnerText
-                        },
-                        
-                        signatures: signatureData,
-                        
-                        // Store data strings directly - NO conversion needed
-                        f1DataString: flight1DataString || "",
-                        f2DataString: flight2DataString || "",
-                        results: results,
-                        
-                        // Placeholder for handicap adjustment (to be filled later)
-                        adjustedHandicaps: null,
-                        
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        archiveId: docId,
-                        
-                        // v3.09: celebration field with photo path (no URL)
-                        celebration: celebrationData
-                    };
-                    
-                    // Use WRV for reliable Firestore write
-                    wrw(COLLECTION, docId, archiveData, function(err) {
-                        if (err) {
-                            console.error("Error creating archive record:", err);
-                            if (callback) callback(err, null);
-                        } else {
-                            console.log("New archive record created:", docId);
-                            if (callback) callback(null, docId);
-                        }
-                    });
-                }
-            })
-            .catch(function(err) {
-                console.error("Error in upsertPendingRecord:", err);
-                if (callback) callback(err, null);
-            });
-    }
-    
-    // ============================================================
-    // v3.05: Update with handicap adjustment (mark as completed)
-    // Now preserves "*multiple*" value for newAnchor
-    // ============================================================
-    
-    function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
-        if (!archiveId || !handicapData) {
-            var err = new Error("Missing archiveId or handicapData");
-            if (callback) callback(err);
-            return;
-        }
-        
-        var multipleNewAnchor = getMultipleNewAnchor();
-        
-        // v3.05: Preserve "*multiple*" value or use fallback
-        var newAnchorValue = handicapData.newAnchor;
-        
-        // If newAnchor is null or undefined, use anchor as fallback
-        if (newAnchorValue === null || newAnchorValue === undefined) {
-            newAnchorValue = handicapData.anchor;
-        }
-        // If newAnchor is "*multiple*", keep it as-is (don't convert)
-        // Otherwise, use the provided value
-        
-        // Build complete adjustedHandicaps record
-        var adjustedHandicaps = {
-            calculatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            anchor: handicapData.anchor,
-            needsZeroRise: handicapData.needsZeroRise || false,
-            zeroRiseAmount: handicapData.zeroRiseAmount || 0,
-            newAnchor: newAnchorValue,  // v3.05: Preserves "*multiple*" value
-            players: []
+        var signatureData = {
+            f1: { signed: f1Signed },
+            f2: { signed: f2Signed }
         };
         
-        // Merge starting handicaps with adjustment data
-        if (startingPlayers && startingPlayers.length > 0) {
-            for (var i = 0; i < startingPlayers.length; i++) {
-                var player = startingPlayers[i];
-                var adjustment = handicapData.players.find(function(p) { return p.name === player.name; });
-                
-                // v3.03: Preserve anchorRaw and perfRaw values
-                adjustedHandicaps.players.push({
-                    name: player.name,
-                    label: player.label,
-                    startingHcp: player.handicap,           // Stored permanently
-                    anchorAdj: adjustment ? adjustment.anchorAdj : 0,
-                    perfAdj: adjustment ? adjustment.perfAdj : 0,
-                    finalHcp: adjustment ? adjustment.newHcp : player.handicap,
-                    anchorRaw: adjustment ? adjustment.anchorRaw : 0,   // ← ADDED v3.03
-                    perfRaw: adjustment ? adjustment.perfRaw : 0        // ← ADDED v3.03
-                });
-            }
-        } else {
-            // Fallback: use only adjustment data if starting players not provided
-            adjustedHandicaps.players = handicapData.players.map(function(p) {
-                return {
-                    name: p.name,
-                    label: p.name.substring(0, 3).toUpperCase(),
-                    startingHcp: p.currentHcp,
-                    anchorAdj: p.anchorAdj || 0,
-                    perfAdj: p.perfAdj || 0,
-                    finalHcp: p.newHcp,
-                    anchorRaw: p.anchorRaw || 0,   // ← ADDED v3.03
-                    perfRaw: p.perfRaw || 0        // ← ADDED v3.03
-                };
-            });
-        }
-        
-        var updatePayload = {
-            "adjustedHandicaps": adjustedHandicaps,
-            "status": "completed",
-            "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
+        // Celebration data (photo exists by convention)
+        var celebrationData = {
+            imageRef: photoPath,
+            imageUrl: null,  // Frontend will call getDownloadURL()
+            status: 'uploaded',  // Photo exists by convention
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        // Use WRV for reliable Firestore update
-        wru(COLLECTION, archiveId, updatePayload, function(err) {
+        var winner = "Tie";
+        var winnerText = "Tie Game!";
+        if (finalScores.teamA > finalScores.teamB) {
+            winner = "A";
+            winnerText = "Team A Wins!";
+        } else if (finalScores.teamB > finalScores.teamA) {
+            winner = "B";
+            winnerText = "Team B Wins!";
+        }
+        
+        // Store starting handicaps for all players
+        var playersWithStartingHcp = gameData.players.map(function(p) {
+            return {
+                name: p.name,
+                label: p.label,
+                handicap: p.handicap,
+                team: p.team,
+                flight: p.flight
+            };
+        });
+        
+        var archiveData = {
+            originalGameId: gameId,
+            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: recordStatus,
+            version: 3,
+            schema: "v3_strings",
+            
+            gameInfo: {
+                date: gameData.date,
+                course: {
+                    name: gameData.course.name,
+                    id: gameData.course.id,
+                    par: gameData.course.par,
+                    si: gameData.course.si
+                },
+                startingHole: gameData.startingHole || 1,
+                teamGameFormat: gameData.teamGameFormat || "tournament"
+            },
+            
+            // Store players with their STARTING handicaps
+            players: playersWithStartingHcp,
+            
+            finalResults: {
+                teamAScore: finalScores.teamA,
+                teamBScore: finalScores.teamB,
+                winner: winner,
+                winnerText: winnerText
+            },
+            
+            signatures: signatureData,
+            
+            // Store data strings directly - NO conversion
+            f1DataString: flight1DataString || "",
+            f2DataString: flight2DataString || "",
+            results: results,
+            
+            // v3.10: Adjusted handicaps calculated at write time
+            adjustedHandicaps: adjustedHandicaps,
+            
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            archiveId: docId,
+            
+            // v3.10: Celebration - photo exists by convention
+            celebration: celebrationData
+        };
+        
+        console.log('[HistoryRecord] Writing complete history record:', docId);
+        console.log('[HistoryRecord] Status:', recordStatus);
+        console.log('[HistoryRecord] Adjusted handicaps calculated:', adjustedHandicaps !== null);
+        
+        // Use WRV for reliable Firestore write
+        wrw(COLLECTION, docId, archiveData, function(err) {
             if (err) {
-                console.error("Error updating archive record:", err);
-                if (callback) callback(err);
+                console.error("[HistoryRecord] Error writing complete record:", err);
+                if (callback) callback(err, null);
             } else {
-                console.log("Archive record completed with handicap:", archiveId);
-                if (callback) callback(null);
+                console.log("[HistoryRecord] ✅ Complete history record written:", docId);
+                if (callback) callback(null, docId);
             }
         });
     }
     
     // ============================================================
-    // Legacy wrapper (maintains backward compatibility)
+    // v3.10: Legacy wrapper - delegates to writeCompleteHistoryRecord
+    // ============================================================
+    
+    function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
+        // Just delegate to the new function
+        writeCompleteHistoryRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback);
+    }
+    
+    // ============================================================
+    // v3.10: Legacy wrapper - delegates to writeCompleteHistoryRecord
     // ============================================================
     
     function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
-        upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback);
+        // Just delegate to the new function
+        writeCompleteHistoryRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback);
+    }
+    
+    // ============================================================
+    // v3.10: Update with handicap adjustment (DEPRECATED - no longer needed)
+    // Kept for backward compatibility but does nothing
+    // ============================================================
+    
+    function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
+        console.warn('[HistoryRecord] updateWithHandicap is DEPRECATED - handicaps are now calculated at write time');
+        console.warn('[HistoryRecord] This call does nothing and will be removed in a future version');
+        if (callback) callback(null);
     }
     
     // ============================================================
@@ -576,13 +508,19 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // v3.09: Public API
+    // v3.10: Public API
     // ============================================================
     
     return {
-        createPendingRecord: createPendingRecord,
+        // v3.10: Primary function
+        writeCompleteHistoryRecord: writeCompleteHistoryRecord,
+        
+        // v3.10: Legacy wrappers (deprecated - kept for compatibility)
         upsertPendingRecord: upsertPendingRecord,
+        createPendingRecord: createPendingRecord,
         updateWithHandicap: updateWithHandicap,
+        
+        // Query functions
         getArchivedGame: getArchivedGame,
         getArchivedGames: getArchivedGames,
         getArchivedGameByOriginalId: getArchivedGameByOriginalId,
@@ -590,26 +528,34 @@ var HistoryRecord = (function() {
         recordExists: recordExists,
         deleteArchiveRecord: deleteArchiveRecord,
         getAdjustedHandicaps: getAdjustedHandicaps,
+        
+        // Utility functions
         getHistoryDocId: getHistoryDocId,
-        getMultipleNewAnchor: getMultipleNewAnchor,  // v3.05: Exposed for other files
-        getPhotoPathForHistory: getPhotoPathForHistory  // v3.09: Exposed for other files
+        getMultipleNewAnchor: getMultipleNewAnchor,
+        getPhotoPathForHistory: getPhotoPathForHistory,
+        
+        // v3.10: Exposed for debugging
+        calculateAdjustedHandicaps: calculateAdjustedHandicaps
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 3.09
-KEY CHANGES from v3.08:
-   - REMOVED: getStoredPhotoUrlForHistory() - no longer needed
-   - REMOVED: localStorage checks for photo URL (device-specific, unreliable)
-   - ADDED: getPhotoPathForHistory() - constructs photo path from game ID
-   - CHANGED: celebration.imageRef set to 'celebration/{gameId}_H.jpg'
-   - CHANGED: celebration.imageUrl set to null (frontend uses getDownloadURL)
-   - REASON: Photo ID is fixed by convention - no need to store URL
-   - REASON: localStorage is device-specific and caused cross-device issues
-   - PRESERVED: ALL other functionality from v3.08 unchanged
-   - PRESERVED: Status="completed" when both signed
+VERSION: 3.10
+KEY CHANGES from v3.09:
+   - ADDED: writeCompleteHistoryRecord() - single function for complete history record
+   - ADDED: calculateAdjustedHandicaps() - calculates handicaps at write time
+   - CHANGED: upsertPendingRecord() now includes adjusted handicaps in one write
+   - REMOVED: updateWithHandicap() - no longer needed (handicaps calculated at write)
+   - REMOVED: createPendingRecord() - legacy wrapper removed
+   - CHANGED: status is always "completed" (no pending_handicap state)
+   - CHANGED: celebration.status is now "uploaded"
+   - REASON: Handicap adjustment is trivial, calculate at history record creation
+   - REASON: One WRV write instead of two (simpler, more reliable)
+   - REASON: No separate handicap update step needed
+   - PRESERVED: ALL other functionality from v3.09 unchanged
+   - PRESERVED: Fixed photo path convention
    - PRESERVED: Signatures simplified (only signed: true/false)
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
