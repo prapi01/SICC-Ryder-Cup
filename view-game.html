@@ -3,11 +3,12 @@ FILE: view-game.html
 VERSION: 7.44
 KEY CHANGES from v7.43:
    - REMOVED: Auto-redirect from init() - no longer redirects on page load
+   - PRESERVED: ALL other functionality from v7.43 unchanged
    - PRESERVED: RESULT button flow in renderCompactHeader() and nextHole()
    - PRESERVED: Realtime listener redirect (when game JUST completes)
+   - PRESERVED: restoreCacheFromSession(), saveCacheToSessionStorage()
    - REASON: Scorecard button from hcp-adjust should show scorecard, not auto-redirect
    - REASON: User should see RESULT button and click it manually
-   - PRESERVED: ALL other functionality from v7.43 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -1087,7 +1088,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v7.43: Real-time Firestore Listener - Fixed signature detection
+// v7.44: Real-time Firestore Listener - Fixed signature detection
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1510,11 +1511,11 @@ FILE: view-game.html
 VERSION: 7.44
 KEY CHANGES from v7.43:
    - REMOVED: Auto-redirect from init() - no longer redirects on page load
+   - PRESERVED: ALL other functionality from v7.43 unchanged
    - PRESERVED: RESULT button flow in renderCompactHeader() and nextHole()
    - PRESERVED: Realtime listener redirect (when game JUST completes)
    - REASON: Scorecard button from hcp-adjust should show scorecard, not auto-redirect
    - REASON: User should see RESULT button and click it manually
-   - PRESERVED: ALL other functionality from v7.43 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
