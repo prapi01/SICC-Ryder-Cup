@@ -9,7 +9,7 @@ KEY CHANGES from v1.07:
    - PRESERVED: ALL other functionality from v1.07 unchanged
    - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
-STATUS: Ready for integration
+STATUS: Ready for integration 
 */
 
 window.CELEBRATION_PHOTO_VERSION = "1.08";
