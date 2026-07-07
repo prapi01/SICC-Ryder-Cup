@@ -1,22 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - ADDED: Celebration photo check at EVERY hole save (fire-and-forget)
-   - CHANGED: performSave() now calls checkAndRenameCelebrationPhoto() after successful save
-   - REASON: Photo check must run in background at every hole, celebration-photo.js decides which holes to check
-   - REASON: Photo upload must start at H17 (or earlier) to complete before post-game
-   - PRESERVED: ALL other functionality from v1.37 unchanged
+VERSION: 1.39
+KEY CHANGES from v1.38:
+   - ADDED: Celebration photo check during cascade processing
+   - CHANGED: Moved photo check to a reusable function triggerPhotoCheck()
+   - CHANGED: Photo check now runs at EVERY hole save AND during cascade
+   - REASON: Since we now check at every hole, cascade must also trigger photo check
+   - REASON: Ensures photo is uploaded even if H17 triggers a cascade
+   - PRESERVED: ALL other functionality from v1.38 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.38";
+window.REAL_GAME_SAVE_VERSION = "1.39";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.38 - Celebration photo check at every hole");
+    console.log("[REAL-GAME-SAVE] Initializing v1.39 - Photo check during cascade");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -166,6 +167,33 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
+    // v1.39: Reusable photo check trigger
+    // ============================================================
+    function triggerPhotoCheck(holeNumber, context) {
+        if (typeof checkAndRenameCelebrationPhoto === 'function') {
+            var photoGameId = RealGameState.getGameId();
+            if (!photoGameId) {
+                console.log('[SAVE] ℹ️ No gameId available - skipping photo check');
+                return;
+            }
+            
+            // Small delay to ensure UI is fully rendered before background work
+            setTimeout(function() {
+                console.log('[SAVE] 📸 Background photo check' + (context ? ' (' + context + ')' : '') + ' for hole', holeNumber);
+                checkAndRenameCelebrationPhoto(photoGameId, holeNumber, function(err) {
+                    if (err) {
+                        console.warn('[SAVE] ❌ Photo check failed' + (context ? ' (' + context + ')' : '') + ' at H' + holeNumber + ':', err.message || err);
+                    } else {
+                        console.log('[SAVE] ✅ Photo check completed' + (context ? ' (' + context + ')' : '') + ' at H' + holeNumber);
+                    }
+                });
+            }, 200);
+        } else {
+            console.log('[SAVE] ℹ️ checkAndRenameCelebrationPhoto not available - skipping photo check');
+        }
+    }
+    
+    // ============================================================
     // v1.37: ensureGameDataInitialized - Verify GameData is ready
     // ============================================================
     
@@ -243,7 +271,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.38] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.39] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -1016,7 +1044,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.38: Added celebration photo check at every hole
+    // performSave - v1.39: Added celebration photo check during cascade
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1245,6 +1273,10 @@ var RealGameSave = (function() {
                             console.log(`[DEBUG-SAVE] --- CASCADE COMPLETE - Updating UI once ---`);
                             if (renderAllCallback) renderAllCallback();
                             
+                            // v1.39: Photo check after cascade completes
+                            // Use the original hole that triggered the cascade
+                            triggerPhotoCheck(currentHole, 'cascade');
+                            
                         } else {
                             console.log(`[DEBUG-SAVE] --- No cascade needed (new hole or position >= lastSyncedPos)`);
                         }
@@ -1271,26 +1303,17 @@ var RealGameSave = (function() {
                         }
                         
                         // ============================================================
-                        // v1.38: CELEBRATION PHOTO CHECK AT EVERY HOLE
+                        // v1.39: CELEBRATION PHOTO CHECK AT EVERY HOLE
                         // Fire-and-forget - runs in background after UI is updated
-                        // celebration-photo.js decides if this hole is a check hole
+                        // Uses reusable triggerPhotoCheck() function
                         // ============================================================
-                        if (typeof checkAndRenameCelebrationPhoto === 'function') {
-                            // Small delay to ensure UI is fully rendered before background work
-                            setTimeout(function() {
-                                var photoGameId = RealGameState.getGameId();
-                                console.log('[SAVE] 📸 Background photo check for hole', currentHole);
-                                checkAndRenameCelebrationPhoto(photoGameId, currentHole, function(err) {
-                                    if (err) {
-                                        console.warn('[SAVE] ❌ Photo check failed at H' + currentHole + ':', err.message || err);
-                                    } else {
-                                        console.log('[SAVE] ✅ Photo check completed at H' + currentHole);
-                                    }
-                                });
-                            }, 200);
-                        } else {
-                            console.log('[SAVE] ℹ️ checkAndRenameCelebrationPhoto not available - skipping photo check');
+                        // v1.39: Only trigger photo check if we're NOT in cascade (already triggered above)
+                        // If we're in cascade, the photo check was already triggered after cascade completion
+                        if (currentPosition >= lastSyncedPos) {
+                            // Normal save (no cascade) - trigger photo check
+                            triggerPhotoCheck(currentHole, 'normal');
                         }
+                        // If cascade, photo check already triggered inside the cascade block above
                         
                         console.log(`[DEBUG-SAVE] =========================================`);
                         console.log(`[DEBUG-SAVE] performSave COMPLETE for hole ${currentHole}`);
@@ -1544,13 +1567,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - ADDED: Celebration photo check at EVERY hole save (fire-and-forget)
-   - CHANGED: performSave() now calls checkAndRenameCelebrationPhoto() after successful save
-   - REASON: Photo check must run in background at every hole, celebration-photo.js decides which holes to check
-   - REASON: Photo upload must start at H17 (or earlier) to complete before post-game
-   - PRESERVED: ALL other functionality from v1.37 unchanged
+VERSION: 1.39
+KEY CHANGES from v1.38:
+   - ADDED: Celebration photo check during cascade processing
+   - CHANGED: Moved photo check to a reusable function triggerPhotoCheck()
+   - CHANGED: Photo check now runs at EVERY hole save AND during cascade
+   - REASON: Since we now check at every hole, cascade must also trigger photo check
+   - REASON: Ensures photo is uploaded even if H17 triggers a cascade
+   - PRESERVED: ALL other functionality from v1.38 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
