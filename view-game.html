@@ -1,12 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 7.44
+VERSION: 8.00
 KEY CHANGES from v7.43:
-   - REMOVED: Auto-redirect from init() - no longer redirects on page load
+   - REMOVED: Auto-redirect block from init() that checked isGameCompletedFromCache()
+   - REMOVED: Auto-redirect from onCacheUpdate() 
+   - REMOVED: Auto-redirect from setupRealtimeListener()
    - PRESERVED: ALL other functionality from v7.43 unchanged
    - PRESERVED: RESULT button flow in renderCompactHeader() and nextHole()
-   - PRESERVED: Realtime listener redirect (when game JUST completes)
-   - PRESERVED: restoreCacheFromSession(), saveCacheToSessionStorage()
+   - PRESERVED: Realtime listener (updates state but does NOT auto-redirect)
+   - PRESERVED: onCacheUpdate() (updates state but does NOT auto-redirect)
    - REASON: Scorecard button from hcp-adjust should show scorecard, not auto-redirect
    - REASON: User should see RESULT button and click it manually
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
@@ -22,9 +24,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.44"></script>
-    <script src="js/session.js?v=7.44"></script>
-    <script src="js/settings.js?v=7.44"></script>
+    <script src="js/firebase-config.js?v=8.00"></script>
+    <script src="js/session.js?v=8.00"></script>
+    <script src="js/settings.js?v=8.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -33,11 +35,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=7.44"></script>
-    <script src="js/history-record.js?v=7.44"></script>
-    <script src="js/sign-card.js?v=1.29"></script>
-    <script src="js/hcp-adjust.js?v=7.44"></script>
-    <script src="js/modal.js?v=7.44"></script>
+    <script src="js/ticker.js?v=8.00"></script>
+    <script src="js/history-record.js?v=8.00"></script>
+    <script src="js/sign-card.js?v=1.28"></script>
+    <script src="js/hcp-adjust.js?v=8.00"></script>
+    <script src="js/modal.js?v=8.00"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -158,14 +160,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.44</div>
+<div class="version-tag">v8.00</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.44: Remove auto-redirect from init()
+// VERSION CACHE-BUSTING - v8.00: Remove auto-redirect from init()
 // ============================================================
-var APP_VERSION = "7.44";
-var CACHE_KEY = "view_game_version_v744";
+var APP_VERSION = "8.00";
+var CACHE_KEY = "view_game_version_v800";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -183,8 +185,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.44";
-console.log("[VIEW-GAME] Initializing v7.44 - Remove auto-redirect from init()");
+window.VIEW_GAME_VERSION = "8.00";
+console.log("[VIEW-GAME] Initializing v8.00 - Remove auto-redirect from init()");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1088,7 +1090,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v7.44: Real-time Firestore Listener - Fixed signature detection
+// v7.43: Real-time Firestore Listener - Fixed signature detection
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1156,12 +1158,8 @@ function setupRealtimeListener() {
                         var wasComplete = gameCompleteFlag;
                         gameCompleteFlag = bothSigned || (cache.status === "completed");
                         
-                        if (gameCompleteFlag && !wasComplete && !hasSwitchedToHistory) {
-                            console.log("[VIEW-GAME] 🏆 BOTH SIGNATURES DETECTED! Redirecting to post-game.html");
-                            // v7.43: Redirect to post-game.html (Game Complete modal is shown there)
-                            showGameCompleteModal();
-                            return; // Stop processing - redirect will happen
-                        }
+                        // v8.00: NO AUTO-REDIRECT - User clicks RESULT button manually
+                        // Just update state and UI
                         
                         // Update UI
                         isPostGameContext = checkPostGameContext(cache);
@@ -1364,19 +1362,15 @@ function onCacheUpdate(cache) {
     
     console.log("[VIEW-GAME] onCacheUpdate: f1:", f1Signed, "f2:", f2Signed, "bothSigned:", bothSigned, "gameCompleteFlag:", gameCompleteFlag);
     
-    // v7.43: If both signed and not already redirected, redirect to post-game
-    if (gameCompleteFlag && !wasComplete && !hasSwitchedToHistory) {
-        console.log("[VIEW-GAME] onCacheUpdate: Both signed detected - redirecting to post-game.html");
-        showGameCompleteModal();
-        return;
-    }
+    // v8.00: NO AUTO-REDIRECT - User clicks RESULT button manually
+    // Just update UI
     
     renderCompactHeader();
     renderAll();
 }
 
 // ============================================================
-// v7.44: Initialization - No auto-redirect, RESULT button flow only
+// v8.00: Initialization - NO AUTO-REDIRECT
 // ============================================================
 
 async function init() {
@@ -1406,14 +1400,6 @@ async function init() {
     if (!gameId) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
         return;
-    }
-    
-    // v7.44: Restore cache from sessionStorage BEFORE loading
-    var cacheRestored = restoreCacheFromSession();
-    if (cacheRestored) {
-        console.log("[VIEW-GAME] ✅ Cache restored from sessionStorage");
-    } else {
-        console.log("[VIEW-GAME] No cache in sessionStorage - will load from Firestore");
     }
     
     var collection = "scheduledGames";
@@ -1487,9 +1473,9 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
-            // v7.44: REMOVED auto-redirect to post-game.html
+            // v8.00: REMOVED auto-redirect to post-game.html
             // User should see the RESULT button and click it manually
-            // Redirect only happens in realtime listener when game JUST completes
+            // Redirect only happens when user clicks RESULT button -> showCelebrationModal()
             
             renderAll();
             document.getElementById("mainContainer").classList.add("data-ready");
@@ -1499,7 +1485,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
-// v7.44: settings.js already initialized at top of script
+// v8.00: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1508,12 +1494,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.44
+VERSION: 8.00
 KEY CHANGES from v7.43:
-   - REMOVED: Auto-redirect from init() - no longer redirects on page load
+   - REMOVED: Auto-redirect block from init() that checked isGameCompletedFromCache()
+   - REMOVED: Auto-redirect from onCacheUpdate() 
+   - REMOVED: Auto-redirect from setupRealtimeListener()
    - PRESERVED: ALL other functionality from v7.43 unchanged
    - PRESERVED: RESULT button flow in renderCompactHeader() and nextHole()
-   - PRESERVED: Realtime listener redirect (when game JUST completes)
+   - PRESERVED: Realtime listener (updates state but does NOT auto-redirect)
+   - PRESERVED: onCacheUpdate() (updates state but does NOT auto-redirect)
    - REASON: Scorecard button from hcp-adjust should show scorecard, not auto-redirect
    - REASON: User should see RESULT button and click it manually
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
