@@ -1,14 +1,15 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.07
-KEY CHANGES from v3.06:
-   - ADDED: Helper function getStoredPhotoUrlForHistory() - retrieves photo URL from localStorage
-   - CHANGED: upsertPendingRecord() CREATE now checks localStorage for existing photo URL
-   - CHANGED: upsertPendingRecord() UPDATE now checks localStorage for existing photo URL
-   - REASON: Photo is uploaded at H17, but history record is created AFTER game completion
-   - REASON: Photo URL must persist in localStorage until history record is created
-   - REASON: celebration-photo.js stores the URL, history-record.js retrieves it
-   - PRESERVED: ALL other functionality from v3.06 unchanged
+VERSION: 3.08
+KEY CHANGES from v3.07:
+   - REMOVED: signedAt from signature objects (unused field)
+   - REMOVED: captainName from signature objects (unused field)
+   - SIMPLIFIED: Signature now only contains { signed: true/false }
+   - FIXED: Status now set to "completed" when BOTH f1 and f2 have signed
+   - REASON: Schema v5.0 FINAL removes these unused fields
+   - REASON: Both signed means game is completed, not pending_handicap
+   - PRESERVED: ALL other functionality from v3.07 unchanged
+   - PRESERVED: localStorage photo URL retrieval
 DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js (for localStorage key)
 STATUS: Ready for integration
 */
@@ -170,6 +171,7 @@ var HistoryRecord = (function() {
     // v3.04: Uses WRV for reliability
     // v3.06: Added celebration field for photo pointer
     // v3.07: Retrieve photo URL from localStorage when creating/updating
+    // v3.08: Removed signedAt/captainName from signatures, fixed status to "completed" when both signed
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -191,6 +193,14 @@ var HistoryRecord = (function() {
             console.log('[HistoryRecord] No stored photo URL found for game:', gameId);
         }
         
+        // v3.08: Determine status based on signatures
+        var f1Signed = signatures?.f1?.signed === true;
+        var f2Signed = signatures?.f2?.signed === true;
+        var bothSigned = f1Signed && f2Signed;
+        var recordStatus = bothSigned ? "completed" : "pending_handicap";
+        
+        console.log('[HistoryRecord] Status determined:', recordStatus, '(f1Signed=' + f1Signed + ', f2Signed=' + f2Signed + ')');
+        
         // Check if record already exists
         firebase.firestore().collection(COLLECTION).doc(docId).get()
             .then(function(doc) {
@@ -208,8 +218,18 @@ var HistoryRecord = (function() {
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     
+                    // v3.08: Build signatures with ONLY signed field
+                    var signatureData = {
+                        f1: {
+                            signed: f1Signed
+                        },
+                        f2: {
+                            signed: f2Signed
+                        }
+                    };
+                    
                     var updateData = {
-                        status: "pending_handicap",
+                        status: recordStatus,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                         finalResults: {
                             teamAScore: finalScores.teamA,
@@ -217,18 +237,7 @@ var HistoryRecord = (function() {
                             winner: finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie"),
                             winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team B Wins!" : "Tie Game!")
                         },
-                        signatures: {
-                            f1: {
-                                signed: signatures.f1?.signed === true,
-                                signedAt: signatures.f1?.signedAt || null,
-                                captainName: signatures.f1?.captainName || null
-                            },
-                            f2: {
-                                signed: signatures.f2?.signed === true,
-                                signedAt: signatures.f2?.signedAt || null,
-                                captainName: signatures.f2?.captainName || null
-                            }
-                        },
+                        signatures: signatureData,
                         // Store data strings directly - NO conversion
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
@@ -281,10 +290,20 @@ var HistoryRecord = (function() {
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     
+                    // v3.08: Build signatures with ONLY signed field
+                    var signatureData = {
+                        f1: {
+                            signed: f1Signed
+                        },
+                        f2: {
+                            signed: f2Signed
+                        }
+                    };
+                    
                     var archiveData = {
                         originalGameId: gameId,
                         completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        status: "pending_handicap",
+                        status: recordStatus,
                         version: 3,
                         schema: "v3_strings",
                         
@@ -310,18 +329,7 @@ var HistoryRecord = (function() {
                             winnerText: winnerText
                         },
                         
-                        signatures: {
-                            f1: {
-                                signed: signatures.f1?.signed === true,
-                                signedAt: signatures.f1?.signedAt || null,
-                                captainName: signatures.f1?.captainName || null
-                            },
-                            f2: {
-                                signed: signatures.f2?.signed === true,
-                                signedAt: signatures.f2?.signedAt || null,
-                                captainName: signatures.f2?.captainName || null
-                            }
-                        },
+                        signatures: signatureData,
                         
                         // Store data strings directly - NO conversion needed
                         f1DataString: flight1DataString || "",
@@ -605,15 +613,16 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.07
-KEY CHANGES from v3.06:
-   - ADDED: Helper function getStoredPhotoUrlForHistory() - retrieves photo URL from localStorage
-   - CHANGED: upsertPendingRecord() CREATE now checks localStorage for existing photo URL
-   - CHANGED: upsertPendingRecord() UPDATE now checks localStorage for existing photo URL
-   - REASON: Photo is uploaded at H17, but history record is created AFTER game completion
-   - REASON: Photo URL must persist in localStorage until history record is created
-   - REASON: celebration-photo.js stores the URL, history-record.js retrieves it
-   - PRESERVED: ALL other functionality from v3.06 unchanged
+VERSION: 3.08
+KEY CHANGES from v3.07:
+   - REMOVED: signedAt from signature objects (unused field)
+   - REMOVED: captainName from signature objects (unused field)
+   - SIMPLIFIED: Signature now only contains { signed: true/false }
+   - FIXED: Status now set to "completed" when BOTH f1 and f2 have signed
+   - REASON: Schema v5.0 FINAL removes these unused fields
+   - REASON: Both signed means game is completed, not pending_handicap
+   - PRESERVED: ALL other functionality from v3.07 unchanged
+   - PRESERVED: localStorage photo URL retrieval
 DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js (for localStorage key)
 STATUS: Ready for integration
 */
