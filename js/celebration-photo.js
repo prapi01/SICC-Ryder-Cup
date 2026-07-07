@@ -1,20 +1,19 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - ADDED: PHOTO_CHECK_HOLES constant [1, 4, 9, 14, 17]
-   - ADDED: ETAG_STORAGE_KEY and SIZE_STORAGE_KEY constants
-   - ADDED: checkPhotoChanged() - uses ETag/MD5Hash to detect changes
-   - ADDED: isPhotoCheckHole(holeNumber) function
-   - CHANGED: checkAndRenameCelebrationPhoto() now accepts holeNumber parameter
-   - CHANGED: checkAndRenameCelebrationPhoto() checks if hole is designated before proceeding
-   - CHANGED: Uses ETag check before downloading photo
-   - PRESERVED: ALL other functionality from v1.03 unchanged
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - REMOVED: PHOTO_CHECK_HOLES constant (no longer needed)
+   - REMOVED: isPhotoCheckHole() function (no longer needed)
+   - CHANGED: checkAndRenameCelebrationPhoto() now checks at EVERY hole
+   - REMOVED: Designated hole check logic
+   - REASON: ETag check makes photo check cheap and fast at every hole
+   - REASON: No need to limit to specific holes anymore
+   - PRESERVED: ALL other functionality from v1.04 unchanged
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.04";
+window.CELEBRATION_PHOTO_VERSION = "1.05";
 
 // ============================================================
 // CONSTANTS
@@ -23,8 +22,7 @@ window.CELEBRATION_PHOTO_VERSION = "1.04";
 var DEFAULT_PHOTO_PATH = 'celebration/SRC_Default_Photo.jpg';
 var SESSION_STORAGE_KEY = 'celebrationPhoto';
 
-// v1.04: Photo check designated holes
-var PHOTO_CHECK_HOLES = [1, 4, 9, 14, 17];
+// v1.04: ETag storage keys (preserved)
 var ETAG_STORAGE_KEY = 'celebration_photo_etag';
 var SIZE_STORAGE_KEY = 'celebration_photo_size';
 
@@ -114,13 +112,6 @@ function checkPhotoChanged(callback) {
             // On error, assume changed to be safe
             callback(true, null);
         });
-}
-
-// ============================================================
-// v1.04: Check if hole is a designated photo check hole
-// ============================================================
-function isPhotoCheckHole(holeNumber) {
-    return PHOTO_CHECK_HOLES.indexOf(holeNumber) !== -1;
 }
 
 // ============================================================
@@ -270,9 +261,9 @@ function updatePhotoInSessionStorage(imageUrl, callback) {
 }
 
 // ============================================================
-// v1.04: Check if C.jpg exists and rename it to game ID
-// Called at H1, H4, H9, H14, H17 (designated holes)
-// Now accepts holeNumber parameter and checks if it's a designated hole
+// v1.05: Check if C.jpg exists and rename it to game ID
+// Called at EVERY hole save (ETag check makes it cheap)
+// v1.05: Removed designated hole check - checks every time
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -281,12 +272,8 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
         holeNumber = undefined;
     }
     
-    // v1.04: Check if this is a designated hole
-    if (holeNumber !== undefined && !isPhotoCheckHole(holeNumber)) {
-        console.log('[CelebrationPhoto] Hole', holeNumber, 'not a check hole - skipping');
-        if (callback) callback(null);
-        return;
-    }
+    // v1.05: NO designated hole check - check at EVERY hole
+    // ETag makes it cheap and fast
     
     if (!gameId) {
         if (callback) callback(null);
@@ -426,7 +413,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.04: Expose new functions
+// v1.05: Expose functions (removed isPhotoCheckHole)
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -434,26 +421,23 @@ window.getCelebrationPhoto = getCelebrationPhoto;
 window.getPhotoFromSessionStorage = getPhotoFromSessionStorage;
 window.checkAndRenameCelebrationPhoto = checkAndRenameCelebrationPhoto;
 window.updatePhotoInSessionStorage = updatePhotoInSessionStorage;
-window.isPhotoCheckHole = isPhotoCheckHole;
 window.checkPhotoChanged = checkPhotoChanged;
 window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
-window.PHOTO_CHECK_HOLES = PHOTO_CHECK_HOLES;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
 window.SIZE_STORAGE_KEY = SIZE_STORAGE_KEY;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - ADDED: PHOTO_CHECK_HOLES constant [1, 4, 9, 14, 17]
-   - ADDED: ETAG_STORAGE_KEY and SIZE_STORAGE_KEY constants
-   - ADDED: checkPhotoChanged() - uses ETag/MD5Hash to detect changes
-   - ADDED: isPhotoCheckHole(holeNumber) function
-   - CHANGED: checkAndRenameCelebrationPhoto() now accepts holeNumber parameter
-   - CHANGED: checkAndRenameCelebrationPhoto() checks if hole is designated before proceeding
-   - CHANGED: Uses ETag check before downloading photo
-   - PRESERVED: ALL other functionality from v1.03 unchanged
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - REMOVED: PHOTO_CHECK_HOLES constant (no longer needed)
+   - REMOVED: isPhotoCheckHole() function (no longer needed)
+   - CHANGED: checkAndRenameCelebrationPhoto() now checks at EVERY hole
+   - REMOVED: Designated hole check logic
+   - REASON: ETag check makes photo check cheap and fast at every hole
+   - REASON: No need to limit to specific holes anymore
+   - PRESERVED: ALL other functionality from v1.04 unchanged
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
