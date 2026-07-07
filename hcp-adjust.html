@@ -1,14 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.28
-KEY CHANGES from v1.24:
-   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustmentsFromRaw()
-   - ADDED: restoreCacheFromSession() for cache persistence
-   - CHANGED: init() now restores cache from sessionStorage before loading
-   - PRESERVED: ALL UI design, dark theme, and modal-based layout EXACTLY as v1.24
-   - PRESERVED: renderHcpScreen(), loadHcpData() EXACTLY as v1.24
-   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustmentsFromRaw()
-   - REASON: Cache must be restored for post-game transition to work
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - FIXED: p.finalHcp → p.newHcp in renderHcpScreen() (two places)
+   - REASON: calculateAllAdjustmentsFromRaw() returns 'newHcp', not 'finalHcp'
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout EXACTLY as v1.24/v1.28
+   - PRESERVED: ALL other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -25,11 +22,11 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.28"></script>
-    <script src="js/session.js?v=1.28"></script>
-    <script src="js/settings.js?v=1.28"></script>
-    <script src="js/modal.js?v=1.28"></script>
-    <script src="js/waiting-screen.js?v=1.28"></script>
+    <script src="js/firebase-config.js?v=1.29"></script>
+    <script src="js/session.js?v=1.29"></script>
+    <script src="js/settings.js?v=1.29"></script>
+    <script src="js/modal.js?v=1.29"></script>
+    <script src="js/waiting-screen.js?v=1.29"></script>
     <script src="js/firebase-retry.js"></script>
     
     <!-- WRV Core -->
@@ -313,7 +310,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.28</div>
+<div class="version-tag">v1.29</div>
 
 <script>
 // ============================================================
@@ -326,10 +323,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.28: Fix calculate method
+// VERSION CACHE-BUSTING - v1.29: Fix finalHcp → newHcp
 // ============================================================
-var APP_VERSION = "1.28";
-var CACHE_KEY = "hcp_adjust_version_v128";
+var APP_VERSION = "1.29";
+var CACHE_KEY = "hcp_adjust_version_v129";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 var urlParams = new URLSearchParams(window.location.search);
@@ -349,8 +346,8 @@ if (!hasVersionParam || hasVersionParam !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.28";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.28 - Fixed calculate method");
+window.HCP_ADJUST_PAGE_VERSION = "1.29";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.29 - Fix finalHcp → newHcp");
 console.log("[HCP-ADJUST-PAGE] WRV loaded:", typeof WRV !== 'undefined');
 
 // ============================================================
@@ -375,7 +372,7 @@ function restoreCacheFromSession() {
 }
 
 // ============================================================
-// Main Logic - EXACTLY as v1.24, only method name changed
+// Main Logic
 // ============================================================
 
 var gameId = null;
@@ -429,7 +426,8 @@ function renderHcpScreen() {
     
     var playersHtml = '';
     players.forEach(function(p) {
-        var change = p.finalHcp - p.startingHcp;
+        // v1.29: FIXED - use newHcp instead of finalHcp
+        var change = p.newHcp - p.startingHcp;
         var changeClass = 'hcp-change-neutral';
         var changeDisplay = '0';
         
@@ -445,7 +443,7 @@ function renderHcpScreen() {
             <tr>
                 <td class="player-name">${escapeHtml(p.name)}</td>
                 <td class="hcp-value">${p.startingHcp}</td>
-                <td class="hcp-value">${p.finalHcp.toFixed(1)}</td>
+                <td class="hcp-value">${p.newHcp.toFixed(1)}</td>
                 <td class="hcp-change ${changeClass}">${changeDisplay}</td>
             </tr>
         `;
@@ -542,7 +540,6 @@ function loadHcpData() {
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
     
-    // v1.28: Restore cache if not already in memory
     var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
     if (!cache) {
         restoreCacheFromSession();
@@ -579,7 +576,6 @@ function loadHcpData() {
             return;
         }
         
-        // v1.28: FIXED - Use calculateAllAdjustmentsFromRaw with proper parameters
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
             var anchor = gameData.anchor || null;
             var players = gameData.players || [];
@@ -645,7 +641,6 @@ function loadFromHistory(gameId) {
             }
         }
         
-        // v1.28: FIXED - Use calculateAllAdjustmentsFromRaw with proper parameters
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
             var anchor = gameData.anchor || null;
             var players = gameData.players || [];
@@ -685,7 +680,6 @@ function init() {
         return;
     }
     
-    // v1.28: Restore cache from sessionStorage BEFORE loading
     restoreCacheFromSession();
     
     var stored = sessionStorage.getItem('celebrationData');
@@ -729,15 +723,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.28
-KEY CHANGES from v1.24:
-   - FIXED: HandicapAdjustment.calculate() → HandicapAdjustment.calculateAllAdjustmentsFromRaw()
-   - ADDED: restoreCacheFromSession() for cache persistence
-   - CHANGED: init() now restores cache from sessionStorage before loading
-   - PRESERVED: ALL UI design, dark theme, and modal-based layout EXACTLY as v1.24
-   - PRESERVED: renderHcpScreen(), loadHcpData() EXACTLY as v1.24
-   - REASON: calculate() doesn't exist - correct method is calculateAllAdjustmentsFromRaw()
-   - REASON: Cache must be restored for post-game transition to work
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - FIXED: p.finalHcp → p.newHcp in renderHcpScreen() (two places)
+   - REASON: calculateAllAdjustmentsFromRaw() returns 'newHcp', not 'finalHcp'
+   - PRESERVED: ALL UI design, dark theme, and modal-based layout EXACTLY as v1.24/v1.28
+   - PRESERVED: ALL other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/waiting-screen.js, js/sign-card.js, js/history-record.js, js/settings.js, js/wrv.js, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
