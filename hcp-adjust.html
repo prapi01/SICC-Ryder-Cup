@@ -1,14 +1,17 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.30
-KEY CHANGES from v1.23:
-   - ADDED: restoreCacheFromSession() for cache persistence
-   - CHANGED: init() now restores cache from sessionStorage before loading
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.23
-   - PRESERVED: initForViewer() API call unchanged
-   - REASON: Cache must be restored for post-game transition to work
-   - REASON: No other changes to working code
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - REMOVED: restoreCacheFromSession() - no longer needed
+   - REMOVED: loadHcpData() using GameLoader - now uses HistoryRecord
+   - CHANGED: init() now calls HandicapAdjustment.init() directly
+   - CHANGED: renderButtons() - simplified back/close buttons only
+   - REMOVED: Scorecard, Celebration, and Main Menu buttons
+   - REASON: hcp-adjust is now a standalone display page
+   - REASON: All data is read from historyGames collection
+   - REASON: No navigation back to game (game is complete)
+   - PRESERVED: ALL UI styling from v1.30
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/modal.js, js/hcp-adjust.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
 -->
 
@@ -24,25 +27,16 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.30"></script>
-    <script src="js/session.js?v=1.30"></script>
-    <script src="js/settings.js?v=1.30"></script>
-    <script src="js/modal.js?v=1.30"></script>
+    <script src="js/firebase-config.js?v=1.31"></script>
+    <script src="js/session.js?v=1.31"></script>
+    <script src="js/settings.js?v=1.31"></script>
+    <script src="js/modal.js?v=1.31"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
-    <script src="js/game-order.js?v=1.00"></script>
-    <script src="js/game-data.js?v=2.08"></script>
-    <script src="js/game-match.js?v=2.25"></script>
-    <script src="js/game-team.js?v=1.13"></script>
-    <script src="js/game-stroke.js?v=1.09"></script>
-    <script src="js/game-scorecard.js?v=1.16"></script>
-    <script src="js/game-ui.js?v=5.08"></script>
-    <script src="js/game-loader.js?v=1.09"></script>
     
-    <!-- v1.23: WRV support -->
-    <script src="js/wrv.js?v=1.00"></script>
+    <!-- WRV support -->
+    <script src="js/wrv.js?v=1.02"></script>
     
-    <script src="js/hcp-adjust.js?v=2.50"></script>
-    <script src="js/sign-card.js?v=1.21"></script>
+    <script src="js/hcp-adjust.js?v=2.60"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -225,37 +219,14 @@ STATUS: Ready for integration
             transform: scale(0.97);
         }
         
-        .hcp-btn-scorecard {
-            background: #1a3a1a;
-            border-color: #4caf50;
-            color: #4caf50;
-        }
-        
-        .hcp-btn-celebration {
-            background: #1a3a1a;
-            border-color: #ffaa44;
-            color: #ffaa44;
-            flex: 0 0 auto;
-            padding: 14px 20px;
-            font-size: 1.2rem;
-        }
-        
-        .hcp-btn-menu {
-            background: #1a1a1a;
-            border-color: #333;
-            color: #888;
-        }
-        
-        .hcp-btn-back {
-            background: #1a1a1a;
-            border-color: #333;
-            color: #888;
-        }
-        
         .hcp-btn-close {
             background: #1a1a1a;
             border-color: #333;
             color: #ccc;
+        }
+        
+        .hcp-btn-close:hover {
+            background: #2a2a2a;
         }
         
         .debug {
@@ -281,7 +252,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.30</div>
+<div class="version-tag">v1.31</div>
 
 <script>
 // ============================================================
@@ -294,10 +265,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.30: Added cache restore
+// VERSION CACHE-BUSTING - v1.31: Simplified display page
 // ============================================================
-var APP_VERSION = "1.30";
-var CACHE_KEY = "hcp_adjust_version_v130";
+var APP_VERSION = "1.31";
+var CACHE_KEY = "hcp_adjust_version_v131";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -314,201 +285,53 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.30";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.30 - Added cache restore");
+window.HCP_ADJUST_PAGE_VERSION = "1.31";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.31 - Simplified display page");
 
 // ============================================================
-// v1.30: Restore cache from sessionStorage
-// ============================================================
-function restoreCacheFromSession() {
-    var stored = sessionStorage.getItem('gameCache');
-    if (stored) {
-        try {
-            var cache = JSON.parse(stored);
-            if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
-                GameLoader.setLocalCache(cache);
-                console.log("[HCP-ADJUST-PAGE] ✅ Cache restored from sessionStorage");
-                return true;
-            }
-        } catch(e) {
-            console.warn("[HCP-ADJUST-PAGE] Failed to restore cache:", e.message);
-        }
-    }
-    return false;
-}
-
-// ============================================================
-// v1.18: Restore celebration data from sessionStorage
-// ============================================================
-function restoreCelebrationData() {
-    var stored = sessionStorage.getItem('celebrationData');
-    if (stored) {
-        try {
-            var data = JSON.parse(stored);
-            console.log("[HCP-ADJUST-PAGE] Celebration data restored from sessionStorage");
-            console.log("  gameId:", data.gameId);
-            console.log("  winner:", data.winner);
-            window._currentCelebrationData = data;
-            return true;
-        } catch(e) {
-            console.warn("[HCP-ADJUST-PAGE] Failed to parse celebration data:", e.message);
-        }
-    }
-    return false;
-}
-
-// ============================================================
-// Main Logic - UNCHANGED from v1.23
+// Main Logic
 // ============================================================
 
 var gameId = null;
-var isReadOnly = false;
-var returnToHistory = false;
 var loadAttempted = false;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
     gameId = params.get('gameId');
-    var mode = params.get('mode');
-    isReadOnly = (mode === 'readonly' || mode === 'history');
-    returnToHistory = (mode === 'history');
-    console.log("[HCP-ADJUST-PAGE] gameId:", gameId, "mode:", mode);
+    console.log("[HCP-ADJUST-PAGE] gameId:", gameId);
 }
 
-function renderButtons(anchorName) {
+// ============================================================
+// v1.31: Render close button only
+// ============================================================
+
+function renderButtons() {
     var container = document.getElementById('hcpButtons');
     if (!container) return;
     
-    var html = '';
-    
-    if (isReadOnly) {
-        if (returnToHistory) {
-            html = '<button class="hcp-btn hcp-btn-close" id="hcpBackBtn">← Close</button>';
-        } else {
-            html = '<button class="hcp-btn hcp-btn-back" id="hcpBackBtn">← Back</button>';
-        }
-    } else {
-        html = `
-            <button class="hcp-btn hcp-btn-scorecard" id="backToScorecardBtn">Scorecard</button>
-            <button class="hcp-btn hcp-btn-celebration" id="celebrationBtn">🎉</button>
-            <button class="hcp-btn hcp-btn-menu" id="mainMenuBtn">Main Menu</button>
-        `;
-    }
+    var html = `
+        <button class="hcp-btn hcp-btn-close" id="hcpCloseBtn">← Close</button>
+    `;
     
     container.innerHTML = html;
     
-    if (!isReadOnly) {
-        var scorecardBtn = document.getElementById('backToScorecardBtn');
-        if (scorecardBtn) {
-            scorecardBtn.addEventListener('click', function() {
-                if (!gameId) {
-                    console.error("[HCP-ADJUST] Cannot navigate to scorecard - no gameId");
-                    if (typeof Modal !== 'undefined' && Modal.alert) {
-                        Modal.alert("Error: No game ID found. Please return to the main menu.");
-                    } else {
-                        alert("Error: No game ID found. Please return to the main menu.");
-                    }
-                    return;
-                }
-                
-                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                    WaitingScreen.show("Loading Scorecard...");
-                }
-                window.location.href = 'view-game.html?gameId=' + gameId;
-            });
-        }
-        
-        var celebrationBtn = document.getElementById('celebrationBtn');
-        if (celebrationBtn) {
-            celebrationBtn.addEventListener('click', function() {
-                console.log("[HCP-ADJUST] Celebration button clicked");
-                
-                if (!window._currentCelebrationData) {
-                    console.log("[HCP-ADJUST] No celebration data, trying to restore from sessionStorage");
-                    restoreCelebrationData();
-                }
-                
-                if (window._currentCelebrationData) {
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                        WaitingScreen.show("Loading Celebration...");
-                    }
-                    
-                    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-                        var data = window._currentCelebrationData;
-                        SignCard.showCelebrationScreen(
-                            data.winner,
-                            data.teamAScore,
-                            data.teamBScore,
-                            data.winningPlayers,
-                            data.gameId,
-                            function() {
-                                console.log("[HCP-ADJUST] Celebration onClose callback");
-                                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                    WaitingScreen.hide();
-                                }
-                            }
-                        );
-                        setTimeout(function() {
-                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                WaitingScreen.hide();
-                            }
-                        }, 1000);
-                    } else {
-                        console.error("[HCP-ADJUST] SignCard.showCelebrationScreen not available");
-                        alert('Celebration screen not available');
-                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                            WaitingScreen.hide();
-                        }
-                    }
-                } else {
-                    console.error("[HCP-ADJUST] No celebration data available");
-                    alert('Celebration data not available');
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                        WaitingScreen.hide();
-                    }
-                }
-            });
-        }
-        
-        var mainMenuBtn = document.getElementById('mainMenuBtn');
-        if (mainMenuBtn) {
-            mainMenuBtn.addEventListener('click', function() {
-                console.log("[HCP-ADJUST] Main Menu button clicked");
-                
-                if (typeof Modal !== 'undefined' && Modal.confirm) {
-                    Modal.confirm(
-                        "⚠️ Leave Game?\n\nYou will not be able to return to this game.",
-                        function() {
-                            console.log("[HCP-ADJUST] User confirmed - navigating to main menu");
-                            window.location.href = 'index.html';
-                        },
-                        function() {
-                            console.log("[HCP-ADJUST] User cancelled - staying on page");
-                        }
-                    );
-                } else {
-                    if (confirm("⚠️ Leave Game?\n\nYou will not be able to return to this game.")) {
-                        console.log("[HCP-ADJUST] User confirmed - navigating to main menu");
-                        window.location.href = 'index.html';
-                    } else {
-                        console.log("[HCP-ADJUST] User cancelled - staying on page");
-                    }
-                }
-            });
-        }
-    } else {
-        var backBtn = document.getElementById('hcpBackBtn');
-        if (backBtn) {
-            backBtn.addEventListener('click', function() {
-                if (returnToHistory) {
-                    window.location.href = 'view-history.html?gameId=' + gameId;
-                } else {
-                    window.history.back();
-                }
-            });
-        }
+    var closeBtn = document.getElementById('hcpCloseBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            console.log("[HCP-ADJUST-PAGE] Close button clicked");
+            // Return to history or main menu
+            if (gameId) {
+                window.location.href = 'view-history.html?gameId=' + gameId;
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
     }
 }
+
+// ============================================================
+// v1.31: Load handicap data from history record
+// ============================================================
 
 function loadHcpData() {
     if (loadAttempted) {
@@ -522,84 +345,45 @@ function loadHcpData() {
         return;
     }
     
-    console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
+    console.log("[HCP-ADJUST-PAGE] Loading handicap data for game:", gameId);
     
-    if (typeof GameLoader === 'undefined' || typeof GameLoader.loadGame !== 'function') {
-        console.error("[HCP-ADJUST-PAGE] GameLoader not available");
-        document.getElementById('debug').textContent = 'Error: GameLoader not loaded';
-        setTimeout(function() {
-            loadAttempted = false;
-            loadHcpData();
-        }, 1000);
-        return;
-    }
-    
-    GameLoader.loadGame(gameId, 'scheduledGames', function(result) {
-        if (!result.success) {
-            console.error("[HCP-ADJUST-PAGE] Failed to load game:", result.error);
-            document.getElementById('debug').textContent = 'Error: ' + result.error;
-            return;
-        }
+    // v1.31: Directly call HandicapAdjustment.init
+    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+        HandicapAdjustment.init(gameId);
+        console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.init called");
         
-        var cache = result.cache;
-        if (!cache) {
-            document.getElementById('debug').textContent = 'Error: No cache data';
-            return;
-        }
-        
-        console.log("[HCP-ADJUST-PAGE] Cache loaded, players:", cache.players ? cache.players.length : 0);
-        
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
-            HandicapAdjustment.initForViewer(
-                gameId,
-                cache.players || [],
-                cache.f1DataString || '',
-                cache.f2DataString || '',
-                cache.course?.si || [],
-                cache.course?.par || [],
-                cache.startingHole || 1,
-                cache.results || null
-            );
-            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called");
-            
-            var container = document.getElementById('hcpTableContainer');
-            if (container) {
-                var checkTable = setInterval(function() {
-                    if (container.querySelector('table')) {
-                        container.classList.add('visible');
-                        console.log("[HCP-ADJUST-PAGE] Table detected, container shown");
-                        clearInterval(checkTable);
-                    }
-                }, 100);
-                setTimeout(function() {
+        // Show container when table renders
+        var container = document.getElementById('hcpTableContainer');
+        if (container) {
+            var checkTable = setInterval(function() {
+                if (container.querySelector('table')) {
+                    container.classList.add('visible');
+                    console.log("[HCP-ADJUST-PAGE] Table detected, container shown");
                     clearInterval(checkTable);
-                    if (!container.classList.contains('visible')) {
-                        container.classList.add('visible');
-                        console.log("[HCP-ADJUST-PAGE] Timeout - container shown anyway");
-                    }
-                }, 5000);
-            }
-            
-            var anchorName = 'Anchor';
-            if (cache.players && cache.players.length > 0) {
-                var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
-                anchorName = sorted[0]?.name || 'Anchor';
-            }
-            renderButtons(anchorName);
-        } else {
-            console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer not available");
-            document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
+                }
+            }, 100);
+            setTimeout(function() {
+                clearInterval(checkTable);
+                if (!container.classList.contains('visible')) {
+                    container.classList.add('visible');
+                    console.log("[HCP-ADJUST-PAGE] Timeout - container shown anyway");
+                }
+            }, 5000);
         }
-    });
+        
+        renderButtons();
+    } else {
+        console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.init not available");
+        document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
+    }
 }
+
+// ============================================================
+// init
+// ============================================================
 
 function init() {
     console.log("[HCP-ADJUST-PAGE] Initializing...");
-    
-    // v1.30: Restore cache from sessionStorage BEFORE loading
-    restoreCacheFromSession();
-    
-    restoreCelebrationData();
     
     getUrlParams();
     
@@ -634,14 +418,17 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.30
-KEY CHANGES from v1.23:
-   - ADDED: restoreCacheFromSession() for cache persistence
-   - CHANGED: init() now restores cache from sessionStorage before loading
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.23
-   - PRESERVED: initForViewer() API call unchanged
-   - REASON: Cache must be restored for post-game transition to work
-   - REASON: No other changes to working code
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - REMOVED: restoreCacheFromSession() - no longer needed
+   - REMOVED: loadHcpData() using GameLoader - now uses HistoryRecord
+   - CHANGED: init() now calls HandicapAdjustment.init() directly
+   - CHANGED: renderButtons() - simplified back/close buttons only
+   - REMOVED: Scorecard, Celebration, and Main Menu buttons
+   - REASON: hcp-adjust is now a standalone display page
+   - REASON: All data is read from historyGames collection
+   - REASON: No navigation back to game (game is complete)
+   - PRESERVED: ALL UI styling from v1.30
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/modal.js, js/hcp-adjust.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
 -->
