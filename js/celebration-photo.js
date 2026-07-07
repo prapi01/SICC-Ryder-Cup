@@ -1,20 +1,19 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - CHANGED: checkPhotoChanged() now checks GitHub C.jpg metadata (not Firebase Storage)
-   - CHANGED: Uses fetch HEAD request to get ETag/Last-Modified from GitHub
-   - CHANGED: On error, assumes changed to force download (safe fallback)
-   - REASON: C.jpg is hosted on GitHub, not Firebase Storage
-   - REASON: Firebase Storage was returning 404 for C.jpg
-   - REASON: Metadata check must work before download can happen
-   - PRESERVED: ALL other functionality from v1.05 unchanged
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: Store photo URL in localStorage after successful upload
+   - ADDED: localStorage key format: 'celebration_photo_url_' + gameId
+   - REASON: History record is created AFTER game completion, not at H17
+   - REASON: Photo URL must be available when history record is created
+   - REASON: localStorage persists across page reloads and sessions
+   - PRESERVED: ALL other functionality from v1.06 unchanged
    - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.06";
+window.CELEBRATION_PHOTO_VERSION = "1.07";
 
 // ============================================================
 // CONSTANTS
@@ -29,6 +28,9 @@ var SIZE_STORAGE_KEY = 'celebration_photo_size';
 
 // v1.06: GitHub C.jpg URL
 var GITHUB_PHOTO_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg';
+
+// v1.07: localStorage prefix for photo URL
+var PHOTO_URL_PREFIX = 'celebration_photo_url_';
 
 // ============================================================
 // Helper: Add cache-busting to URL
@@ -270,9 +272,62 @@ function updatePhotoInSessionStorage(imageUrl, callback) {
 }
 
 // ============================================================
+// v1.07: Store photo URL in localStorage for history record creation
+// ============================================================
+function storePhotoUrlForHistory(gameId, imageUrl) {
+    if (!gameId || !imageUrl) {
+        console.warn('[CelebrationPhoto] Cannot store photo URL - missing gameId or imageUrl');
+        return;
+    }
+    
+    try {
+        var key = PHOTO_URL_PREFIX + gameId;
+        localStorage.setItem(key, imageUrl);
+        console.log('[CelebrationPhoto] 📌 Stored photo URL in localStorage for game:', gameId);
+    } catch(e) {
+        console.warn('[CelebrationPhoto] Failed to store photo URL in localStorage:', e.message);
+    }
+}
+
+// ============================================================
+// v1.07: Get stored photo URL from localStorage
+// ============================================================
+function getStoredPhotoUrlForHistory(gameId) {
+    if (!gameId) return null;
+    
+    try {
+        var key = PHOTO_URL_PREFIX + gameId;
+        var url = localStorage.getItem(key);
+        if (url) {
+            console.log('[CelebrationPhoto] Retrieved photo URL from localStorage for game:', gameId);
+        }
+        return url;
+    } catch(e) {
+        console.warn('[CelebrationPhoto] Failed to retrieve photo URL from localStorage:', e.message);
+        return null;
+    }
+}
+
+// ============================================================
+// v1.07: Clear stored photo URL from localStorage
+// ============================================================
+function clearStoredPhotoUrlForHistory(gameId) {
+    if (!gameId) return;
+    
+    try {
+        var key = PHOTO_URL_PREFIX + gameId;
+        localStorage.removeItem(key);
+        console.log('[CelebrationPhoto] Cleared photo URL from localStorage for game:', gameId);
+    } catch(e) {
+        console.warn('[CelebrationPhoto] Failed to clear photo URL from localStorage:', e.message);
+    }
+}
+
+// ============================================================
 // v1.06: Check if C.jpg exists and rename it to game ID
 // Called at EVERY hole save (ETag check makes it cheap)
 // v1.06: Uses GitHub for metadata check, uploads to Firebase Storage
+// v1.07: Stores photo URL in localStorage for history record
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -311,6 +366,8 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                 destRef.getDownloadURL()
                     .then(function(url) {
                         updatePhotoInSessionStorage(url);
+                        // v1.07: Store URL in localStorage for history record
+                        storePhotoUrlForHistory(gameId, url);
                     })
                     .catch(function(err) {
                         console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
@@ -365,6 +422,8 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                             destRef.getDownloadURL()
                                 .then(function(url) {
                                     updatePhotoInSessionStorage(url);
+                                    // v1.07: Store URL in localStorage for history record
+                                    storePhotoUrlForHistory(gameId, url);
                                 })
                                 .catch(function(err) {
                                     console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
@@ -394,10 +453,22 @@ function getCelebrationPhoto(gameId, callback) {
                 if (url) {
                     if (callback) callback(null, url);
                 } else {
-                    if (callback) callback(null, GITHUB_PHOTO_URL);
+                    // v1.07: Check localStorage as fallback
+                    var storedUrl = getStoredPhotoUrlForHistory(gameId);
+                    if (storedUrl) {
+                        if (callback) callback(null, storedUrl);
+                    } else {
+                        if (callback) callback(null, GITHUB_PHOTO_URL);
+                    }
                 }
             } else {
-                if (callback) callback(null, GITHUB_PHOTO_URL);
+                // v1.07: Check localStorage as fallback
+                var storedUrl = getStoredPhotoUrlForHistory(gameId);
+                if (storedUrl) {
+                    if (callback) callback(null, storedUrl);
+                } else {
+                    if (callback) callback(null, GITHUB_PHOTO_URL);
+                }
             }
         })
         .catch(function(err) {
@@ -413,7 +484,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.06: Expose functions
+// v1.07: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -422,23 +493,28 @@ window.getPhotoFromSessionStorage = getPhotoFromSessionStorage;
 window.checkAndRenameCelebrationPhoto = checkAndRenameCelebrationPhoto;
 window.updatePhotoInSessionStorage = updatePhotoInSessionStorage;
 window.checkPhotoChanged = checkPhotoChanged;
+window.storePhotoUrlForHistory = storePhotoUrlForHistory;
+window.getStoredPhotoUrlForHistory = getStoredPhotoUrlForHistory;
+window.clearStoredPhotoUrlForHistory = clearStoredPhotoUrlForHistory;
 window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
 window.SIZE_STORAGE_KEY = SIZE_STORAGE_KEY;
 window.GITHUB_PHOTO_URL = GITHUB_PHOTO_URL;
+window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - CHANGED: checkPhotoChanged() now checks GitHub C.jpg metadata (not Firebase Storage)
-   - CHANGED: Uses fetch HEAD request to get ETag/Last-Modified from GitHub
-   - CHANGED: On error, assumes changed to force download (safe fallback)
-   - REASON: C.jpg is hosted on GitHub, not Firebase Storage
-   - REASON: Firebase Storage was returning 404 for C.jpg
-   - REASON: Metadata check must work before download can happen
-   - PRESERVED: ALL other functionality from v1.05 unchanged
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: Store photo URL in localStorage after successful upload
+   - ADDED: localStorage key format: 'celebration_photo_url_' + gameId
+   - ADDED: getStoredPhotoUrlForHistory() - retrieve stored URL
+   - ADDED: clearStoredPhotoUrlForHistory() - clear stored URL
+   - REASON: History record is created AFTER game completion, not at H17
+   - REASON: Photo URL must be available when history record is created
+   - REASON: localStorage persists across page reloads and sessions
+   - PRESERVED: ALL other functionality from v1.06 unchanged
    - PRESERVED: Fire-and-forget, user never waits
 DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
