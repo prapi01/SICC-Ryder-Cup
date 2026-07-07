@@ -1,14 +1,17 @@
 <!--
 FILE: post-game.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - ADDED: restoreCacheFromSession() - restores GameLoader cache from sessionStorage
-   - CHANGED: init() now restores cache from sessionStorage before showing modal
-   - REASON: Cache is saved by real-game-nav.js before redirecting to post-game.html
-   - REASON: Without cache, celebration screen cannot show data
-   - REASON: sessionStorage persists cache across page reloads
-   - PRESERVED: ALL UI and modal functionality from v1.11
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-loader.js, js/sign-card.js, js/settings.js, js/celebration-photo.js, js/history-record.js
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - REMOVED: restoreCacheFromSession() - no longer needed
+   - REMOVED: showGameCompleteModal() - no longer needed (SignCard handles this)
+   - REMOVED: showCelebrationFromCache() - no longer needed
+   - CHANGED: init() now reads from sessionStorage celebrationData
+   - ADDED: Direct display of celebration from sessionStorage
+   - REASON: post-game.html is now a simple display page
+   - REASON: SignCard already handles the celebration modal
+   - REASON: All data is in sessionStorage from sign-card.js
+   - PRESERVED: ALL UI styling from v1.12
+DEPENDS ON: js/firebase-config.js, js/session.js, js/sign-card.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
 
@@ -30,19 +33,11 @@ STATUS: Ready for integration
     <script src="js/session.js?v=1.12"></script>
     <script src="js/settings.js?v=1.12"></script>
     <script src="js/modal.js?v=1.12"></script>
-    <script src="js/game-order.js?v=1.00"></script>
     
     <!-- WRV Core -->
     <script src="js/wrv.js?v=1.02"></script>
     <script src="js/celebration-photo.js?v=1.03"></script>
-    <script src="js/history-record.js?v=3.04"></script>
-    
-    <script src="js/game-data.js?v=2.08"></script>
-    <script src="js/game-match.js?v=2.25"></script>
-    <script src="js/game-scorecard.js?v=1.16"></script>
-    <script src="js/game-ui.js?v=5.08"></script>
-    <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/sign-card.js?v=1.29"></script>
+    <script src="js/sign-card.js?v=1.31"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -110,92 +105,6 @@ STATUS: Ready for integration
             color: #555;
             margin-top: 20px;
         }
-        
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10001;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        }
-        
-        .game-complete-modal {
-            background: #1a1a1a;
-            border-radius: 28px;
-            padding: 32px 28px;
-            max-width: 360px;
-            width: 90%;
-            text-align: center;
-            border: 2px solid #4caf50;
-        }
-        
-        .game-complete-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #ffaa44;
-            margin-bottom: 12px;
-        }
-        
-        .game-complete-message {
-            font-size: 0.9rem;
-            color: #ccc;
-            margin-bottom: 16px;
-            line-height: 1.4;
-        }
-        
-        .game-complete-emojis {
-            font-size: 1.5rem;
-            margin-bottom: 24px;
-        }
-        
-        .game-complete-btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 14px;
-            border-radius: 40px;
-            font-size: 1rem;
-            font-weight: 700;
-            cursor: pointer;
-            width: 100%;
-            transition: all 0.2s;
-        }
-        
-        .game-complete-btn:hover {
-            background: #2a4a2a;
-        }
-        
-        .game-complete-btn:active {
-            transform: scale(0.98);
-        }
-        
-        .game-complete-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .celebration-image-container {
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-radius: 16px !important;
-            overflow: hidden !important;
-        }
-        .celebration-image {
-            max-width: 100%;
-            max-height: 40vh;
-            min-height: 120px;
-            border-radius: 16px !important;
-            object-fit: cover;
-            border: 1px solid #2a2a2a;
-        }
     </style>
 </head>
 <body>
@@ -208,7 +117,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.13</div>
 
 <script>
 // ============================================================
@@ -221,10 +130,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.12: Restore cache from sessionStorage
+// VERSION CACHE-BUSTING - v1.13: Simple display page
 // ============================================================
-var APP_VERSION = "1.12";
-var CACHE_KEY = "post_game_version_v112";
+var APP_VERSION = "1.13";
+var CACHE_KEY = "post_game_version_v113";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -241,16 +150,14 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.12";
-console.log("[POST-GAME] Initializing v1.12 - Restore cache from sessionStorage");
-console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
+window.POST_GAME_PAGE_VERSION = "1.13";
+console.log("[POST-GAME] Initializing v1.13 - Simple display page");
 
 // ============================================================
 // Main Logic
 // ============================================================
 
 var gameId = null;
-var isSeeResultsClicked = false;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -259,174 +166,88 @@ function getUrlParams() {
 }
 
 // ============================================================
-// v1.12: Restore cache from sessionStorage
+// v1.13: Show celebration directly from sessionStorage
 // ============================================================
 
-function restoreCacheFromSession() {
-    var stored = sessionStorage.getItem('gameCache');
-    if (stored) {
-        try {
-            var cache = JSON.parse(stored);
-            if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
-                GameLoader.setLocalCache(cache);
-                console.log('[POST-GAME] ✅ Cache restored from sessionStorage');
-                console.log('[POST-GAME] Cache keys:', Object.keys(cache));
-                if (cache.signatures) {
-                    console.log('[POST-GAME] f1.signed:', cache.signatures.f1?.signed);
-                    console.log('[POST-GAME] f2.signed:', cache.signatures.f2?.signed);
-                }
-                return true;
-            } else {
-                console.warn('[POST-GAME] GameLoader not available to restore cache');
-            }
-        } catch(e) {
-            console.warn('[POST-GAME] Failed to restore cache:', e.message);
-        }
-    } else {
-        console.warn('[POST-GAME] No gameCache found in sessionStorage');
-    }
-    return false;
-}
-
-// ============================================================
-// showGameCompleteModal - Shows the Game Complete modal
-// ============================================================
-
-function showGameCompleteModal() {
-    var content = document.getElementById('content');
+function showCelebrationFromSession() {
+    console.log("[POST-GAME] Showing celebration from sessionStorage...");
     
-    var html = `
-        <div class="modal-overlay" id="postGameModal" style="position:relative; background:transparent; z-index:auto;">
-            <div class="game-complete-modal">
-                <div class="game-complete-title">🏆 GAME COMPLETED</div>
-                <div class="game-complete-message">Both cards have been signed!</div>
-                <div class="game-complete-emojis">🍺 🏆 🍺</div>
-                <button class="game-complete-btn" id="seeResultsBtn">🏆 SEE RESULTS</button>
+    // Step 1: Get celebration data from sessionStorage
+    var celebrationDataStr = sessionStorage.getItem('celebrationData');
+    if (!celebrationDataStr) {
+        console.error("[POST-GAME] ❌ No celebrationData in sessionStorage");
+        document.getElementById('content').innerHTML = `
+            <div style="padding:40px 20px; text-align:center; color:#888;">
+                <div style="font-size:3rem; margin-bottom:16px;">⛳</div>
+                <div style="font-size:1rem; color:#666;">No celebration data found.</div>
+                <div style="font-size:0.8rem; color:#444; margin-top:8px;">Please return to the game.</div>
+                <button onclick="window.location.href='index.html'" style="margin-top:20px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:30px; font-size:1rem; cursor:pointer;">🏠 Main Menu</button>
             </div>
-        </div>
-    `;
-    
-    content.innerHTML = html;
-    
-    var btn = document.getElementById('seeResultsBtn');
-    if (btn) {
-        btn.addEventListener('click', function() {
-            if (isSeeResultsClicked) {
-                console.log("[POST-GAME] SEE RESULTS already clicked - ignoring duplicate");
-                return;
-            }
-            isSeeResultsClicked = true;
-            
-            btn.disabled = true;
-            btn.textContent = '⏳ Loading...';
-            
-            console.log("[POST-GAME] SEE RESULTS clicked");
-            
-            // v1.12: Show celebration from cache + sessionStorage photo
-            showCelebrationFromCache();
-        });
-    }
-}
-
-// ============================================================
-// showCelebrationFromCache - v1.12: Uses sessionStorage photo
-// ============================================================
-
-function showCelebrationFromCache() {
-    // Step 1: Get data from cache
-    var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-    
-    if (!cache) {
-        console.error("[POST-GAME] ❌ No cache available - cannot show celebration");
-        // Try to restore from sessionStorage as last resort
-        var restored = restoreCacheFromSession();
-        if (restored) {
-            cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-            console.log("[POST-GAME] Cache restored on-demand");
-        }
-        
-        if (!cache) {
-            var btn = document.getElementById('seeResultsBtn');
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = '🏆 SEE RESULTS';
-                isSeeResultsClicked = false;
-            }
-            return;
-        }
+        `;
+        return;
     }
     
-    // Step 2: Get celebration data from cache
-    var results = cache.results || {};
-    var tr = results.tr || {};
-    var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
-    var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
-    var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
-    var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
-    
-    var players = cache.players || [];
-    var winningPlayers = {
-        teamA: players.filter(function(p) { return p.team === "A"; }),
-        teamB: players.filter(function(p) { return p.team === "B"; })
-    };
-    
-    var celebrationData = {
-        winner: winner,
-        teamAScore: teamAScore,
-        teamBScore: teamBScore,
-        winningPlayers: winningPlayers,
-        gameId: gameId
-    };
-    
-    // Step 3: Store in sessionStorage for hcp-adjust
     try {
-        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-    } catch(e) {
-        console.warn("[POST-GAME] Failed to save celebration data:", e.message);
-    }
-    window._currentCelebrationData = celebrationData;
-    
-    // Step 4: v1.12 - Get photo from sessionStorage (INSTANT)
-    var photoDataUrl = null;
-    if (typeof getPhotoFromSessionStorage === 'function') {
-        photoDataUrl = getPhotoFromSessionStorage();
-        console.log("[POST-GAME] Photo from sessionStorage:", photoDataUrl ? '✅ FOUND' : '❌ NOT FOUND');
-    } else {
-        console.warn("[POST-GAME] getPhotoFromSessionStorage not available");
-    }
-    
-    // Step 5: Show celebration screen
-    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-        // v1.12: Pass photoDataUrl to SignCard if available
-        if (photoDataUrl) {
-            // Store in SignCard cache
-            SignCard._cachedImagePath = photoDataUrl;
+        var celebrationData = JSON.parse(celebrationDataStr);
+        console.log("[POST-GAME] celebrationData loaded:", celebrationData);
+        
+        var winner = celebrationData.winner || 'Tie';
+        var teamAScore = celebrationData.teamAScore || 9.5;
+        var teamBScore = celebrationData.teamBScore || 9.5;
+        var winningPlayers = celebrationData.winningPlayers || { teamA: [], teamB: [] };
+        var gameId = celebrationData.gameId || null;
+        
+        // Step 2: Get photo from sessionStorage (instant)
+        var photoDataUrl = null;
+        if (typeof getPhotoFromSessionStorage === 'function') {
+            photoDataUrl = getPhotoFromSessionStorage();
+            console.log("[POST-GAME] Photo from sessionStorage:", photoDataUrl ? '✅ FOUND' : '❌ NOT FOUND');
+        } else {
+            console.warn("[POST-GAME] getPhotoFromSessionStorage not available");
         }
         
-        SignCard.showCelebrationScreen(
-            winner,
-            teamAScore,
-            teamBScore,
-            winningPlayers,
-            gameId,
-            function() {
-                console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
-                isSeeResultsClicked = false;
-                var btn = document.getElementById('seeResultsBtn');
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = '🏆 SEE RESULTS';
-                }
+        // Step 3: Show celebration screen
+        if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            // Pass photo to SignCard if available
+            if (photoDataUrl) {
+                SignCard._cachedImagePath = photoDataUrl;
             }
-        );
-    } else {
-        console.error("[POST-GAME] SignCard not loaded");
-        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+            
+            SignCard.showCelebrationScreen(
+                winner,
+                teamAScore,
+                teamBScore,
+                winningPlayers,
+                gameId,
+                function() {
+                    console.log("[POST-GAME] Celebration screen closed by user");
+                }
+            );
+        } else {
+            console.error("[POST-GAME] ❌ SignCard not loaded");
+            document.getElementById('content').innerHTML = `
+                <div style="padding:40px 20px; text-align:center; color:#888;">
+                    <div style="font-size:3rem; margin-bottom:16px;">⚠️</div>
+                    <div style="font-size:1rem; color:#666;">SignCard not loaded.</div>
+                    <button onclick="window.location.href='hcp-adjust.html?gameId=${gameId}'" style="margin-top:20px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:30px; font-size:1rem; cursor:pointer;">🏌️ Handicap Adjustment</button>
+                </div>
+            `;
+        }
+        
+    } catch(e) {
+        console.error("[POST-GAME] ❌ Failed to parse celebrationData:", e.message);
+        document.getElementById('content').innerHTML = `
+            <div style="padding:40px 20px; text-align:center; color:#888;">
+                <div style="font-size:3rem; margin-bottom:16px;">⚠️</div>
+                <div style="font-size:1rem; color:#666;">Invalid celebration data.</div>
+                <button onclick="window.location.href='index.html'" style="margin-top:20px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:30px; font-size:1rem; cursor:pointer;">🏠 Main Menu</button>
+            </div>
+        `;
     }
 }
 
 // ============================================================
-// init - v1.12: Restore cache before showing modal
+// init - v1.13: Simple initialization
 // ============================================================
 
 function init() {
@@ -436,6 +257,13 @@ function init() {
     
     if (!gameId) {
         document.getElementById('debug').textContent = 'Error: No game ID in URL';
+        document.getElementById('content').innerHTML = `
+            <div style="padding:40px 20px; text-align:center; color:#888;">
+                <div style="font-size:3rem; margin-bottom:16px;">⚠️</div>
+                <div style="font-size:1rem; color:#666;">No game ID provided.</div>
+                <button onclick="window.location.href='index.html'" style="margin-top:20px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:30px; font-size:1rem; cursor:pointer;">🏠 Main Menu</button>
+            </div>
+        `;
         return;
     }
     
@@ -448,16 +276,8 @@ function init() {
         document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
     }
     
-    // v1.12: Restore cache from sessionStorage BEFORE showing modal
-    var cacheRestored = restoreCacheFromSession();
-    if (cacheRestored) {
-        console.log("[POST-GAME] ✅ Cache ready for celebration");
-    } else {
-        console.warn("[POST-GAME] ⚠️ No cache in sessionStorage - celebration may fail");
-    }
-    
-    // v1.12: IMMEDIATELY show modal
-    showGameCompleteModal();
+    // v1.13: Show celebration directly from sessionStorage
+    showCelebrationFromSession();
 }
 
 if (document.readyState === 'loading') {
@@ -472,14 +292,17 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - ADDED: restoreCacheFromSession() - restores GameLoader cache from sessionStorage
-   - CHANGED: init() now restores cache from sessionStorage before showing modal
-   - REASON: Cache is saved by real-game-nav.js before redirecting to post-game.html
-   - REASON: Without cache, celebration screen cannot show data
-   - REASON: sessionStorage persists cache across page reloads
-   - PRESERVED: ALL UI and modal functionality from v1.11
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-loader.js, js/sign-card.js, js/settings.js, js/celebration-photo.js, js/history-record.js
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - REMOVED: restoreCacheFromSession() - no longer needed
+   - REMOVED: showGameCompleteModal() - no longer needed (SignCard handles this)
+   - REMOVED: showCelebrationFromCache() - no longer needed
+   - CHANGED: init() now reads from sessionStorage celebrationData
+   - ADDED: Direct display of celebration from sessionStorage
+   - REASON: post-game.html is now a simple display page
+   - REASON: SignCard already handles the celebration modal
+   - REASON: All data is in sessionStorage from sign-card.js
+   - PRESERVED: ALL UI styling from v1.12
+DEPENDS ON: js/firebase-config.js, js/session.js, js/sign-card.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
