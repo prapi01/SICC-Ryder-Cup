@@ -1,15 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.58
-KEY CHANGES from v2.57:
-   - ADDED: Zero-rise detection in renderTableToContainer()
-   - ADDED: NEW TABLE with Raw column when needsZeroRise === true
-   - ADDED: Horizontal scroll for new table (overflow-x: auto)
-   - PRESERVED: OLD TABLE (5 columns) for when no zero-rise needed
-   - PRESERVED: ALL existing functionality and API unchanged
-   - REASON: Raw column shows handicap before zero-rise
-   - REASON: Only show Raw column when zero-rise is actually applied
-   - REASON: Keep existing UI intact for non-zero-rise cases
+VERSION: 2.59
+KEY CHANGES from v2.58:
+   - FIXED: Zero-rise logic in calculateAllAdjustments()
+   - CHANGED: needsZeroRise = (lowestRaw !== 0) instead of (lowestRaw < 0)
+   - CHANGED: zeroRiseAmount = -lowestRaw (always, not conditional)
+   - REASON: Zero-rise should happen when lowest is NOT zero (including positive values)
+   - REASON: When lowest = 1, subtract 1 from all handicaps to make lowest = 0
+   - REASON: When lowest = -2, add 2 to all handicaps to make lowest = 0
+   - PRESERVED: ALL other functionality from v2.58 unchanged
+   - PRESERVED: Raw column UI for when zero-rise is applied
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -261,7 +261,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Calculate all adjustments
-    // v2.54: Set newAnchorName to "*multiple*" if multiple players have 0
+    // v2.59: FIXED zero-rise logic - triggers when lowest !== 0
     // ============================================================
     
     function calculateAllAdjustments(anchor) {
@@ -299,9 +299,10 @@ var HandicapAdjustment = (function() {
             rawNewList.push(rawNew);
         }
         
+        // v2.59: FIXED - Zero-rise when lowest is NOT zero (including positive values)
         var lowestRaw = Math.min.apply(null, rawNewList);
-        var needsZeroRise = (lowestRaw < 0);
-        var zeroRiseAmount = needsZeroRise ? -lowestRaw : 0;
+        var needsZeroRise = (lowestRaw !== 0);
+        var zeroRiseAmount = -lowestRaw;
         var newAnchorName = null;
         
         if (needsZeroRise) {
@@ -380,12 +381,10 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function renderTableToContainer(calculationResult, anchorName, containerId) {
-        // v2.50: Create container if it doesn't exist
         var container = document.getElementById(containerId);
         if (!container) {
             container = document.createElement('div');
             container.id = containerId;
-            // Insert before hcpButtons
             var buttonsContainer = document.getElementById('hcpButtons');
             var mainContainer = document.getElementById('mainContainer');
             if (buttonsContainer) {
@@ -398,7 +397,7 @@ var HandicapAdjustment = (function() {
         
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
-        var needsZeroRise = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
+        var needsZeroRise = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount !== 0;
         
         players.sort(function(a, b) {
             var teamA = a.team || 'B';
@@ -434,7 +433,6 @@ var HandicapAdjustment = (function() {
             for (var i = 0; i < players.length; i++) {
                 var p = players[i];
                 
-                // Determine displayHcp (zero-rised)
                 var displayHcp = null;
                 if (p.finalHcp !== undefined && p.finalHcp !== null) {
                     displayHcp = p.finalHcp;
@@ -518,7 +516,6 @@ var HandicapAdjustment = (function() {
                 
                 var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
                 
-                // Raw value (before zero-rise)
                 var rawValue = p.rawNew !== undefined && p.rawNew !== null ? p.rawNew : '?';
                 
                 var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
@@ -654,7 +651,6 @@ var HandicapAdjustment = (function() {
             html += '</tbody></table></div>';
         }
         
-        // v2.50: Set container HTML and make visible
         container.innerHTML = html;
         container.style.display = 'block';
         container.style.opacity = '1';
@@ -672,16 +668,14 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
-        // Check if we're in standalone mode
         if (isStandaloneMode && standaloneContainerId) {
             renderTableToContainer(calculationResult, anchorName, standaloneContainerId);
             return;
         }
         
-        // Original modal mode - preserve existing behavior
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
-        var needsZeroRise = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
+        var needsZeroRise = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount !== 0;
         
         players.sort(function(a, b) {
             var teamA = a.team || 'B';
@@ -962,7 +956,6 @@ var HandicapAdjustment = (function() {
         
         var db = getDb();
         
-        // v2.57: READ first - get the current document
         db.collection('playerInformation').doc('defaultPlayers').get()
             .then(function(doc) {
                 var currentPlayers = [];
@@ -975,7 +968,6 @@ var HandicapAdjustment = (function() {
                 
                 console.log('[HCP-ADJUST] Background: Current usedLabels has', Object.keys(existingUsedLabels).length, 'labels');
                 
-                // Step 1: Update player handicaps
                 var updatedCount = 0;
                 for (var i = 0; i < currentPlayers.length; i++) {
                     for (var j = 0; j < adjustedPlayersData.length; j++) {
@@ -991,7 +983,6 @@ var HandicapAdjustment = (function() {
                     }
                 }
                 
-                // Add any new players
                 for (var j = 0; j < adjustedPlayersData.length; j++) {
                     var found = false;
                     for (var i = 0; i < currentPlayers.length; i++) {
@@ -1015,15 +1006,12 @@ var HandicapAdjustment = (function() {
                     }
                 }
                 
-                // v2.57: Step 2 - Merge usedLabels (don't replace!)
                 var mergedUsedLabels = {};
                 
-                // Copy existing usedLabels
                 for (var key in existingUsedLabels) {
                     mergedUsedLabels[key] = existingUsedLabels[key];
                 }
                 
-                // Add new labels from this game
                 var newLabelCount = 0;
                 if (allGamePlayers && allGamePlayers.length > 0) {
                     for (var i = 0; i < allGamePlayers.length; i++) {
@@ -1040,7 +1028,6 @@ var HandicapAdjustment = (function() {
                 
                 console.log('[HCP-ADJUST] Background: usedLabels merged - added', newLabelCount, 'new labels, total:', Object.keys(mergedUsedLabels).length);
                 
-                // v2.57: Step 3 - Build full payload
                 var payload = {
                     players: currentPlayers,
                     usedLabels: mergedUsedLabels,
@@ -1049,7 +1036,6 @@ var HandicapAdjustment = (function() {
                 
                 console.log('[HCP-ADJUST] Background: Writing playerInformation with updated handicaps and merged usedLabels');
                 
-                // Write using WRV
                 return wrw('playerInformation', 'defaultPlayers', payload, true);
             })
             .then(function() {
@@ -1057,7 +1043,6 @@ var HandicapAdjustment = (function() {
             })
             .catch(function(err) {
                 console.error('[HCP-ADJUST] Background: Error updating player records:', err);
-                // Don't fail the main flow
             });
     }
     
@@ -1088,7 +1073,6 @@ var HandicapAdjustment = (function() {
             var calculationResult = calculateAllAdjustments(newAnchor);
             currentTableData = calculationResult;
             
-            // Step 1: Save handicap data to history record
             return new Promise(function(resolve, reject) {
                 saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
                     if (err) {
@@ -1100,7 +1084,6 @@ var HandicapAdjustment = (function() {
             });
         })
         .then(function(calculationResult) {
-            // Hide waiting screen
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                 WaitingScreen.hide();
             } else {
@@ -1110,14 +1093,11 @@ var HandicapAdjustment = (function() {
                 if (loadingModal) loadingModal.remove();
             }
             
-            // v2.55: DISPLAY FIRST
             showAdjustmentTable(calculationResult, newAnchor.name, false);
             
-            // v2.57: THEN background update player records (non-blocking)
             updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
         })
         .catch(function(err) {
-            // Hide waiting screen on error
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                 WaitingScreen.hide();
             } else {
@@ -1137,7 +1117,6 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // v2.54: Display stored adjustment from history record
-    // Handles "*multiple*" newAnchor value
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
@@ -1177,7 +1156,6 @@ var HandicapAdjustment = (function() {
             };
         });
         
-        // v2.54: Pass through the newAnchor value (may be "*multiple*")
         var newAnchorValue = adjustedHandicaps.newAnchor || null;
         
         var calculationResult = {
@@ -1319,7 +1297,6 @@ var HandicapAdjustment = (function() {
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
         console.log('[HCP-ADJUST] initForViewer - viewer mode');
         
-        // v2.49: Check for '/hcp-adjust' (without .html)
         var isStandalone = window.location.pathname.indexOf('/hcp-adjust') !== -1;
         console.log('[HCP-ADJUST] isStandalone:', isStandalone, 'pathname:', window.location.pathname);
         
@@ -1354,24 +1331,19 @@ var HandicapAdjustment = (function() {
         var calculationResult = calculateAllAdjustments(anchor);
         currentTableData = calculationResult;
         
-        // Use standalone mode if detected
         if (isStandaloneMode && standaloneContainerId) {
-            // v2.50: renderTableToContainer will create the container if needed
             renderTableToContainer(calculationResult, anchor.name, standaloneContainerId);
-            // Hide waiting screen after table is rendered
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                 WaitingScreen.hide();
             }
             return;
         }
         
-        // Fallback to modal mode
         showAdjustmentTable(calculationResult, anchor.name, true);
     }
     
     // ============================================================
-    // saveAdjustmentToFirestore - v2.55: No longer updates player profiles
-    // Player profiles are updated in background via updatePlayerRecordsInBackground()
+    // saveAdjustmentToFirestore - v2.55
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -1425,7 +1397,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Legacy init function - v2.55: DISPLAY FIRST, background update
+    // Legacy init function - v2.55
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -1460,18 +1432,13 @@ var HandicapAdjustment = (function() {
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
                 currentTableData = calculationResult;
                 
-                // Step 1: Save handicap data to history record
                 saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
                     if (err) {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
-                        // Still show the table even if save failed
                         showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     } else {
-                        // v2.55: DISPLAY FIRST
                         showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                        
-                        // v2.57: THEN background update player records (non-blocking)
                         updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
                     }
                 });
@@ -1517,8 +1484,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // LEGACY: updatePlayerProfiles - Kept for backward compatibility
-    // v2.55: No longer called automatically, but available for manual use
+    // LEGACY: updatePlayerProfiles
     // ============================================================
     
     function updatePlayerProfiles(players, callback) {
@@ -1535,7 +1501,6 @@ var HandicapAdjustment = (function() {
                             }
                         }
                     }
-                    // Use WRV for reliable Firestore write
                     return wrw('playerInformation', 'defaultPlayers', {
                         players: currentPlayers,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1584,10 +1549,7 @@ var HandicapAdjustment = (function() {
                     alert("Error saving handicap data. Please try again.");
                     showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                 } else {
-                    // v2.55: DISPLAY FIRST
                     showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                    
-                    // v2.57: THEN background update player records
                     updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
                 }
             });
@@ -1622,15 +1584,12 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.58";
+    window.HANDICAP_ADJUST_VERSION = "2.59";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
-    // ============================================================
-    // v2.58: EXPOSE MULTIPLE_NEW_ANCHOR and background updater
-    // ============================================================
     return {
         init: init,
         initForViewer: initForViewer,
@@ -1640,8 +1599,8 @@ var HandicapAdjustment = (function() {
         displayStoredAdjustment: displayStoredAdjustment,
         calculateAllAdjustments: calculateAllAdjustments,
         calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw,
-        updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,  // v2.57: Updated with correct usedLabels merge logic
-        MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR  // v2.54: Exposed for other files
+        updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,
+        MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR
     };
     
 })();
@@ -1651,16 +1610,16 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.58
-KEY CHANGES from v2.57:
-   - ADDED: Zero-rise detection in renderTableToContainer()
-   - ADDED: NEW TABLE with Raw column when needsZeroRise === true
-   - ADDED: Horizontal scroll for new table (overflow-x: auto)
-   - PRESERVED: OLD TABLE (5 columns) for when no zero-rise needed
-   - PRESERVED: ALL existing functionality and API unchanged
-   - REASON: Raw column shows handicap before zero-rise
-   - REASON: Only show Raw column when zero-rise is actually applied
-   - REASON: Keep existing UI intact for non-zero-rise cases
+VERSION: 2.59
+KEY CHANGES from v2.58:
+   - FIXED: Zero-rise logic in calculateAllAdjustments()
+   - CHANGED: needsZeroRise = (lowestRaw !== 0) instead of (lowestRaw < 0)
+   - CHANGED: zeroRiseAmount = -lowestRaw (always, not conditional)
+   - REASON: Zero-rise should happen when lowest is NOT zero (including positive values)
+   - REASON: When lowest = 1, subtract 1 from all handicaps to make lowest = 0
+   - REASON: When lowest = -2, add 2 to all handicaps to make lowest = 0
+   - PRESERVED: ALL other functionality from v2.58 unchanged
+   - PRESERVED: Raw column UI for when zero-rise is applied
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
