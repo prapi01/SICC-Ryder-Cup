@@ -1,25 +1,25 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - ADDED: Signature change detection in setupRealtimeListener()
-   - ADDED: signaturesChanged variable to detect changes in signatures object
-   - FIXED: When F2 signs, F1 UI now detects it and redirects to post-game
-   - CHANGED: Real-time listener now watches for signatures changes
-   - ADDED: Cache update for signatures when Firestore changes
-   - PRESERVED: ALL other functionality from v1.08 unchanged
-   - This ensures both devices detect game completion when signatures are written
-   - Works regardless of which flight signs first (F1 or F2)
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - REMOVED: History record creation from onCacheUpdate() (F1 no longer writes)
+   - REMOVED: createHistoryRecord call in signature detection
+   - CHANGED: Signature detection now only shows completion modal
+   - REASON: F2 is the designated history record writer (design by contract)
+   - REASON: F1 device only shows modal, does NOT write history record
+   - REASON: Simplifies logic - no race condition
+   - PRESERVED: ALL other functionality from v1.09 unchanged
+   - PRESERVED: Signature change detection in realtime listener
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.09";
+window.REAL_GAME_INIT_VERSION = "1.10";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.09 - Added signature change detection to listener");
+    console.log("[REAL-GAME-INIT] Initializing v1.10 - F1 no longer writes history record");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -426,7 +426,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener - v1.09: Added signature change detection
+    // setupRealtimeListener - v1.10: F1 no longer writes history record
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -480,7 +480,8 @@ var RealGameInit = (function() {
                     
                     console.log("Realtime update detected");
                     
-                    // v1.09: Handle signature changes - ALWAYS process
+                    // v1.10: Handle signature changes - ONLY show completion modal
+                    // F2 writes history record (design by contract) - F1 never writes
                     if (signaturesChanged) {
                         console.log('[REALTIME] Signatures changed - updating cache and checking completion');
                         
@@ -488,30 +489,27 @@ var RealGameInit = (function() {
                         if (currentCache.signatures && data.signatures) {
                             currentCache.signatures.f1.signed = data.signatures.f1?.signed === true;
                             currentCache.signatures.f2.signed = data.signatures.f2?.signed === true;
-                            currentCache.signatures.f1.signedAt = data.signatures.f1?.signedAt || null;
-                            currentCache.signatures.f2.signedAt = data.signatures.f2?.signedAt || null;
-                            currentCache.signatures.f1.captainName = data.signatures.f1?.captainName || null;
-                            currentCache.signatures.f2.captainName = data.signatures.f2?.captainName || null;
                             console.log('[REALTIME] Cache updated with new signatures');
                         }
                         
                         // Check if both flights are now signed
                         if (data.signatures?.f1?.signed === true && data.signatures?.f2?.signed === true) {
-                            console.log('[REALTIME] Both signatures detected - completing game');
+                            console.log('[REALTIME] Both signatures detected - showing completion modal');
                             
                             // Hide waiting screen if showing
                             if (typeof RealGameNav !== 'undefined' && RealGameNav.hideWaitingScreen) {
                                 RealGameNav.hideWaitingScreen();
                             }
                             
-                            // Set game complete and redirect
+                            // Set game complete and show modal
+                            // v1.10: F1 NEVER writes history record - only shows modal
+                            // F2 already wrote the history record (design by contract)
                             setGameComplete(true);
                             if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteScreen) {
                                 RealGameNav.showGameCompleteScreen();
                             }
                             if (renderAllCallback) renderAllCallback();
                             
-                            // Return early - no need to process other changes
                             // Clear flag after processing
                             RealGameState.setFirestoreChanged(false);
                             console.log('[REALTIME] Firestore changed flag cleared (signatures completion)');
@@ -620,7 +618,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // onCacheUpdate - v1.07: FIXED signature check
+    // onCacheUpdate - v1.10: F1 no longer writes history record
     // ============================================================
     
     function onCacheUpdate(cache, renderAllCallback) {
@@ -638,23 +636,21 @@ var RealGameInit = (function() {
             Ticker.setPlayers(getAllPlayers());
         }
         
-        // v1.07: FIXED - Check signed === true, not just object existence
-        // Previously: cache.signatures.f1 && cache.signatures.f2 would pass for objects
-        // Now: requires f1.signed === true AND f2.signed === true
+        // v1.10: F1 NEVER writes history record - only show completion modal
+        // F2 is the designated writer (design by contract)
         if (cache.signatures && 
             cache.signatures.f1 && cache.signatures.f1.signed === true &&
             cache.signatures.f2 && cache.signatures.f2.signed === true &&
             !isGameComplete() && !isCelebrationTriggered()) {
             
-            if (typeof RealGameNav !== 'undefined' && RealGameNav.createHistoryRecord) {
-                RealGameNav.createHistoryRecord().then(function() {
-                    setGameComplete(true);
-                    if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteScreen) {
-                        RealGameNav.showGameCompleteScreen();
-                    }
-                    if (renderAllCallback) renderAllCallback();
-                }).catch(console.error);
+            console.log('[onCacheUpdate] Both signed detected - showing completion modal');
+            console.log('[onCacheUpdate] NOTE: F2 is the designated history record writer');
+            
+            setGameComplete(true);
+            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteScreen) {
+                RealGameNav.showGameCompleteScreen();
             }
+            if (renderAllCallback) renderAllCallback();
         }
         
         if (renderAllCallback) renderAllCallback();
@@ -984,16 +980,16 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - ADDED: Signature change detection in setupRealtimeListener()
-   - ADDED: signaturesChanged variable to detect changes in signatures object
-   - FIXED: When F2 signs, F1 UI now detects it and redirects to post-game
-   - CHANGED: Real-time listener now watches for signatures changes
-   - ADDED: Cache update for signatures when Firestore changes
-   - PRESERVED: ALL other functionality from v1.08 unchanged
-   - This ensures both devices detect game completion when signatures are written
-   - Works regardless of which flight signs first (F1 or F2)
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - REMOVED: History record creation from onCacheUpdate() (F1 no longer writes)
+   - REMOVED: createHistoryRecord call in signature detection
+   - CHANGED: Signature detection now only shows completion modal
+   - REASON: F2 is the designated history record writer (design by contract)
+   - REASON: F1 device only shows modal, does NOT write history record
+   - REASON: Simplifies logic - no race condition
+   - PRESERVED: ALL other functionality from v1.09 unchanged
+   - PRESERVED: Signature change detection in realtime listener
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
