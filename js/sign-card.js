@@ -1,14 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - CHANGED: getCelebrationImage() now checks sessionStorage FIRST
-   - ADDED: If photo exists in sessionStorage, use it immediately (no network)
-   - ADDED: After loading from GitHub, store in sessionStorage
-   - REASON: Photo must be available instantly on post-game.html
-   - REASON: No network request for photo on celebration screen
-   - PRESERVED: ALL other functionality from v1.28 unchanged
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - REMOVED: signedAt from signature objects (unused field)
+   - REMOVED: captainName from signature objects (unused field)
+   - SIMPLIFIED: Signature now only contains { signed: true }
+   - REASON: Schema v5.0 FINAL removes these unused fields
+   - PRESERVED: ALL other functionality from v1.29 unchanged
    - PRESERVED: Double-Listener system for signatures
+   - PRESERVED: sessionStorage photo caching
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -668,7 +668,9 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.28: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS
+    // v1.30: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS
+    // - REMOVED: signedAt and captainName from signature objects
+    // - SIMPLIFIED: Signature now only contains { signed: true }
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -686,13 +688,11 @@ var SignCard = (function() {
             
             if (cache) {
                 if (!cache.signatures) cache.signatures = {};
-                if (!cache.signatures.f1) cache.signatures.f1 = { signed: false, signedAt: null, captainName: null };
-                if (!cache.signatures.f2) cache.signatures.f2 = { signed: false, signedAt: null, captainName: null };
+                if (!cache.signatures.f1) cache.signatures.f1 = { signed: false };
+                if (!cache.signatures.f2) cache.signatures.f2 = { signed: false };
                 
                 cache.signatures[flightKey] = {
-                    signed: true,
-                    signedAt: null,
-                    captainName: captainName || null
+                    signed: true
                 };
                 
                 f1Signed = cache.signatures.f1.signed === true;
@@ -740,16 +740,14 @@ var SignCard = (function() {
                         var signatures = data.signatures || {};
                         
                         if (!signatures.f1) {
-                            signatures.f1 = { signed: false, signedAt: null, captainName: null };
+                            signatures.f1 = { signed: false };
                         }
                         if (!signatures.f2) {
-                            signatures.f2 = { signed: false, signedAt: null, captainName: null };
+                            signatures.f2 = { signed: false };
                         }
                         
                         signatures[flightKey] = {
-                            signed: true,
-                            signedAt: null,
-                            captainName: captainName || null
+                            signed: true
                         };
                         
                         return docRef.update({
@@ -917,19 +915,19 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.29";
+window.SIGN_CARD_VERSION = "1.30";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - CHANGED: getCelebrationImage() now checks sessionStorage FIRST
-   - ADDED: If photo exists in sessionStorage, use it immediately (no network)
-   - ADDED: After loading from GitHub, store in sessionStorage
-   - REASON: Photo must be available instantly on post-game.html
-   - REASON: No network request for photo on celebration screen
-   - PRESERVED: ALL other functionality from v1.28 unchanged
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - REMOVED: signedAt from signature objects (unused field)
+   - REMOVED: captainName from signature objects (unused field)
+   - SIMPLIFIED: Signature now only contains { signed: true }
+   - REASON: Schema v5.0 FINAL removes these unused fields
+   - PRESERVED: ALL other functionality from v1.29 unchanged
    - PRESERVED: Double-Listener system for signatures
+   - PRESERVED: sessionStorage photo caching
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
