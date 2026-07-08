@@ -1,20 +1,20 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - ADDED: verifyPhotoUpload() - checks if file exists in Firebase Storage with metadata
-   - ADDED: Retry loop with exponential backoff (3 attempts, 2s base delay)
-   - CHANGED: Upload now requires verification before confirming success
-   - CHANGED: Only logs "✅ Uploaded to" after verification passes
-   - ADDED: Proper error propagation when verification fails
-   - REASON: WRV is not suitable for photo verification
-   - REASON: Need to confirm file actually exists in Firebase Storage
-   - PRESERVED: ALL other functionality from v1.08 unchanged
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: storeBlobInSessionStorage(blob, callback) - stores blob directly (NO NETWORK)
+   - ADDED: downloadPhotoToSessionStorage(url, callback) - for VIEW devices to download from FS
+   - MODIFIED: checkAndRenameCelebrationPhoto() - now calls storeBlobInSessionStorage() instead of updatePhotoInSessionStorage()
+   - REMOVED: Redundant destRef.getDownloadURL() call in checkAndRenameCelebrationPhoto()
+   - REASON: Eliminate network call to FS for sessionStorage update
+   - REASON: Use blob already in memory (from GitHub download)
+   - REASON: VIEW devices need ability to download from FS when imageUrl appears
+   - PRESERVED: ALL other functionality from v1.09 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.09";
+window.CELEBRATION_PHOTO_VERSION = "1.10";
 
 // ============================================================
 // CONSTANTS
@@ -82,6 +82,68 @@ function storeImageInSessionStorage(url, callback) {
     };
     
     img.src = url;
+}
+
+// ============================================================
+// v1.10: Store blob directly in sessionStorage (NO NETWORK)
+// Converts blob to base64 using FileReader
+// ============================================================
+function storeBlobInSessionStorage(blob, callback) {
+    if (!blob) {
+        if (callback) callback(new Error('No blob provided'));
+        return;
+    }
+    
+    console.log('[CelebrationPhoto] Storing blob directly in sessionStorage (NO NETWORK)...');
+    
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        try {
+            var base64 = event.target.result;
+            sessionStorage.setItem(SESSION_STORAGE_KEY, base64);
+            console.log('[CelebrationPhoto] ✅ Stored blob in sessionStorage, size:', (base64.length / 1024).toFixed(1), 'KB');
+            if (callback) callback(null, base64);
+        } catch(e) {
+            console.warn('[CelebrationPhoto] ❌ Failed to store blob in sessionStorage:', e.message);
+            if (callback) callback(e);
+        }
+    };
+    reader.onerror = function() {
+        console.warn('[CelebrationPhoto] ❌ Failed to read blob');
+        if (callback) callback(new Error('Failed to read blob'));
+    };
+    reader.readAsDataURL(blob);
+}
+
+// ============================================================
+// v1.10: Download photo from URL and store in sessionStorage
+// For VIEW devices to download from Firebase Storage
+// ============================================================
+function downloadPhotoToSessionStorage(url, callback) {
+    if (!url) {
+        if (callback) callback(new Error('No URL provided'));
+        return;
+    }
+    
+    console.log('[CelebrationPhoto] Downloading photo from URL to sessionStorage...');
+    
+    // Use fetch to get the image as blob
+    fetch(url + '?t=' + Date.now())
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('Failed to fetch: ' + response.status);
+            }
+            return response.blob();
+        })
+        .then(function(blob) {
+            console.log('[CelebrationPhoto] Downloaded blob, size:', (blob.size / 1024).toFixed(1), 'KB');
+            // Store the blob directly in sessionStorage
+            storeBlobInSessionStorage(blob, callback);
+        })
+        .catch(function(err) {
+            console.warn('[CelebrationPhoto] ❌ Failed to download photo:', err.message);
+            if (callback) callback(err);
+        });
 }
 
 // ============================================================
@@ -355,6 +417,8 @@ function copyCelebrationPhoto(gameId, callback) {
 
 // ============================================================
 // Update sessionStorage with new photo
+// DEPRECATED: Use storeBlobInSessionStorage() instead (NO NETWORK)
+// Kept for backward compatibility
 // ============================================================
 function updatePhotoInSessionStorage(imageUrl, callback) {
     if (!imageUrl) {
@@ -419,10 +483,9 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.08: Check if C.jpg exists and rename it to game ID
+// v1.10: Check if C.jpg exists and rename it to game ID
 // Called at EVERY hole save (ETag check makes it cheap)
-// v1.08: ALWAYS uploads when ETag changes (overwrites stale file)
-// v1.09: Added verification and retry loop
+// v1.10: Uses storeBlobInSessionStorage() (NO NETWORK)
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -451,7 +514,6 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
         var storage = firebase.storage();
         var archiveId = gameId + '_H';
         var sourceUrl = addCacheBuster(GITHUB_PHOTO_URL);
-        var destRef = storage.ref('celebration/' + archiveId + '.jpg');
         
         // v1.08: ALWAYS upload when ETag changed - overwrite existing file
         console.log('[CelebrationPhoto] 📸 Downloading from GitHub:', sourceUrl);
@@ -509,18 +571,19 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                     }
                 });
                 
-                // After Firestore update attempt, update sessionStorage and localStorage
+                // After Firestore update attempt, update sessionStorage using the blob directly (NO NETWORK)
                 firestorePromise.then(function() {
-                    // Update sessionStorage with the uploaded photo
-                    destRef.getDownloadURL()
-                        .then(function(url) {
-                            updatePhotoInSessionStorage(url);
-                            // v1.07: Store URL in localStorage for history record
-                            storePhotoUrlForHistory(gameId, url);
-                        })
-                        .catch(function(err) {
-                            console.warn('[CelebrationPhoto] Failed to get URL for sessionStorage update:', err.message);
-                        });
+                    // v1.10: Store blob directly in sessionStorage (NO NETWORK)
+                    storeBlobInSessionStorage(blob, function(sessionErr) {
+                        if (sessionErr) {
+                            console.warn('[CelebrationPhoto] ⚠️ sessionStorage update failed:', sessionErr.message);
+                            // Don't fail the whole operation - photo is already uploaded
+                        } else {
+                            console.log('[CelebrationPhoto] ✅ sessionStorage updated with new photo (blob direct)');
+                            // Store URL in localStorage for history record
+                            storePhotoUrlForHistory(gameId, verifiedUrl);
+                        }
+                    });
                     
                     if (callback) callback(null);
                 });
@@ -574,7 +637,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.09: Expose functions
+// v1.10: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -587,6 +650,8 @@ window.storePhotoUrlForHistory = storePhotoUrlForHistory;
 window.getStoredPhotoUrlForHistory = getStoredPhotoUrlForHistory;
 window.clearStoredPhotoUrlForHistory = clearStoredPhotoUrlForHistory;
 window.verifyPhotoUpload = verifyPhotoUpload; // v1.09: Exposed for debugging
+window.storeBlobInSessionStorage = storeBlobInSessionStorage; // v1.10: Exposed
+window.downloadPhotoToSessionStorage = downloadPhotoToSessionStorage; // v1.10: Exposed
 window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
@@ -596,16 +661,16 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - ADDED: verifyPhotoUpload() - checks if file exists in Firebase Storage with metadata
-   - ADDED: Retry loop with exponential backoff (3 attempts, 2s base delay)
-   - CHANGED: Upload now requires verification before confirming success
-   - CHANGED: Only logs "✅ Uploaded to" after verification passes
-   - ADDED: Proper error propagation when verification fails
-   - REASON: WRV is not suitable for photo verification
-   - REASON: Need to confirm file actually exists in Firebase Storage
-   - PRESERVED: ALL other functionality from v1.08 unchanged
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: storeBlobInSessionStorage(blob, callback) - stores blob directly (NO NETWORK)
+   - ADDED: downloadPhotoToSessionStorage(url, callback) - for VIEW devices to download from FS
+   - MODIFIED: checkAndRenameCelebrationPhoto() - now calls storeBlobInSessionStorage() instead of updatePhotoInSessionStorage()
+   - REMOVED: Redundant destRef.getDownloadURL() call in checkAndRenameCelebrationPhoto()
+   - REASON: Eliminate network call to FS for sessionStorage update
+   - REASON: Use blob already in memory (from GitHub download)
+   - REASON: VIEW devices need ability to download from FS when imageUrl appears
+   - PRESERVED: ALL other functionality from v1.09 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
