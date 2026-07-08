@@ -1,16 +1,13 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - REMOVED: restoreCacheFromSession() - no longer needed
-   - REMOVED: loadHcpData() using GameLoader - now uses HistoryRecord
-   - CHANGED: init() now calls HandicapAdjustment.init() directly
-   - CHANGED: renderButtons() - simplified back/close buttons only
-   - REMOVED: Scorecard, Celebration, and Main Menu buttons
-   - REASON: hcp-adjust is now a standalone display page
-   - REASON: All data is read from historyGames collection
-   - REASON: No navigation back to game (game is complete)
-   - PRESERVED: ALL UI styling from v1.30
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - CHANGED: loadHcpData() now calls HandicapAdjustment.initForHistory() instead of init()
+   - REASON: v2.59's init() requires multiple parameters (winningPlayers, matchPoints, etc.)
+   - REASON: initForHistory() is the correct function for read-only display from historyGames
+   - REASON: hcp-adjust is a standalone display page for completed games
+   - PRESERVED: ALL other functionality from v1.31 unchanged
+   - PRESERVED: UI styling, version tag, cache-busting
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/modal.js, js/hcp-adjust.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
 -->
@@ -27,16 +24,16 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.31"></script>
-    <script src="js/session.js?v=1.31"></script>
-    <script src="js/settings.js?v=1.31"></script>
-    <script src="js/modal.js?v=1.31"></script>
+    <script src="js/firebase-config.js?v=1.32"></script>
+    <script src="js/session.js?v=1.32"></script>
+    <script src="js/settings.js?v=1.32"></script>
+    <script src="js/modal.js?v=1.32"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <!-- WRV support -->
     <script src="js/wrv.js?v=1.02"></script>
     
-    <script src="js/hcp-adjust.js?v=2.60"></script>
+    <script src="js/hcp-adjust.js?v=2.59"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -252,7 +249,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.31</div>
+<div class="version-tag">v1.32</div>
 
 <script>
 // ============================================================
@@ -265,10 +262,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.31: Simplified display page
+// VERSION CACHE-BUSTING - v1.32: Use initForHistory() instead of init()
 // ============================================================
-var APP_VERSION = "1.31";
-var CACHE_KEY = "hcp_adjust_version_v131";
+var APP_VERSION = "1.32";
+var CACHE_KEY = "hcp_adjust_version_v132";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -285,8 +282,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.31";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.31 - Simplified display page");
+window.HCP_ADJUST_PAGE_VERSION = "1.32";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.32 - Using initForHistory()");
 
 // ============================================================
 // Main Logic
@@ -302,7 +299,7 @@ function getUrlParams() {
 }
 
 // ============================================================
-// v1.31: Render close button only
+// v1.32: Render close button only
 // ============================================================
 
 function renderButtons() {
@@ -330,7 +327,7 @@ function renderButtons() {
 }
 
 // ============================================================
-// v1.31: Load handicap data from history record
+// v1.32: Load handicap data from history record using initForHistory()
 // ============================================================
 
 function loadHcpData() {
@@ -347,10 +344,20 @@ function loadHcpData() {
     
     console.log("[HCP-ADJUST-PAGE] Loading handicap data for game:", gameId);
     
-    // v1.31: Directly call HandicapAdjustment.init
-    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-        HandicapAdjustment.init(gameId);
-        console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.init called");
+    // v1.32: Use initForHistory() for read-only display from historyGames
+    if (typeof HandicapAdjustment !== 'undefined') {
+        if (HandicapAdjustment.initForHistory) {
+            HandicapAdjustment.initForHistory(gameId, null, 'view-history.html?gameId=' + gameId);
+            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForHistory called");
+        } else if (HandicapAdjustment.init) {
+            // Fallback to init() if initForHistory not available
+            HandicapAdjustment.init(gameId);
+            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.init called (fallback)");
+        } else {
+            console.error("[HCP-ADJUST-PAGE] HandicapAdjustment not available");
+            document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
+            return;
+        }
         
         // Show container when table renders
         var container = document.getElementById('hcpTableContainer');
@@ -373,7 +380,7 @@ function loadHcpData() {
         
         renderButtons();
     } else {
-        console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.init not available");
+        console.error("[HCP-ADJUST-PAGE] HandicapAdjustment not defined");
         document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
     }
 }
@@ -418,17 +425,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - REMOVED: restoreCacheFromSession() - no longer needed
-   - REMOVED: loadHcpData() using GameLoader - now uses HistoryRecord
-   - CHANGED: init() now calls HandicapAdjustment.init() directly
-   - CHANGED: renderButtons() - simplified back/close buttons only
-   - REMOVED: Scorecard, Celebration, and Main Menu buttons
-   - REASON: hcp-adjust is now a standalone display page
-   - REASON: All data is read from historyGames collection
-   - REASON: No navigation back to game (game is complete)
-   - PRESERVED: ALL UI styling from v1.30
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - CHANGED: loadHcpData() now calls HandicapAdjustment.initForHistory() instead of init()
+   - REASON: v2.59's init() requires multiple parameters (winningPlayers, matchPoints, etc.)
+   - REASON: initForHistory() is the correct function for read-only display from historyGames
+   - REASON: hcp-adjust is a standalone display page for completed games
+   - PRESERVED: ALL other functionality from v1.31 unchanged
+   - PRESERVED: UI styling, version tag, cache-busting
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/modal.js, js/hcp-adjust.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
 -->
