@@ -1,22 +1,24 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded
-   - REASON: F1/F2 devices must have default photo in sessionStorage at game start
-   - REASON: Ensures sessionStorage always has a photo (default or new)
-   - REASON: Consistent with VIEW devices
-   - PRESERVED: ALL other functionality from v1.10 unchanged
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: setupRealtimeListener() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
+   - FIXED: onCacheUpdate() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
+   - REASON: showGameCompleteScreen() navigates away to post-game.html immediately
+   - REASON: showGameCompleteModal() shows the Game Complete modal on current page
+   - REASON: User should click "SEE RESULTS" to navigate, not auto-navigate
+   - REASON: Restores the working behavior from yesterday
+   - PRESERVED: ALL other functionality from v1.11 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.11";
+window.REAL_GAME_INIT_VERSION = "1.12";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.11 - Added loadDefaultCelebrationPhoto at game start");
+    console.log("[REAL-GAME-INIT] Initializing v1.12 - Fixed completion modal navigation");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -423,7 +425,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener - v1.10: F1 no longer writes history record
+    // v1.12: setupRealtimeListener - FIXED completion modal
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -477,8 +479,7 @@ var RealGameInit = (function() {
                     
                     console.log("Realtime update detected");
                     
-                    // v1.10: Handle signature changes - ONLY show completion modal
-                    // F2 writes history record (design by contract) - F1 never writes
+                    // v1.12: Handle signature changes - show completion modal (NOT navigate away)
                     if (signaturesChanged) {
                         console.log('[REALTIME] Signatures changed - updating cache and checking completion');
                         
@@ -498,12 +499,10 @@ var RealGameInit = (function() {
                                 RealGameNav.hideWaitingScreen();
                             }
                             
-                            // Set game complete and show modal
-                            // v1.10: F1 NEVER writes history record - only shows modal
-                            // F2 already wrote the history record (design by contract)
+                            // v1.12: Use showGameCompleteModal (shows modal, does NOT navigate away)
                             setGameComplete(true);
-                            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteScreen) {
-                                RealGameNav.showGameCompleteScreen();
+                            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                                RealGameNav.showGameCompleteModal(gameId);
                             }
                             if (renderAllCallback) renderAllCallback();
                             
@@ -615,7 +614,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // onCacheUpdate - v1.10: F1 no longer writes history record
+    // v1.12: onCacheUpdate - FIXED completion modal
     // ============================================================
     
     function onCacheUpdate(cache, renderAllCallback) {
@@ -633,8 +632,7 @@ var RealGameInit = (function() {
             Ticker.setPlayers(getAllPlayers());
         }
         
-        // v1.10: F1 NEVER writes history record - only show completion modal
-        // F2 is the designated writer (design by contract)
+        // v1.12: Use showGameCompleteModal (shows modal, does NOT navigate away)
         if (cache.signatures && 
             cache.signatures.f1 && cache.signatures.f1.signed === true &&
             cache.signatures.f2 && cache.signatures.f2.signed === true &&
@@ -644,8 +642,8 @@ var RealGameInit = (function() {
             console.log('[onCacheUpdate] NOTE: F2 is the designated history record writer');
             
             setGameComplete(true);
-            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteScreen) {
-                RealGameNav.showGameCompleteScreen();
+            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                RealGameNav.showGameCompleteModal(getGameId());
             }
             if (renderAllCallback) renderAllCallback();
         }
@@ -718,8 +716,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // init - Main Initialization Function
-    // v1.11: Added loadDefaultCelebrationPhoto at game start
+    // init - Main Initialization Function - UNCHANGED
     // ============================================================
     
     async function init(renderAllCallback) {
@@ -993,8 +990,7 @@ window.exitToMainMenu = function() {
     }
 };
 
-// Expose onCacheUpdate for GameLoader
-window.onCacheUpdate = function(cache) {
+// Expose onCacheUpdate for GameLoaderwindow.onCacheUpdate = function(cache) {
     if (typeof RealGameInit !== 'undefined') {
         RealGameInit.onCacheUpdate(cache, function() {
             if (typeof RealGameUI !== 'undefined') {
@@ -1006,13 +1002,15 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded
-   - REASON: F1/F2 devices must have default photo in sessionStorage at game start
-   - REASON: Ensures sessionStorage always has a photo (default or new)
-   - REASON: Consistent with VIEW devices
-   - PRESERVED: ALL other functionality from v1.10 unchanged
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: setupRealtimeListener() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
+   - FIXED: onCacheUpdate() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
+   - REASON: showGameCompleteScreen() navigates away to post-game.html immediately
+   - REASON: showGameCompleteModal() shows the Game Complete modal on current page
+   - REASON: User should click "SEE RESULTS" to navigate, not auto-navigate
+   - REASON: Restores the working behavior from yesterday
+   - PRESERVED: ALL other functionality from v1.11 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
