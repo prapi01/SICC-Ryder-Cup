@@ -1,12 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - REMOVED: GitHub fallback from getCelebrationImage()
-   - REASON: sessionStorage ALWAYS has a photo (default loaded at game start)
-   - REASON: GitHub fallback is no longer needed and was counter-productive
-   - REASON: All devices now load default photo at game start
-   - PRESERVED: ALL other functionality from v1.31 unchanged
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - FIXED: submitSignature() now waits for Firestore write to complete before showing completion modal
+   - CHANGED: performWrite() is now called and awaited before showGameCompleteModal()
+   - REASON: Navigation to post-game.html was happening before Firestore write completed
+   - REASON: F2's signature was not being written to Firestore because page unloaded
+   - REASON: F1's waiting screen never received the signature
+   - PRESERVED: ALL other functionality from v1.32 unchanged
    - PRESERVED: Double-Listener system for signatures
    - PRESERVED: sessionStorage photo caching
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
@@ -763,8 +764,9 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.31: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS
+    // v1.33: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS - FIXED WRITE ORDER
     // - REFRESHES CACHE BEFORE SIGNING (ensures latest data)
+    // - WAITS for Firestore write to complete before showing completion
     // - F2 writes history record (F1 never writes)
     // - WRV write is background (user never waits)
     // ============================================================
@@ -814,42 +816,9 @@ var SignCard = (function() {
                 var bothSigned = f1Signed && f2Signed;
                 
                 // ============================================================
-                // STEP 2: Show appropriate UI (waiting or completion)
+                // STEP 2: Show waiting screen if not both signed
                 // ============================================================
-                if (bothSigned) {
-                    console.log('[SignCard] Both signed (from cache)!');
-                    
-                    // If this is F2 (flight === 2), write history record
-                    // F1 never writes - only shows completion modal
-                    if (flight === 2) {
-                        console.log('[SignCard] F2 writing history record (background)');
-                        // Get game data for the payload
-                        var gameData = cache ? cache._gameData : null;
-                        if (!gameData) {
-                            // Try to get from Firestore if not in cache
-                            docRef.get().then(function(doc) {
-                                if (doc.exists) {
-                                    gameData = doc.data();
-                                }
-                                triggerHistoryRecordWrite(gameId, cache, gameData);
-                            }).catch(function() {
-                                triggerHistoryRecordWrite(gameId, cache, null);
-                            });
-                        } else {
-                            triggerHistoryRecordWrite(gameId, cache, gameData);
-                        }
-                    } else {
-                        console.log('[SignCard] F1 - not writing history record (F2 handles this)');
-                    }
-                    
-                    // Show the Game Complete modal (both F1 and F2)
-                    if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
-                        RealGameNav.showGameCompleteModal(gameId);
-                    } else {
-                        showGameCompleteModalDirect(gameId);
-                    }
-                    
-                } else {
+                if (!bothSigned) {
                     var waitingFor = flight === 1 ? 2 : 1;
                     console.log('[SignCard] Showing waiting screen for flight', waitingFor);
                     showWaitingScreen(waitingFor);
@@ -857,6 +826,7 @@ var SignCard = (function() {
                 
                 // ============================================================
                 // STEP 3: Write signature to Firestore (both F1 and F2)
+                // v1.33: This must COMPLETE before showing completion modal
                 // ============================================================
                 var maxRetries = 5;
                 var attemptCount = 0;
@@ -926,17 +896,32 @@ var SignCard = (function() {
                                             writeTimeout = null;
                                         }
                                         
+                                        // v1.33: Now that write is confirmed, check both signed
                                         if (f1SignedCheck && f2SignedCheck) {
                                             console.log('[SignCard] Both signed (confirmed)!');
                                             
                                             // If this is F2, ensure history record is written
-                                            // (If already triggered from cache, this is a double-check)
                                             if (flight === 2) {
-                                                // Check if history record was already triggered
-                                                // The cache-based trigger already happened, so this is just a confirmation
-                                                console.log('[SignCard] F2: History record write already triggered from cache');
+                                                console.log('[SignCard] F2: History record write triggered from cache');
+                                                // Trigger history record write (background)
+                                                var gameData = cache ? cache._gameData : null;
+                                                if (!gameData) {
+                                                    docRef.get().then(function(doc) {
+                                                        if (doc.exists) {
+                                                            gameData = doc.data();
+                                                        }
+                                                        triggerHistoryRecordWrite(gameId, cache, gameData);
+                                                    }).catch(function() {
+                                                        triggerHistoryRecordWrite(gameId, cache, null);
+                                                    });
+                                                } else {
+                                                    triggerHistoryRecordWrite(gameId, cache, gameData);
+                                                }
+                                            } else {
+                                                console.log('[SignCard] F1 - not writing history record (F2 handles this)');
                                             }
                                             
+                                            // v1.33: Now show completion modal (navigation happens here)
                                             if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
                                                 RealGameNav.showGameCompleteModal(gameId);
                                             } else {
@@ -989,7 +974,11 @@ var SignCard = (function() {
                         });
                 }
                 
+                // v1.33: IMPORTANT - Wait for Firestore write to complete before showing completion
                 performWrite(0);
+                
+                // v1.33: Removed the immediate showGameCompleteModal() call here
+                // It is now called inside performWrite() after confirmation
             });
         });
     }
@@ -1056,25 +1045,26 @@ var SignCard = (function() {
         clearConfetti: clearConfetti,
         ensureArchiveRecord: ensureArchiveRecord,
         _cachedImagePath: cachedImagePath,
-        refreshCacheBeforeSigning: refreshCacheBeforeSigning,  // v1.31: Exposed for debugging
-        triggerHistoryRecordWrite: triggerHistoryRecordWrite   // v1.31: Exposed for debugging
+        refreshCacheBeforeSigning: refreshCacheBeforeSigning,
+        triggerHistoryRecordWrite: triggerHistoryRecordWrite
     };
     
 })();
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.32";
+window.SIGN_CARD_VERSION = "1.33";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - REMOVED: GitHub fallback from getCelebrationImage()
-   - REASON: sessionStorage ALWAYS has a photo (default loaded at game start)
-   - REASON: GitHub fallback is no longer needed and was counter-productive
-   - REASON: All devices now load default photo at game start
-   - PRESERVED: ALL other functionality from v1.31 unchanged
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - FIXED: submitSignature() now waits for Firestore write to complete before showing completion modal
+   - CHANGED: performWrite() is now called and awaited before showGameCompleteModal()
+   - REASON: Navigation to post-game.html was happening before Firestore write completed
+   - REASON: F2's signature was not being written to Firestore because page unloaded
+   - REASON: F1's waiting screen never received the signature
+   - PRESERVED: ALL other functionality from v1.32 unchanged
    - PRESERVED: Double-Listener system for signatures
    - PRESERVED: sessionStorage photo caching
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
