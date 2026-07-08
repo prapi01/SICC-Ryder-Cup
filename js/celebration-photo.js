@@ -1,20 +1,17 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: storeBlobInSessionStorage(blob, callback) - stores blob directly (NO NETWORK)
-   - ADDED: downloadPhotoToSessionStorage(url, callback) - for VIEW devices to download from FS
-   - MODIFIED: checkAndRenameCelebrationPhoto() - now calls storeBlobInSessionStorage() instead of updatePhotoInSessionStorage()
-   - REMOVED: Redundant destRef.getDownloadURL() call in checkAndRenameCelebrationPhoto()
-   - REASON: Eliminate network call to FS for sessionStorage update
-   - REASON: Use blob already in memory (from GitHub download)
-   - REASON: VIEW devices need ability to download from FS when imageUrl appears
-   - PRESERVED: ALL other functionality from v1.09 unchanged
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: loadDefaultCelebrationPhoto() now uses getBlob() instead of getDownloadURL() + Image
+   - REASON: Bypass CORS issue when loading default photo from Firebase Storage
+   - REASON: getBlob() uses Firebase Storage SDK directly (no CORS required)
+   - REASON: Converts blob to base64 and stores in sessionStorage
+   - PRESERVED: ALL other functionality from v1.10 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.10";
+window.CELEBRATION_PHOTO_VERSION = "1.11";
 
 // ============================================================
 // CONSTANTS
@@ -193,8 +190,9 @@ function checkPhotoChanged(callback) {
 }
 
 // ============================================================
-// Load default celebration photo from Firebase Storage
-// Called at game start (H1) via real-game-init.js
+// v1.11: Load default celebration photo from Firebase Storage
+// Uses getBlob() to bypass CORS issues
+// Called at game start via real-game-init.js
 // ============================================================
 function loadDefaultCelebrationPhoto(callback) {
     // Check if already in sessionStorage
@@ -204,18 +202,29 @@ function loadDefaultCelebrationPhoto(callback) {
         return;
     }
     
-    console.log('[CelebrationPhoto] Loading default photo from Firebase Storage...');
+    console.log('[CelebrationPhoto] Loading default photo from Firebase Storage (getBlob)...');
     
     var storage = firebase.storage();
     var defaultRef = storage.ref(DEFAULT_PHOTO_PATH);
     
-    defaultRef.getDownloadURL()
-        .then(function(url) {
-            console.log('[CelebrationPhoto] Default photo URL obtained');
-            return storeImageInSessionStorage(url, callback);
+    // v1.11: Use getBlob() instead of getDownloadURL() + Image
+    // This bypasses CORS issues because it uses the Firebase Storage SDK directly
+    defaultRef.getBlob()
+        .then(function(blob) {
+            console.log('[CelebrationPhoto] Default photo blob obtained, size:', (blob.size / 1024).toFixed(1), 'KB');
+            // Store the blob directly in sessionStorage
+            storeBlobInSessionStorage(blob, function(err, dataUrl) {
+                if (err) {
+                    console.warn('[CelebrationPhoto] Failed to store default photo:', err.message);
+                    if (callback) callback(err);
+                } else {
+                    console.log('[CelebrationPhoto] ✅ Default photo stored in sessionStorage');
+                    if (callback) callback(null);
+                }
+            });
         })
         .catch(function(err) {
-            console.warn('[CelebrationPhoto] Failed to get default photo:', err.message);
+            console.warn('[CelebrationPhoto] Failed to get default photo blob:', err.message);
             if (callback) callback(err);
         });
 }
@@ -637,7 +646,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.10: Expose functions
+// v1.11: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -661,16 +670,13 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: storeBlobInSessionStorage(blob, callback) - stores blob directly (NO NETWORK)
-   - ADDED: downloadPhotoToSessionStorage(url, callback) - for VIEW devices to download from FS
-   - MODIFIED: checkAndRenameCelebrationPhoto() - now calls storeBlobInSessionStorage() instead of updatePhotoInSessionStorage()
-   - REMOVED: Redundant destRef.getDownloadURL() call in checkAndRenameCelebrationPhoto()
-   - REASON: Eliminate network call to FS for sessionStorage update
-   - REASON: Use blob already in memory (from GitHub download)
-   - REASON: VIEW devices need ability to download from FS when imageUrl appears
-   - PRESERVED: ALL other functionality from v1.09 unchanged
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: loadDefaultCelebrationPhoto() now uses getBlob() instead of getDownloadURL() + Image
+   - REASON: Bypass CORS issue when loading default photo from Firebase Storage
+   - REASON: getBlob() uses Firebase Storage SDK directly (no CORS required)
+   - REASON: Converts blob to base64 and stores in sessionStorage
+   - PRESERVED: ALL other functionality from v1.10 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
