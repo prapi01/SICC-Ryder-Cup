@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - REMOVED: showGameCompleteScreen() call from showSignCardModal() when both signed
-   - REASON: Navigation was happening before Firestore write completed
-   - REASON: SignCard.submitSignature() handles navigation after write confirmation
-   - REASON: Prevents F2 navigating away before signature is written to Firestore
-   - PRESERVED: ALL other functionality from v1.15 unchanged
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - ADDED: celebrationData saved to sessionStorage in showGameCompleteModal()
+   - REASON: post-game.html requires celebrationData to display results
+   - REASON: User clicks "SEE RESULTS" → post-game.html reads from sessionStorage
+   - REASON: Prevents "No celebration data found" error
+   - PRESERVED: ALL other functionality from v1.16 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.16";
+window.REAL_GAME_NAV_VERSION = "1.17";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.16 - Removed conflicting navigation from showSignCardModal");
+    console.log("[REAL-GAME-NAV] Initializing v1.17 - Added celebrationData save");
     
     // ============================================================
     // Private Helpers
@@ -399,7 +399,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // v1.14: showGameCompleteModal - Show modal on current page
+    // v1.17: showGameCompleteModal - ADDED celebrationData save
     // Used by real-game-init.js when both signatures detected
     // ============================================================
     
@@ -416,6 +416,37 @@ var RealGameNav = (function() {
         // Store post-game context
         sessionStorage.setItem('isPostGame', 'true');
         sessionStorage.setItem('currentGameId', gameId || getGameId());
+        
+        // ============================================================
+        // v1.17: SAVE celebrationData to sessionStorage
+        // This is needed for post-game.html when user clicks "SEE RESULTS"
+        // ============================================================
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (cache) {
+            try {
+                // Get TR for hole 18 (final scores)
+                var tr = typeof GameLoader !== 'undefined' ? GameLoader.getTRForHole(18) : { teamA: 9.5, teamB: 9.5 };
+                var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
+                var allPlayers = cache.players || [];
+                var winningPlayers = {
+                    teamA: allPlayers.filter(function(p) { return p.team === 'A'; }),
+                    teamB: allPlayers.filter(function(p) { return p.team === 'B'; })
+                };
+                var celebrationData = {
+                    winner: winner,
+                    teamAScore: tr.teamA,
+                    teamBScore: tr.teamB,
+                    winningPlayers: winningPlayers,
+                    gameId: gameId || getGameId()
+                };
+                sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+                console.log('[NAV] celebrationData saved to sessionStorage');
+            } catch(e) {
+                console.warn('[NAV] Failed to save celebrationData:', e.message);
+            }
+        } else {
+            console.warn('[NAV] No cache available - celebrationData not saved');
+        }
         
         var targetGameId = gameId || getGameId();
         
@@ -617,13 +648,13 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - REMOVED: showGameCompleteScreen() call from showSignCardModal() when both signed
-   - REASON: Navigation was happening before Firestore write completed
-   - REASON: SignCard.submitSignature() handles navigation after write confirmation
-   - REASON: Prevents F2 navigating away before signature is written to Firestore
-   - PRESERVED: ALL other functionality from v1.15 unchanged
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - ADDED: celebrationData saved to sessionStorage in showGameCompleteModal()
+   - REASON: post-game.html requires celebrationData to display results
+   - REASON: User clicks "SEE RESULTS" → post-game.html reads from sessionStorage
+   - REASON: Prevents "No celebration data found" error
+   - PRESERVED: ALL other functionality from v1.16 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
