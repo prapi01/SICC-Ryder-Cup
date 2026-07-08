@@ -1,16 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 8.00
-KEY CHANGES from v7.43:
-   - REMOVED: Auto-redirect block from init() that checked isGameCompletedFromCache()
-   - REMOVED: Auto-redirect from onCacheUpdate() 
-   - REMOVED: Auto-redirect from setupRealtimeListener()
-   - PRESERVED: ALL other functionality from v7.43 unchanged
-   - PRESERVED: RESULT button flow in renderCompactHeader() and nextHole()
-   - PRESERVED: Realtime listener (updates state but does NOT auto-redirect)
-   - PRESERVED: onCacheUpdate() (updates state but does NOT auto-redirect)
-   - REASON: Scorecard button from hcp-adjust should show scorecard, not auto-redirect
-   - REASON: User should see RESULT button and click it manually
+VERSION: 8.01
+KEY CHANGES from v8.00:
+   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded (both paths)
+   - ADDED: Photo listener in setupRealtimeListener() - when celebration.imageUrl appears, download to sessionStorage
+   - REASON: VIEW must have default photo in sessionStorage at game start
+   - REASON: VIEW must pre-load photo when it appears in Firestore (background, no user wait)
+   - REASON: Ensures celebration screen displays instantly (NO NETWORK)
+   - PRESERVED: ALL other functionality from v8.00 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -24,9 +21,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.00"></script>
-    <script src="js/session.js?v=8.00"></script>
-    <script src="js/settings.js?v=8.00"></script>
+    <script src="js/firebase-config.js?v=8.01"></script>
+    <script src="js/session.js?v=8.01"></script>
+    <script src="js/settings.js?v=8.01"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -35,11 +32,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.00"></script>
-    <script src="js/history-record.js?v=8.00"></script>
+    <script src="js/ticker.js?v=8.01"></script>
+    <script src="js/history-record.js?v=8.01"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.00"></script>
-    <script src="js/modal.js?v=8.00"></script>
+    <script src="js/hcp-adjust.js?v=8.01"></script>
+    <script src="js/modal.js?v=8.01"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -160,14 +157,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.00</div>
+<div class="version-tag">v8.01</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.00: Remove auto-redirect from init()
+// VERSION CACHE-BUSTING - v8.01: Added default photo and photo listener
 // ============================================================
-var APP_VERSION = "8.00";
-var CACHE_KEY = "view_game_version_v800";
+var APP_VERSION = "8.01";
+var CACHE_KEY = "view_game_version_v801";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -185,8 +182,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.00";
-console.log("[VIEW-GAME] Initializing v8.00 - Remove auto-redirect from init()");
+window.VIEW_GAME_VERSION = "8.01";
+console.log("[VIEW-GAME] Initializing v8.01 - Added default photo and photo listener");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -224,6 +221,9 @@ var hasSwitchedToHistory = false;
 var isPostGameContext = false;
 
 var firestoreUnsubscribe = null;
+
+// v8.01: Track current photo URL to avoid redundant downloads
+var currentPhotoUrl = null;
 
 // ============================================================
 // v7.40: Check completion from Firestore status (source of truth)
@@ -1090,7 +1090,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v7.43: Real-time Firestore Listener - Fixed signature detection
+// v8.01: Real-time Firestore Listener - Added photo listener
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1121,7 +1121,30 @@ function setupRealtimeListener() {
             var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
             var statusChanged = (currentCache.status !== data.status);
             
-            console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged);
+            // v8.01: Check for photo URL change
+            var imageUrl = data.celebration?.imageUrl || null;
+            var photoUrlChanged = (imageUrl !== currentPhotoUrl);
+            
+            console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged, "photoUrlChanged:", photoUrlChanged);
+            
+            // v8.01: Handle photo URL change - download in background
+            if (photoUrlChanged && imageUrl) {
+                console.log("[VIEW-GAME] New photo URL detected:", imageUrl);
+                currentPhotoUrl = imageUrl;
+                
+                // Download photo from Firebase Storage in background
+                if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                        if (err) {
+                            console.warn('[VIEW-GAME] Failed to download photo:', err.message);
+                        } else {
+                            console.log('[VIEW-GAME] Photo pre-loaded successfully');
+                        }
+                    });
+                } else {
+                    console.warn('[VIEW-GAME] downloadPhotoToSessionStorage not available');
+                }
+            }
             
             // v7.43: ALWAYS process signature changes first
             if (signaturesChanged || statusChanged) {
@@ -1370,7 +1393,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.00: Initialization - NO AUTO-REDIRECT
+// v8.01: Initialization - Added loadDefaultCelebrationPhoto
 // ============================================================
 
 async function init() {
@@ -1400,6 +1423,20 @@ async function init() {
     if (!gameId) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
         return;
+    }
+    
+    // v8.01: Load default photo into sessionStorage at game start
+    if (typeof window.loadDefaultCelebrationPhoto === 'function') {
+        console.log('[VIEW-GAME] Loading default photo at game start...');
+        window.loadDefaultCelebrationPhoto(function(err) {
+            if (err) {
+                console.warn('[VIEW-GAME] Failed to load default photo:', err.message);
+            } else {
+                console.log('[VIEW-GAME] Default photo loaded successfully');
+            }
+        });
+    } else {
+        console.warn('[VIEW-GAME] loadDefaultCelebrationPhoto not available');
     }
     
     var collection = "scheduledGames";
@@ -1485,7 +1522,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
-// v8.00: settings.js already initialized at top of script
+// v8.01: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1494,17 +1531,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.00
-KEY CHANGES from v7.43:
-   - REMOVED: Auto-redirect block from init() that checked isGameCompletedFromCache()
-   - REMOVED: Auto-redirect from onCacheUpdate() 
-   - REMOVED: Auto-redirect from setupRealtimeListener()
-   - PRESERVED: ALL other functionality from v7.43 unchanged
-   - PRESERVED: RESULT button flow in renderCompactHeader() and nextHole()
-   - PRESERVED: Realtime listener (updates state but does NOT auto-redirect)
-   - PRESERVED: onCacheUpdate() (updates state but does NOT auto-redirect)
-   - REASON: Scorecard button from hcp-adjust should show scorecard, not auto-redirect
-   - REASON: User should see RESULT button and click it manually
+VERSION: 8.01
+KEY CHANGES from v8.00:
+   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded (both paths)
+   - ADDED: Photo listener in setupRealtimeListener() - when celebration.imageUrl appears, download to sessionStorage
+   - REASON: VIEW must have default photo in sessionStorage at game start
+   - REASON: VIEW must pre-load photo when it appears in Firestore (background, no user wait)
+   - REASON: Ensures celebration screen displays instantly (NO NETWORK)
+   - PRESERVED: ALL other functionality from v8.00 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
