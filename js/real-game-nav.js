@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: saveCacheToSessionStorage() - saves GameLoader cache to sessionStorage
-   - CHANGED: showGameCompleteScreen() now saves cache before redirecting to post-game.html
-   - REASON: post-game.html needs the cache to show celebration instantly
-   - REASON: sessionStorage persists cache across page reloads
-   - PRESERVED: ALL other functionality from v1.14 unchanged
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - REMOVED: showGameCompleteScreen() call from showSignCardModal() when both signed
+   - REASON: Navigation was happening before Firestore write completed
+   - REASON: SignCard.submitSignature() handles navigation after write confirmation
+   - REASON: Prevents F2 navigating away before signature is written to Firestore
+   - PRESERVED: ALL other functionality from v1.15 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.15";
+window.REAL_GAME_NAV_VERSION = "1.16";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.15 - Cache persistence via sessionStorage");
+    console.log("[REAL-GAME-NAV] Initializing v1.16 - Removed conflicting navigation from showSignCardModal");
     
     // ============================================================
     // Private Helpers
@@ -261,7 +261,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showSignCardModal - v1.14: Direct redirect when both signed
+    // v1.16: showSignCardModal - REMOVED conflicting navigation
     // ============================================================
     
     function showSignCardModal() {
@@ -290,43 +290,38 @@ var RealGameNav = (function() {
             document.getElementById('signModalNew').remove();
         };
         
-        // v1.14: NO async - UI updates immediately, WRV runs in background
         document.getElementById('signConfirmBtnNew').onclick = function() {
             document.getElementById('signModalNew').remove();
             
-            // ✅ IMMEDIATELY show waiting screen (no await)
+            // IMMEDIATELY show waiting screen (no await)
             showWaitingScreen();
             
-            // ✅ Fire WRV in background (no await, no .then)
+            // Fire WRV in background
             if (typeof SignCard !== 'undefined' && SignCard.submitSignature) {
                 SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
             }
             
-            // ✅ Update cache immediately (optimistic)
+            // Update cache immediately (optimistic)
             var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
             if (cache) {
-                // v1.12: Update nested signatures structure
+                // Update nested signatures structure
                 if (editableFlight === 1) {
                     cache.signatures.f1.signed = true;
                 } else {
                     cache.signatures.f2.signed = true;
                 }
                 
-                // ✅ Check if both flights are signed (using cache)
+                // Check if both flights are signed (using cache)
                 if (cache.signatures.f1.signed && cache.signatures.f2.signed) {
-                    // v1.14: Fire history record in background (no await)
-                    createHistoryRecord();
+                    // v1.16: DO NOT navigate here - let SignCard.submitSignature() handle it
+                    // after Firestore write is confirmed
                     setGameComplete(true);
                     setCelebrationTriggered(false);
-                    
-                    // v1.14: Hide waiting screen (no longer needed)
                     hideWaitingScreen();
-                    
-                    // v1.15: Save cache to sessionStorage before redirect
                     saveCacheToSessionStorage();
                     
-                    // v1.14: Redirect directly to post-game.html (NO waiting screen)
-                    showGameCompleteScreen();
+                    // v1.16: REMOVED: showGameCompleteScreen();
+                    // Navigation now happens in SignCard.submitSignature() after write confirmation
                     
                     if (typeof RealGameUI !== 'undefined') {
                         RealGameUI.renderAll();
@@ -622,13 +617,13 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - ADDED: saveCacheToSessionStorage() - saves GameLoader cache to sessionStorage
-   - CHANGED: showGameCompleteScreen() now saves cache before redirecting to post-game.html
-   - REASON: post-game.html needs the cache to show celebration instantly
-   - REASON: sessionStorage persists cache across page reloads
-   - PRESERVED: ALL other functionality from v1.14 unchanged
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - REMOVED: showGameCompleteScreen() call from showSignCardModal() when both signed
+   - REASON: Navigation was happening before Firestore write completed
+   - REASON: SignCard.submitSignature() handles navigation after write confirmation
+   - REASON: Prevents F2 navigating away before signature is written to Firestore
+   - PRESERVED: ALL other functionality from v1.15 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
