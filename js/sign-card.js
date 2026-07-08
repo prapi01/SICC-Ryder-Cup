@@ -1,16 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: refreshCacheBeforeSigning() - refreshes cache from Firestore before signing
-   - CHANGED: submitSignature() now refreshes cache first (ensures latest data)
-   - CHANGED: F2 writes history record (after both signed) - F1 never writes
-   - ADDED: buildHistoryPayload() - constructs complete history record payload
-   - ADDED: triggerHistoryRecordWrite() - background WRV write (user never waits)
-   - REASON: Ensure history record has complete data from both flights
-   - REASON: Only F2 writes to avoid race conditions
-   - REASON: WRV write is background - user never waits
-   - PRESERVED: ALL other functionality from v1.30 unchanged
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - REMOVED: GitHub fallback from getCelebrationImage()
+   - REASON: sessionStorage ALWAYS has a photo (default loaded at game start)
+   - REASON: GitHub fallback is no longer needed and was counter-productive
+   - REASON: All devices now load default photo at game start
+   - PRESERVED: ALL other functionality from v1.31 unchanged
    - PRESERVED: Double-Listener system for signatures
    - PRESERVED: sessionStorage photo caching
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
@@ -111,15 +107,14 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration image - v1.29: Check sessionStorage FIRST
+    // v1.32: Celebration image - sessionStorage ONLY (no GitHub fallback)
     // ============================================================
     
     var cachedImagePath = null;
-    var imageCheckPromise = null;
     var SESSION_STORAGE_KEY = 'celebrationPhoto';
     
     function getCelebrationImage(callback) {
-        // v1.29: Check sessionStorage FIRST (instant, no network)
+        // Check sessionStorage (instant, no network)
         var photoDataUrl = sessionStorage.getItem(SESSION_STORAGE_KEY);
         if (photoDataUrl) {
             console.log('[SignCard] Photo found in sessionStorage - using directly');
@@ -128,62 +123,11 @@ var SignCard = (function() {
             return;
         }
         
-        // Fallback: load from GitHub
-        if (cachedImagePath !== null && typeof cachedImagePath === 'string' && cachedImagePath.startsWith('data:image')) {
-            if (callback) callback(cachedImagePath);
-            return;
-        }
-        
-        if (imageCheckPromise) {
-            imageCheckPromise.then(function(path) {
-                if (callback) callback(path);
-            });
-            return;
-        }
-        
-        console.log('[SignCard] No photo in sessionStorage - loading from GitHub');
-        var cacheBuster = '?t=' + Date.now();
-        var formats = ['/images/celebration/C.jpg', '/images/celebration/C.jpeg'];
-        var currentIndex = 0;
-        
-        imageCheckPromise = new Promise(function(resolve) {
-            function tryNext() {
-                if (currentIndex >= formats.length) {
-                    cachedImagePath = null;
-                    resolve(null);
-                    if (callback) callback(null);
-                    return;
-                }
-                var url = formats[currentIndex] + cacheBuster;
-                var img = new Image();
-                img.onload = function() {
-                    cachedImagePath = formats[currentIndex];
-                    // v1.29: Store in sessionStorage for next time
-                    try {
-                        var canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        var ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                        sessionStorage.setItem(SESSION_STORAGE_KEY, dataUrl);
-                        console.log('[SignCard] Photo stored in sessionStorage for future use');
-                    } catch(e) {
-                        console.warn('[SignCard] Failed to store photo in sessionStorage:', e.message);
-                    }
-                    resolve(formats[currentIndex]);
-                    if (callback) callback(formats[currentIndex]);
-                };
-                img.onerror = function() {
-                    currentIndex++;
-                    tryNext();
-                };
-                img.src = url;
-            }
-            tryNext();
-        });
-        
-        return imageCheckPromise;
+        // v1.32: No GitHub fallback - sessionStorage should ALWAYS have a photo
+        // (default photo is loaded at game start for all devices)
+        console.warn('[SignCard] No photo in sessionStorage - this should not happen');
+        console.warn('[SignCard] Default photo should have been loaded at game start');
+        if (callback) callback(null);
     }
     
     // ============================================================
@@ -250,7 +194,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.29: Uses sessionStorage photo
+    // Celebration Screen - v1.32: Uses sessionStorage photo (no fallback)
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -291,7 +235,7 @@ var SignCard = (function() {
             onClose: onClose
         };
         
-        // v1.29: Get photo from sessionStorage first, then fallback
+        // v1.32: Get photo from sessionStorage (no fallback)
         getCelebrationImage(function(imageSrc) {
             var imageHtml = '';
             if (imageSrc) {
@@ -303,6 +247,8 @@ var SignCard = (function() {
                     </div>
                 `;
             } else {
+                // Fallback: show trophy icon if no photo (should never happen)
+                console.warn('[SignCard] No photo available for celebration screen');
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
@@ -1118,21 +1064,17 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.31";
+window.SIGN_CARD_VERSION = "1.32";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: refreshCacheBeforeSigning() - refreshes cache from Firestore before signing
-   - CHANGED: submitSignature() now refreshes cache first (ensures latest data)
-   - CHANGED: F2 writes history record (after both signed) - F1 never writes
-   - ADDED: buildHistoryPayload() - constructs complete history record payload
-   - ADDED: triggerHistoryRecordWrite() - background WRV write (user never waits)
-   - REASON: Ensure history record has complete data from both flights
-   - REASON: Only F2 writes to avoid race conditions
-   - REASON: WRV write is background - user never waits
-   - PRESERVED: ALL other functionality from v1.30 unchanged
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - REMOVED: GitHub fallback from getCelebrationImage()
+   - REASON: sessionStorage ALWAYS has a photo (default loaded at game start)
+   - REASON: GitHub fallback is no longer needed and was counter-productive
+   - REASON: All devices now load default photo at game start
+   - PRESERVED: ALL other functionality from v1.31 unchanged
    - PRESERVED: Double-Listener system for signatures
    - PRESERVED: sessionStorage photo caching
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
