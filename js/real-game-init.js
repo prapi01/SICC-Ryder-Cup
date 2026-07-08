@@ -960,7 +960,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // Public API - UNCHANGED
+    // Public API
     // ============================================================
     
     return {
@@ -990,7 +990,8 @@ window.exitToMainMenu = function() {
     }
 };
 
-// Expose onCacheUpdate for GameLoaderwindow.onCacheUpdate = function(cache) {
+// Expose onCacheUpdate for GameLoader
+window.onCacheUpdate = function(cache) {
     if (typeof RealGameInit !== 'undefined') {
         RealGameInit.onCacheUpdate(cache, function() {
             if (typeof RealGameUI !== 'undefined') {
