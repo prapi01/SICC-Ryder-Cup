@@ -1,25 +1,22 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - REMOVED: History record creation from onCacheUpdate() (F1 no longer writes)
-   - REMOVED: createHistoryRecord call in signature detection
-   - CHANGED: Signature detection now only shows completion modal
-   - REASON: F2 is the designated history record writer (design by contract)
-   - REASON: F1 device only shows modal, does NOT write history record
-   - REASON: Simplifies logic - no race condition
-   - PRESERVED: ALL other functionality from v1.09 unchanged
-   - PRESERVED: Signature change detection in realtime listener
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded
+   - REASON: F1/F2 devices must have default photo in sessionStorage at game start
+   - REASON: Ensures sessionStorage always has a photo (default or new)
+   - REASON: Consistent with VIEW devices
+   - PRESERVED: ALL other functionality from v1.10 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.10";
+window.REAL_GAME_INIT_VERSION = "1.11";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.10 - F1 no longer writes history record");
+    console.log("[REAL-GAME-INIT] Initializing v1.11 - Added loadDefaultCelebrationPhoto at game start");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -721,7 +718,8 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // init - Main Initialization Function - UNCHANGED
+    // init - Main Initialization Function
+    // v1.11: Added loadDefaultCelebrationPhoto at game start
     // ============================================================
     
     async function init(renderAllCallback) {
@@ -797,6 +795,20 @@ var RealGameInit = (function() {
         if (preloadData && gameDataPreloaded) {
             applyPreloadedData(preloadData);
             sessionStorage.removeItem("gameDataPreloaded");
+            
+            // v1.11: Load default photo into sessionStorage at game start
+            if (typeof window.loadDefaultCelebrationPhoto === 'function') {
+                console.log('[REAL-GAME-INIT] Loading default photo at game start...');
+                window.loadDefaultCelebrationPhoto(function(err) {
+                    if (err) {
+                        console.warn('[REAL-GAME-INIT] Failed to load default photo:', err.message);
+                    } else {
+                        console.log('[REAL-GAME-INIT] Default photo loaded successfully');
+                    }
+                });
+            } else {
+                console.warn('[REAL-GAME-INIT] loadDefaultCelebrationPhoto not available');
+            }
             
             if (typeof GameUI !== 'undefined') {
                 GameUI.applyTightLayout();
@@ -875,6 +887,20 @@ var RealGameInit = (function() {
                     setTeamGameFormat(cache.teamGameFormat || "tournament");
                     document.getElementById("courseName").innerHTML = getCourseName();
                     RealGameUtils.updateGameOrder(getStartingHole());
+                    
+                    // v1.11: Load default photo into sessionStorage at game start
+                    if (typeof window.loadDefaultCelebrationPhoto === 'function') {
+                        console.log('[REAL-GAME-INIT] Loading default photo at game start...');
+                        window.loadDefaultCelebrationPhoto(function(err) {
+                            if (err) {
+                                console.warn('[REAL-GAME-INIT] Failed to load default photo:', err.message);
+                            } else {
+                                console.log('[REAL-GAME-INIT] Default photo loaded successfully');
+                            }
+                        });
+                    } else {
+                        console.warn('[REAL-GAME-INIT] loadDefaultCelebrationPhoto not available');
+                    }
                     
                     initializeGameData(collection, cache).then(function(initSuccess) {
                         if (!initSuccess) {
@@ -980,16 +1006,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - REMOVED: History record creation from onCacheUpdate() (F1 no longer writes)
-   - REMOVED: createHistoryRecord call in signature detection
-   - CHANGED: Signature detection now only shows completion modal
-   - REASON: F2 is the designated history record writer (design by contract)
-   - REASON: F1 device only shows modal, does NOT write history record
-   - REASON: Simplifies logic - no race condition
-   - PRESERVED: ALL other functionality from v1.09 unchanged
-   - PRESERVED: Signature change detection in realtime listener
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded
+   - REASON: F1/F2 devices must have default photo in sessionStorage at game start
+   - REASON: Ensures sessionStorage always has a photo (default or new)
+   - REASON: Consistent with VIEW devices
+   - PRESERVED: ALL other functionality from v1.10 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
