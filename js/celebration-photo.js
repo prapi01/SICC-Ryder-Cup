@@ -1,17 +1,17 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: loadDefaultCelebrationPhoto() now uses getBlob() instead of getDownloadURL() + Image
-   - REASON: Bypass CORS issue when loading default photo from Firebase Storage
-   - REASON: getBlob() uses Firebase Storage SDK directly (no CORS required)
-   - REASON: Converts blob to base64 and stores in sessionStorage
-   - PRESERVED: ALL other functionality from v1.10 unchanged
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - CHANGED: loadDefaultCelebrationPhoto() now uses getDownloadURL() + storeImageInSessionStorage()
+   - REMOVED: getBlob() approach (not available in Firebase Storage compat SDK)
+   - REASON: CORS is now configured on Firebase Storage bucket
+   - REASON: getDownloadURL() + Image with crossOrigin now works
+   - PRESERVED: ALL other functionality from v1.11 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.11";
+window.CELEBRATION_PHOTO_VERSION = "1.12";
 
 // ============================================================
 // CONSTANTS
@@ -190,8 +190,8 @@ function checkPhotoChanged(callback) {
 }
 
 // ============================================================
-// v1.11: Load default celebration photo from Firebase Storage
-// Uses getBlob() to bypass CORS issues
+// v1.12: Load default celebration photo from Firebase Storage
+// Uses getDownloadURL() + storeImageInSessionStorage() (CORS now configured)
 // Called at game start via real-game-init.js
 // ============================================================
 function loadDefaultCelebrationPhoto(callback) {
@@ -202,29 +202,20 @@ function loadDefaultCelebrationPhoto(callback) {
         return;
     }
     
-    console.log('[CelebrationPhoto] Loading default photo from Firebase Storage (getBlob)...');
+    console.log('[CelebrationPhoto] Loading default photo from Firebase Storage...');
     
     var storage = firebase.storage();
     var defaultRef = storage.ref(DEFAULT_PHOTO_PATH);
     
-    // v1.11: Use getBlob() instead of getDownloadURL() + Image
-    // This bypasses CORS issues because it uses the Firebase Storage SDK directly
-    defaultRef.getBlob()
-        .then(function(blob) {
-            console.log('[CelebrationPhoto] Default photo blob obtained, size:', (blob.size / 1024).toFixed(1), 'KB');
-            // Store the blob directly in sessionStorage
-            storeBlobInSessionStorage(blob, function(err, dataUrl) {
-                if (err) {
-                    console.warn('[CelebrationPhoto] Failed to store default photo:', err.message);
-                    if (callback) callback(err);
-                } else {
-                    console.log('[CelebrationPhoto] ✅ Default photo stored in sessionStorage');
-                    if (callback) callback(null);
-                }
-            });
+    defaultRef.getDownloadURL()
+        .then(function(url) {
+            console.log('[CelebrationPhoto] Default photo URL obtained');
+            // v1.12: Use storeImageInSessionStorage (Image with crossOrigin)
+            // CORS is now configured on the Firebase Storage bucket
+            return storeImageInSessionStorage(url + '?t=' + Date.now(), callback);
         })
         .catch(function(err) {
-            console.warn('[CelebrationPhoto] Failed to get default photo blob:', err.message);
+            console.warn('[CelebrationPhoto] Failed to get default photo:', err.message);
             if (callback) callback(err);
         });
 }
@@ -646,7 +637,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.11: Expose functions
+// v1.12: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -670,13 +661,13 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: loadDefaultCelebrationPhoto() now uses getBlob() instead of getDownloadURL() + Image
-   - REASON: Bypass CORS issue when loading default photo from Firebase Storage
-   - REASON: getBlob() uses Firebase Storage SDK directly (no CORS required)
-   - REASON: Converts blob to base64 and stores in sessionStorage
-   - PRESERVED: ALL other functionality from v1.10 unchanged
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - CHANGED: loadDefaultCelebrationPhoto() now uses getDownloadURL() + storeImageInSessionStorage()
+   - REMOVED: getBlob() approach (not available in Firebase Storage compat SDK)
+   - REASON: CORS is now configured on Firebase Storage bucket
+   - REASON: getDownloadURL() + Image with crossOrigin now works
+   - PRESERVED: ALL other functionality from v1.11 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
