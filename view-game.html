@@ -1,13 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 8.01
-KEY CHANGES from v8.00:
-   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded (both paths)
-   - ADDED: Photo listener in setupRealtimeListener() - when celebration.imageUrl appears, download to sessionStorage
-   - REASON: VIEW must have default photo in sessionStorage at game start
-   - REASON: VIEW must pre-load photo when it appears in Firestore (background, no user wait)
-   - REASON: Ensures celebration screen displays instantly (NO NETWORK)
-   - PRESERVED: ALL other functionality from v8.00 unchanged
+VERSION: 8.02
+KEY CHANGES from v8.01:
+   - ADDED: Photo flag check in setupRealtimeListener() - VIEW downloads if newPhotoAvailable=true and viewDownloaded=false
+   - ADDED: VIEW sets viewDownloaded=true after successful photo download
+   - REASON: Flag-based synchronization ensures VIEW only downloads when new photo is available
+   - REASON: Prevents redundant downloads and ensures VIEW has the correct photo
+   - PRESERVED: ALL other functionality from v8.01 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -21,9 +20,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.01"></script>
-    <script src="js/session.js?v=8.01"></script>
-    <script src="js/settings.js?v=8.01"></script>
+    <script src="js/firebase-config.js?v=8.02"></script>
+    <script src="js/session.js?v=8.02"></script>
+    <script src="js/settings.js?v=8.02"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -32,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.01"></script>
-    <script src="js/history-record.js?v=8.01"></script>
+    <script src="js/ticker.js?v=8.02"></script>
+    <script src="js/history-record.js?v=8.02"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.01"></script>
-    <script src="js/modal.js?v=8.01"></script>
+    <script src="js/hcp-adjust.js?v=8.02"></script>
+    <script src="js/modal.js?v=8.02"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -157,14 +156,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.01</div>
+<div class="version-tag">v8.02</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.01: Added default photo and photo listener
+// VERSION CACHE-BUSTING - v8.02: Added flag-based photo sync
 // ============================================================
-var APP_VERSION = "8.01";
-var CACHE_KEY = "view_game_version_v801";
+var APP_VERSION = "8.02";
+var CACHE_KEY = "view_game_version_v802";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -182,8 +181,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.01";
-console.log("[VIEW-GAME] Initializing v8.01 - Added default photo and photo listener");
+window.VIEW_GAME_VERSION = "8.02";
+console.log("[VIEW-GAME] Initializing v8.02 - Flag-based photo sync");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -224,6 +223,9 @@ var firestoreUnsubscribe = null;
 
 // v8.01: Track current photo URL to avoid redundant downloads
 var currentPhotoUrl = null;
+
+// v8.02: Track if VIEW has already downloaded this photo (flag check)
+var viewPhotoDownloaded = false;
 
 // ============================================================
 // v7.40: Check completion from Firestore status (source of truth)
@@ -1090,7 +1092,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v8.01: Real-time Firestore Listener - Added photo listener
+// v8.02: Real-time Firestore Listener - Flag-based photo sync
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1114,6 +1116,48 @@ function setupRealtimeListener() {
             var data = doc.data();
             var currentCache = GameLoader.getLocalCache();
             
+            // ============================================================
+            // v8.02: PHOTO FLAG CHECK - VIEW downloads if newPhotoAvailable=true and viewDownloaded=false
+            // ============================================================
+            var photo = data.photo || {};
+            var newPhotoAvailable = photo.newPhotoAvailable === true;
+            var viewDownloaded = photo.viewDownloaded === true;
+            var imageUrl = photo.imageUrl || null;
+            
+            // v8.02: VIEW Logic - If newPhotoAvailable = true AND viewDownloaded = false, download photo
+            if (newPhotoAvailable && !viewDownloaded && imageUrl) {
+                console.log('[VIEW-GAME] VIEW: New photo available - downloading from FS...');
+                
+                // Update currentPhotoUrl to track this URL
+                if (imageUrl !== currentPhotoUrl) {
+                    currentPhotoUrl = imageUrl;
+                }
+                
+                if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                        if (err) {
+                            console.warn('[VIEW-GAME] VIEW: Failed to download photo:', err.message);
+                        } else {
+                            console.log('[VIEW-GAME] VIEW: Photo downloaded and stored in sessionStorage');
+                            viewPhotoDownloaded = true;
+                            
+                            // v8.02: Set viewDownloaded = true in Firestore
+                            var db = firebase.firestore();
+                            db.collection('scheduledGames').doc(gameId).update({
+                                'photo.viewDownloaded': true,
+                                'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                            }).then(function() {
+                                console.log('[VIEW-GAME] VIEW: viewDownloaded set to true');
+                            }).catch(function(err) {
+                                console.warn('[VIEW-GAME] VIEW: Failed to set viewDownloaded:', err.message);
+                            });
+                        }
+                    });
+                } else {
+                    console.warn('[VIEW-GAME] VIEW: downloadPhotoToSessionStorage not available');
+                }
+            }
+            
             // Check what changed
             var f1Changed = (currentCache.f1DataString !== data.f1?.d);
             var f2Changed = (currentCache.f2DataString !== data.f2?.d);
@@ -1121,24 +1165,23 @@ function setupRealtimeListener() {
             var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
             var statusChanged = (currentCache.status !== data.status);
             
-            // v8.01: Check for photo URL change
-            var imageUrl = data.celebration?.imageUrl || null;
-            var photoUrlChanged = (imageUrl !== currentPhotoUrl);
+            // v8.01: Check for photo URL change (legacy - kept for backward compatibility)
+            var celebrationImageUrl = data.celebration?.imageUrl || null;
+            var photoUrlChanged = (celebrationImageUrl !== null && celebrationImageUrl !== currentPhotoUrl);
             
             console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged, "photoUrlChanged:", photoUrlChanged);
             
-            // v8.01: Handle photo URL change - download in background
-            if (photoUrlChanged && imageUrl) {
-                console.log("[VIEW-GAME] New photo URL detected:", imageUrl);
-                currentPhotoUrl = imageUrl;
+            // v8.01: Handle legacy photo URL change (backward compatibility)
+            if (photoUrlChanged && celebrationImageUrl) {
+                console.log("[VIEW-GAME] New legacy photo URL detected:", celebrationImageUrl);
+                currentPhotoUrl = celebrationImageUrl;
                 
-                // Download photo from Firebase Storage in background
                 if (typeof window.downloadPhotoToSessionStorage === 'function') {
-                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                    window.downloadPhotoToSessionStorage(celebrationImageUrl, function(err) {
                         if (err) {
-                            console.warn('[VIEW-GAME] Failed to download photo:', err.message);
+                            console.warn('[VIEW-GAME] Failed to download legacy photo:', err.message);
                         } else {
-                            console.log('[VIEW-GAME] Photo pre-loaded successfully');
+                            console.log('[VIEW-GAME] Legacy photo pre-loaded successfully');
                         }
                     });
                 } else {
@@ -1531,14 +1574,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.01
-KEY CHANGES from v8.00:
-   - ADDED: loadDefaultCelebrationPhoto() call in init() after cache is loaded (both paths)
-   - ADDED: Photo listener in setupRealtimeListener() - when celebration.imageUrl appears, download to sessionStorage
-   - REASON: VIEW must have default photo in sessionStorage at game start
-   - REASON: VIEW must pre-load photo when it appears in Firestore (background, no user wait)
-   - REASON: Ensures celebration screen displays instantly (NO NETWORK)
-   - PRESERVED: ALL other functionality from v8.00 unchanged
+VERSION: 8.02
+KEY CHANGES from v8.01:
+   - ADDED: Photo flag check in setupRealtimeListener() - VIEW downloads if newPhotoAvailable=true and viewDownloaded=false
+   - ADDED: VIEW sets viewDownloaded=true after successful photo download
+   - REASON: Flag-based synchronization ensures VIEW only downloads when new photo is available
+   - REASON: Prevents redundant downloads and ensures VIEW has the correct photo
+   - PRESERVED: ALL other functionality from v8.01 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
