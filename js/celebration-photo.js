@@ -1,17 +1,21 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - CHANGED: loadDefaultCelebrationPhoto() now uses getDownloadURL() + storeImageInSessionStorage()
-   - REMOVED: getBlob() approach (not available in Firebase Storage compat SDK)
-   - REASON: CORS is now configured on Firebase Storage bucket
-   - REASON: getDownloadURL() + Image with crossOrigin now works
-   - PRESERVED: ALL other functionality from v1.11 unchanged
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: setPhotoFlags() - Sets photo flags in Firestore (T/F/F)
+   - ADDED: resetPhotoFlags() - Resets all photo flags to F/F/F
+   - ADDED: checkPhotoFlags() - Reads photo flags from Firestore
+   - MODIFIED: loadDefaultCelebrationPhoto() - Now calls setPhotoFlags() after storing default photo
+   - MODIFIED: checkAndRenameCelebrationPhoto() - Now calls setPhotoFlags() after upload
+   - REASON: Flag-based synchronization for photo distribution
+   - REASON: Default photo AND new photo use same unified flow
+   - REASON: F2 and VIEW can check flags to know when to download
+   - PRESERVED: ALL other functionality from v1.12 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.12";
+window.CELEBRATION_PHOTO_VERSION = "1.13";
 
 // ============================================================
 // CONSTANTS
@@ -190,9 +194,9 @@ function checkPhotoChanged(callback) {
 }
 
 // ============================================================
-// v1.12: Load default celebration photo from Firebase Storage
-// Uses getDownloadURL() + storeImageInSessionStorage() (CORS now configured)
-// Called at game start via real-game-init.js
+// v1.13: LOAD DEFAULT PHOTO WITH FLAGS
+// Loads default photo from FS, stores in SS, sets flags T/F/F
+// Called by F1 ONLY at game start
 // ============================================================
 function loadDefaultCelebrationPhoto(callback) {
     // Check if already in sessionStorage
@@ -210,12 +214,38 @@ function loadDefaultCelebrationPhoto(callback) {
     defaultRef.getDownloadURL()
         .then(function(url) {
             console.log('[CelebrationPhoto] Default photo URL obtained');
-            // v1.12: Use storeImageInSessionStorage (Image with crossOrigin)
-            // CORS is now configured on the Firebase Storage bucket
-            return storeImageInSessionStorage(url + '?t=' + Date.now(), callback);
+            // Store in sessionStorage
+            return new Promise(function(resolve, reject) {
+                storeImageInSessionStorage(url + '?t=' + Date.now(), function(err, dataUrl) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve({ url: url, dataUrl: dataUrl });
+                    }
+                });
+            });
+        })
+        .then(function(result) {
+            console.log('[CelebrationPhoto] Default photo stored in sessionStorage');
+            
+            // v1.13: SET FLAGS T/F/F for default photo
+            var gameId = sessionStorage.getItem('currentGameId');
+            if (gameId) {
+                setPhotoFlags(gameId, result.url, function(flagErr) {
+                    if (flagErr) {
+                        console.warn('[CelebrationPhoto] Failed to set flags for default photo:', flagErr.message);
+                    } else {
+                        console.log('[CelebrationPhoto] ✅ Flags set for default photo: T/F/F');
+                    }
+                    if (callback) callback(null);
+                });
+            } else {
+                console.warn('[CelebrationPhoto] No gameId found, skipping flag set');
+                if (callback) callback(null);
+            }
         })
         .catch(function(err) {
-            console.warn('[CelebrationPhoto] Failed to get default photo:', err.message);
+            console.warn('[CelebrationPhoto] Failed to load default photo:', err.message);
             if (callback) callback(err);
         });
 }
@@ -483,9 +513,8 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.10: Check if C.jpg exists and rename it to game ID
-// Called at EVERY hole save (ETag check makes it cheap)
-// v1.10: Uses storeBlobInSessionStorage() (NO NETWORK)
+// v1.13: CHECK AND RENAME PHOTO WITH FLAGS
+// F1 ONLY - Checks GitHub ETag, downloads, uploads, sets flags
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -585,11 +614,140 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                         }
                     });
                     
-                    if (callback) callback(null);
+                    // v1.13: SET FLAGS T/F/F after upload
+                    setPhotoFlags(gameId, verifiedUrl, function(flagErr) {
+                        if (flagErr) {
+                            console.warn('[CelebrationPhoto] Failed to set flags for new photo:', flagErr.message);
+                        } else {
+                            console.log('[CelebrationPhoto] ✅ Flags set for new photo: T/F/F');
+                        }
+                        if (callback) callback(null);
+                    });
                 });
             });
         });
     });
+}
+
+// ============================================================
+// v1.13: FLAG MANAGEMENT FUNCTIONS
+// ============================================================
+
+/**
+ * Set photo flags in Firestore after F1 uploads a new photo
+ * Called by F1 only
+ * 
+ * @param {string} gameId - The game ID
+ * @param {string} imageUrl - Firebase Storage download URL
+ * @param {Function} callback - Called with (err)
+ */
+function setPhotoFlags(gameId, imageUrl, callback) {
+    if (!gameId) {
+        if (callback) callback(new Error('No gameId provided'));
+        return;
+    }
+    
+    if (!imageUrl) {
+        if (callback) callback(new Error('No imageUrl provided'));
+        return;
+    }
+    
+    console.log('[CelebrationPhoto] Setting photo flags: T/F/F for game:', gameId);
+    
+    var db = firebase.firestore();
+    var payload = {
+        'photo.newPhotoAvailable': true,
+        'photo.f2Downloaded': false,
+        'photo.viewDownloaded': false,
+        'photo.imageUrl': imageUrl,
+        'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    db.collection('scheduledGames').doc(gameId).update(payload)
+        .then(function() {
+            console.log('[CelebrationPhoto] ✅ Flags set: T/F/F');
+            if (callback) callback(null);
+        })
+        .catch(function(err) {
+            console.warn('[CelebrationPhoto] ❌ Failed to set flags:', err.message);
+            if (callback) callback(err);
+        });
+}
+
+/**
+ * Reset photo flags to false
+ * Called by F1 only when both f2Downloaded and viewDownloaded are true
+ * 
+ * @param {string} gameId - The game ID
+ * @param {Function} callback - Called with (err)
+ */
+function resetPhotoFlags(gameId, callback) {
+    if (!gameId) {
+        if (callback) callback(new Error('No gameId provided'));
+        return;
+    }
+    
+    console.log('[CelebrationPhoto] Resetting photo flags: F/F/F for game:', gameId);
+    
+    var db = firebase.firestore();
+    var payload = {
+        'photo.newPhotoAvailable': false,
+        'photo.f2Downloaded': false,
+        'photo.viewDownloaded': false,
+        'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    db.collection('scheduledGames').doc(gameId).update(payload)
+        .then(function() {
+            console.log('[CelebrationPhoto] ✅ Flags reset: F/F/F');
+            if (callback) callback(null);
+        })
+        .catch(function(err) {
+            console.warn('[CelebrationPhoto] ❌ Failed to reset flags:', err.message);
+            if (callback) callback(err);
+        });
+}
+
+/**
+ * Check photo flags from Firestore
+ * Called by F2 and VIEW to determine if a new photo is available
+ * 
+ * @param {string} gameId - The game ID
+ * @param {Function} callback - Called with (err, flags)
+ */
+function checkPhotoFlags(gameId, callback) {
+    if (!gameId) {
+        if (callback) callback(new Error('No gameId provided'), null);
+        return;
+    }
+    
+    var db = firebase.firestore();
+    
+    db.collection('scheduledGames').doc(gameId).get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                callback(new Error('Game not found'), null);
+                return;
+            }
+            
+            var data = doc.data();
+            var photo = data.photo || {};
+            
+            var flags = {
+                newPhotoAvailable: photo.newPhotoAvailable === true,
+                f2Downloaded: photo.f2Downloaded === true,
+                viewDownloaded: photo.viewDownloaded === true,
+                imageUrl: photo.imageUrl || null,
+                updatedAt: photo.updatedAt || null
+            };
+            
+            console.log('[CelebrationPhoto] Flags checked:', flags);
+            callback(null, flags);
+        })
+        .catch(function(err) {
+            console.warn('[CelebrationPhoto] ❌ Failed to check flags:', err.message);
+            callback(err, null);
+        });
 }
 
 // ============================================================
@@ -637,7 +795,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.12: Expose functions
+// v1.13: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -649,9 +807,13 @@ window.checkPhotoChanged = checkPhotoChanged;
 window.storePhotoUrlForHistory = storePhotoUrlForHistory;
 window.getStoredPhotoUrlForHistory = getStoredPhotoUrlForHistory;
 window.clearStoredPhotoUrlForHistory = clearStoredPhotoUrlForHistory;
-window.verifyPhotoUpload = verifyPhotoUpload; // v1.09: Exposed for debugging
-window.storeBlobInSessionStorage = storeBlobInSessionStorage; // v1.10: Exposed
-window.downloadPhotoToSessionStorage = downloadPhotoToSessionStorage; // v1.10: Exposed
+window.verifyPhotoUpload = verifyPhotoUpload;
+window.storeBlobInSessionStorage = storeBlobInSessionStorage;
+window.downloadPhotoToSessionStorage = downloadPhotoToSessionStorage;
+// v1.13: Flag management functions
+window.setPhotoFlags = setPhotoFlags;
+window.resetPhotoFlags = resetPhotoFlags;
+window.checkPhotoFlags = checkPhotoFlags;
 window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
@@ -661,13 +823,17 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - CHANGED: loadDefaultCelebrationPhoto() now uses getDownloadURL() + storeImageInSessionStorage()
-   - REMOVED: getBlob() approach (not available in Firebase Storage compat SDK)
-   - REASON: CORS is now configured on Firebase Storage bucket
-   - REASON: getDownloadURL() + Image with crossOrigin now works
-   - PRESERVED: ALL other functionality from v1.11 unchanged
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: setPhotoFlags() - Sets photo flags in Firestore (T/F/F)
+   - ADDED: resetPhotoFlags() - Resets all photo flags to F/F/F
+   - ADDED: checkPhotoFlags() - Reads photo flags from Firestore
+   - MODIFIED: loadDefaultCelebrationPhoto() - Now calls setPhotoFlags() after storing default photo
+   - MODIFIED: checkAndRenameCelebrationPhoto() - Now calls setPhotoFlags() after upload
+   - REASON: Flag-based synchronization for photo distribution
+   - REASON: Default photo AND new photo use same unified flow
+   - REASON: F2 and VIEW can check flags to know when to download
+   - PRESERVED: ALL other functionality from v1.12 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
