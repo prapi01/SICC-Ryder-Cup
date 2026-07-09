@@ -1,12 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 8.02
-KEY CHANGES from v8.01:
-   - ADDED: Photo flag check in setupRealtimeListener() - VIEW downloads if newPhotoAvailable=true and viewDownloaded=false
-   - ADDED: VIEW sets viewDownloaded=true after successful photo download
-   - REASON: Flag-based synchronization ensures VIEW only downloads when new photo is available
-   - REASON: Prevents redundant downloads and ensures VIEW has the correct photo
-   - PRESERVED: ALL other functionality from v8.01 unchanged
+VERSION: 8.03
+KEY CHANGES from v8.02:
+   - ADDED: 60-second polling check (checkPhotoAndState) - reads full document, checks flags
+   - ADDED: Button-triggered background checks attached to P/N, Flight, Prev, Next buttons
+   - ADDED: Page Visibility API check on tab focus
+   - REASON: VIEW needs safety net for missed Firestore events
+   - REASON: User actions on VIEW buttons can trigger background checks without blocking UI
+   - REASON: Tab focus recovery ensures VIEW updates when user returns
+   - PRESERVED: ALL other functionality from v8.02 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -20,9 +22,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.02"></script>
-    <script src="js/session.js?v=8.02"></script>
-    <script src="js/settings.js?v=8.02"></script>
+    <script src="js/firebase-config.js?v=8.03"></script>
+    <script src="js/session.js?v=8.03"></script>
+    <script src="js/settings.js?v=8.03"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -31,11 +33,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.02"></script>
-    <script src="js/history-record.js?v=8.02"></script>
+    <script src="js/ticker.js?v=8.03"></script>
+    <script src="js/history-record.js?v=8.03"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.02"></script>
-    <script src="js/modal.js?v=8.02"></script>
+    <script src="js/hcp-adjust.js?v=8.03"></script>
+    <script src="js/modal.js?v=8.03"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -156,14 +158,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.02</div>
+<div class="version-tag">v8.03</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.02: Added flag-based photo sync
+// VERSION CACHE-BUSTING - v8.03: Added polling + button triggers
 // ============================================================
-var APP_VERSION = "8.02";
-var CACHE_KEY = "view_game_version_v802";
+var APP_VERSION = "8.03";
+var CACHE_KEY = "view_game_version_v803";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -181,8 +183,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.02";
-console.log("[VIEW-GAME] Initializing v8.02 - Flag-based photo sync");
+window.VIEW_GAME_VERSION = "8.03";
+console.log("[VIEW-GAME] Initializing v8.03 - Polling + button triggers");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1057,6 +1059,8 @@ function renderCompactHeader() {
             var newMode = GameUI.getDisplayMode() === 'play' ? 'natural' : 'play';
             GameUI.setDisplayMode(newMode, null);
             renderAll();
+            // v8.03: Trigger background check on button click
+            triggerBackgroundCheck();
         };
     }
     
@@ -1068,12 +1072,18 @@ function renderCompactHeader() {
             renderCompactHeader();
             GameUI.updateFlightBadge(currentFlight);
             renderAll();
+            // v8.03: Trigger background check on button click
+            triggerBackgroundCheck();
         };
     }
     
     var prevBtn = document.getElementById('compactPrevBtn');
     if (prevBtn) {
-        prevBtn.onclick = prevHole;
+        prevBtn.onclick = function() {
+            prevHole();
+            // v8.03: Trigger background check on button click
+            triggerBackgroundCheck();
+        };
     }
     
     if (showResultButton) {
@@ -1081,14 +1091,138 @@ function renderCompactHeader() {
         if (resultBtn) {
             resultBtn.onclick = function() {
                 showCelebrationModal();
+                // v8.03: Trigger background check on button click
+                triggerBackgroundCheck();
             };
         }
     } else {
         var nextBtn = document.getElementById('compactNextBtn');
         if (nextBtn) {
-            nextBtn.onclick = nextHole;
+            nextBtn.onclick = function() {
+                nextHole();
+                // v8.03: Trigger background check on button click
+                triggerBackgroundCheck();
+            };
         }
     }
+}
+
+// ============================================================
+// v8.03: 60-second polling + button-triggered background checks
+// ============================================================
+
+/**
+ * Trigger a background check without blocking UI
+ * Called by button clicks and timer
+ */
+function triggerBackgroundCheck() {
+    if (!gameId) return;
+    
+    // Small delay to ensure UI renders first
+    setTimeout(function() {
+        checkPhotoAndState();
+    }, 50);
+}
+
+/**
+ * Check photo flags and game state from Firestore
+ * Reads full document, checks flags, updates if needed
+ * This is the safety net for missed events
+ */
+function checkPhotoAndState() {
+    if (!gameId) {
+        console.log('[VIEW-GAME] No gameId, skipping check');
+        return;
+    }
+    
+    console.log('[VIEW-GAME] 🔍 Background check starting...');
+    
+    db.collection('scheduledGames').doc(gameId).get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                console.log('[VIEW-GAME] Document not found');
+                return;
+            }
+            
+            var data = doc.data();
+            var photo = data.photo || {};
+            var signatures = data.signatures || {};
+            var status = data.status || 'scheduled';
+            
+            // ============================================================
+            // 1. Check photo flags
+            // ============================================================
+            var newPhotoAvailable = photo.newPhotoAvailable === true;
+            var viewDownloaded = photo.viewDownloaded === true;
+            var imageUrl = photo.imageUrl || null;
+            
+            if (newPhotoAvailable && !viewDownloaded && imageUrl) {
+                console.log('[VIEW-GAME] Polling: New photo available - downloading...');
+                if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                        if (err) {
+                            console.warn('[VIEW-GAME] Polling: Download failed:', err.message);
+                        } else {
+                            console.log('[VIEW-GAME] Polling: Photo downloaded and stored');
+                            viewPhotoDownloaded = true;
+                            
+                            // Set viewDownloaded = true
+                            db.collection('scheduledGames').doc(gameId).update({
+                                'photo.viewDownloaded': true,
+                                'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                            }).then(function() {
+                                console.log('[VIEW-GAME] Polling: viewDownloaded set to true');
+                            }).catch(function(err) {
+                                console.warn('[VIEW-GAME] Polling: Failed to set viewDownloaded:', err.message);
+                            });
+                        }
+                    });
+                } else {
+                    console.warn('[VIEW-GAME] Polling: downloadPhotoToSessionStorage not available');
+                }
+            }
+            
+            // ============================================================
+            // 2. Check game completion
+            // ============================================================
+            var f1Signed = signatures.f1 && signatures.f1.signed === true;
+            var f2Signed = signatures.f2 && signatures.f2.signed === true;
+            var bothSigned = f1Signed && f2Signed;
+            var isCompleted = bothSigned || status === 'completed';
+            
+            // Also check if photo shows game completed (celebration.imageUrl exists)
+            var hasCelebrationPhoto = !!(data.celebration && data.celebration.imageUrl);
+            var isCompletedFromCelebration = hasCelebrationPhoto && bothSigned;
+            
+            if ((isCompleted || isCompletedFromCelebration) && !gameCompleteFlag && !celebrationTriggered) {
+                console.log('[VIEW-GAME] Polling: Game completion detected!');
+                gameCompleteFlag = true;
+                
+                // Update cache if needed
+                var currentCache = GameLoader.getLocalCache();
+                if (currentCache) {
+                    currentCache.status = 'completed';
+                    if (!currentCache.signatures) {
+                        currentCache.signatures = { f1: { signed: false }, f2: { signed: false } };
+                    }
+                    currentCache.signatures.f1.signed = true;
+                    currentCache.signatures.f2.signed = true;
+                    GameLoader.setLocalCache(currentCache);
+                }
+                
+                // Update UI to show RESULT button
+                isPostGameContext = true;
+                renderCompactHeader();
+                renderAll();
+                
+                console.log('[VIEW-GAME] Polling: UI updated with RESULT button');
+            }
+            
+            console.log('[VIEW-GAME] Polling: Check complete');
+        })
+        .catch(function(err) {
+            console.warn('[VIEW-GAME] Polling: Failed to read document:', err.message);
+        });
 }
 
 // ============================================================
@@ -1436,7 +1570,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.01: Initialization - Added loadDefaultCelebrationPhoto
+// v8.03: Initialization - Added polling + button triggers
 // ============================================================
 
 async function init() {
@@ -1563,6 +1697,35 @@ async function init() {
         });
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
+    
+    // ============================================================
+    // v8.03: START 60-SECOND POLLING
+    // ============================================================
+    // Safety net for missed Firestore events
+    // Runs in background, does NOT block UI
+    // ============================================================
+    setInterval(function() {
+        if (!document.hidden && gameId) {
+            console.log('[VIEW-GAME] ⏱️ 60-second poll');
+            checkPhotoAndState();
+        } else {
+            console.log('[VIEW-GAME] ⏱️ Poll skipped (tab hidden or no gameId)');
+        }
+    }, 60000); // 60 seconds
+    
+    // ============================================================
+    // v8.03: PAGE VISIBILITY API
+    // ============================================================
+    // Check for updates when user returns to tab
+    // ============================================================
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden && gameId) {
+            console.log('[VIEW-GAME] 👁️ Tab visible - checking for updates');
+            triggerBackgroundCheck();
+        }
+    });
+    
+    console.log('[VIEW-GAME] v8.03 initialized with 60s polling + button triggers');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1574,13 +1737,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.02
-KEY CHANGES from v8.01:
-   - ADDED: Photo flag check in setupRealtimeListener() - VIEW downloads if newPhotoAvailable=true and viewDownloaded=false
-   - ADDED: VIEW sets viewDownloaded=true after successful photo download
-   - REASON: Flag-based synchronization ensures VIEW only downloads when new photo is available
-   - REASON: Prevents redundant downloads and ensures VIEW has the correct photo
-   - PRESERVED: ALL other functionality from v8.01 unchanged
+VERSION: 8.03
+KEY CHANGES from v8.02:
+   - ADDED: 60-second polling check (checkPhotoAndState) - reads full document, checks flags
+   - ADDED: Button-triggered background checks attached to P/N, Flight, Prev, Next buttons
+   - ADDED: Page Visibility API check on tab focus
+   - REASON: VIEW needs safety net for missed Firestore events
+   - REASON: User actions on VIEW buttons can trigger background checks without blocking UI
+   - REASON: Tab focus recovery ensures VIEW updates when user returns
+   - PRESERVED: ALL other functionality from v8.02 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
