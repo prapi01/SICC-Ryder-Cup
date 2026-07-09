@@ -1,6 +1,6 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.40
+VERSION: 1.41
 KEY CHANGES from v1.39:
    - CHANGED: triggerPhotoCheck() now only called for F1 (editableFlight === 1)
    - REASON: ONLY F1 should check GitHub ETag and upload photos
@@ -12,11 +12,11 @@ STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.40";
+window.REAL_GAME_SAVE_VERSION = "1.41";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.40 - Photo check restricted to F1 only");
+    console.log("[REAL-GAME-SAVE] Initializing v1.41 - Photo check restricted to F1 only");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -166,10 +166,10 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // v1.40: Reusable photo check trigger - F1 ONLY
+    // v1.41: Reusable photo check trigger - F1 ONLY
     // ============================================================
     function triggerPhotoCheck(holeNumber, context) {
-        // v1.40: ONLY F1 checks for photo changes
+        // v1.41: ONLY F1 checks for photo changes
         var editableFlight = getEditableFlight();
         if (editableFlight !== 1) {
             console.log('[SAVE] ℹ️ Photo check skipped - only F1 checks photos (current flight:', editableFlight, ')');
@@ -277,7 +277,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.40] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.41] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -724,7 +724,7 @@ var RealGameSave = (function() {
         
         console.log(`[DEBUG-FLOW] --- TEAM GAME: T-1=${t1Display}, T-2=${t2Display} (ASSIGNED TO CACHE)`);
         
-        // Points        var flight1PointsA = (cumulativeF1 > 0) ? 1 : (cumulativeF1 < 0) ? 0 : 0.5;
+        var flight1PointsA = (cumulativeF1 > 0) ? 1 : (cumulativeF1 < 0) ? 0 : 0.5;
         var flight1PointsB = (cumulativeF1 > 0) ? 0 : (cumulativeF1 < 0) ? 1 : 0.5;
         var flight2PointsA = (cumulativeF2 > 0) ? 1 : (cumulativeF2 < 0) ? 0 : 0.5;
         var flight2PointsB = (cumulativeF2 > 0) ? 0 : (cumulativeF2 < 0) ? 1 : 0.5;
@@ -1049,7 +1049,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.40: Photo check restricted to F1 only
+    // performSave - v1.41: Photo check restricted to F1 only
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1278,8 +1278,8 @@ var RealGameSave = (function() {
                             console.log(`[DEBUG-SAVE] --- CASCADE COMPLETE - Updating UI once ---`);
                             if (renderAllCallback) renderAllCallback();
                             
-                            // v1.40: Photo check after cascade completes (F1 only)
-                            // v1.40: triggerPhotoCheck() now checks editableFlight internally
+                            // v1.41: Photo check after cascade completes (F1 only)
+                            // v1.41: triggerPhotoCheck() now checks editableFlight internally
                             triggerPhotoCheck(currentHole, 'cascade');
                             
                         } else {
@@ -1308,16 +1308,16 @@ var RealGameSave = (function() {
                         }
                         
                         // ============================================================
-                        // v1.40: CELEBRATION PHOTO CHECK AT EVERY HOLE (F1 ONLY)
+                        // v1.41: CELEBRATION PHOTO CHECK AT EVERY HOLE (F1 ONLY)
                         // Fire-and-forget - runs in background after UI is updated
                         // Uses reusable triggerPhotoCheck() function
                         // triggerPhotoCheck() now checks editableFlight internally
                         // ============================================================
-                        // v1.40: Only trigger photo check if we're NOT in cascade (already triggered above)
+                        // v1.41: Only trigger photo check if we're NOT in cascade (already triggered above)
                         // If we're in cascade, the photo check was already triggered after cascade completion
                         if (currentPosition >= lastSyncedPos) {
                             // Normal save (no cascade) - trigger photo check
-                            // v1.40: triggerPhotoCheck() checks editableFlight internally
+                            // v1.41: triggerPhotoCheck() checks editableFlight internally
                             triggerPhotoCheck(currentHole, 'normal');
                         }
                         // If cascade, photo check already triggered inside the cascade block above
@@ -1574,7 +1574,7 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.40
+VERSION: 1.41
 KEY CHANGES from v1.39:
    - CHANGED: triggerPhotoCheck() now only called for F1 (editableFlight === 1)
    - REASON: ONLY F1 should check GitHub ETag and upload photos
