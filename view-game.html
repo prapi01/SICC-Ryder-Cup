@@ -1,15 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 8.03
-KEY CHANGES from v8.02:
-   - ADDED: 60-second polling check (checkPhotoAndState) - reads full document, checks flags
-   - ADDED: Button-triggered background checks attached to P/N, Flight, Prev, Next buttons
-   - ADDED: Page Visibility API check on tab focus
-   - REASON: VIEW needs safety net for missed Firestore events
-   - REASON: User actions on VIEW buttons can trigger background checks without blocking UI
-   - REASON: Tab focus recovery ensures VIEW updates when user returns
-   - PRESERVED: ALL other functionality from v8.02 unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
+VERSION: 8.04
+KEY CHANGES from v8.03:
+   - ADDED: celebration-photo.js script tag (was missing)
+   - REASON: VIEW needs downloadPhotoToSessionStorage and loadDefaultCelebrationPhoto
+   - REASON: Without this script, VIEW cannot download photos
+   - PRESERVED: ALL other functionality from v8.03 unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
 
@@ -25,6 +22,7 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js?v=8.03"></script>
     <script src="js/session.js?v=8.03"></script>
     <script src="js/settings.js?v=8.03"></script>
+    <script src="js/celebration-photo.js?v=8.03"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -158,7 +156,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.03</div>
+<div class="version-tag">v8.04</div>
 
 <script>
 // ============================================================
@@ -1737,15 +1735,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.03
-KEY CHANGES from v8.02:
-   - ADDED: 60-second polling check (checkPhotoAndState) - reads full document, checks flags
-   - ADDED: Button-triggered background checks attached to P/N, Flight, Prev, Next buttons
-   - ADDED: Page Visibility API check on tab focus
-   - REASON: VIEW needs safety net for missed Firestore events
-   - REASON: User actions on VIEW buttons can trigger background checks without blocking UI
-   - REASON: Tab focus recovery ensures VIEW updates when user returns
-   - PRESERVED: ALL other functionality from v8.02 unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.16), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
+VERSION: 8.04
+KEY CHANGES from v8.03:
+   - ADDED: celebration-photo.js script tag (was missing)
+   - REASON: VIEW needs downloadPhotoToSessionStorage and loadDefaultCelebrationPhoto
+   - REASON: Without this script, VIEW cannot download photos
+   - PRESERVED: ALL other functionality from v8.03 unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
