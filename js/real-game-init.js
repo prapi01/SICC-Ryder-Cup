@@ -1,24 +1,22 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: setupRealtimeListener() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
-   - FIXED: onCacheUpdate() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
-   - REASON: showGameCompleteScreen() navigates away to post-game.html immediately
-   - REASON: showGameCompleteModal() shows the Game Complete modal on current page
-   - REASON: User should click "SEE RESULTS" to navigate, not auto-navigate
-   - REASON: Restores the working behavior from yesterday
-   - PRESERVED: ALL other functionality from v1.11 unchanged
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: F2 photo flag check in setupRealtimeListener() - downloads photo if newPhotoAvailable=true and f2Downloaded=false
+   - ADDED: F1 flag reset in setupRealtimeListener() - resets all flags to false when T/T/T
+   - REASON: Flag-based photo synchronization for F2 and VIEW
+   - REASON: F1 resets flags when all devices have downloaded the photo
+   - PRESERVED: ALL other functionality from v1.12 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.12";
+window.REAL_GAME_INIT_VERSION = "1.13";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.12 - Fixed completion modal navigation");
+    console.log("[REAL-GAME-INIT] Initializing v1.13 - Photo flag sync for F2 and VIEW");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -425,12 +423,13 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // v1.12: setupRealtimeListener - FIXED completion modal
+    // v1.13: setupRealtimeListener - ADDED photo flag sync
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
         var gameId = getGameId();
         var db = getDb();
+        var editableFlight = getEditableFlight();
         
         if (!db || !gameId) {
             console.warn("Cannot setup realtime listener - db or gameId missing");
@@ -462,6 +461,99 @@ var RealGameInit = (function() {
                 var data = doc.data();
                 var currentCache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
                 if (!currentCache) return;
+                
+                // ============================================================
+                // v1.13: PHOTO FLAG SYNC - Check flags on every snapshot
+                // ============================================================
+                var photo = data.photo || {};
+                var newPhotoAvailable = photo.newPhotoAvailable === true;
+                var f2Downloaded = photo.f2Downloaded === true;
+                var viewDownloaded = photo.viewDownloaded === true;
+                var imageUrl = photo.imageUrl || null;
+                
+                // ============================================================
+                // F2 Logic: If newPhotoAvailable = true AND f2Downloaded = false
+                // Download photo from Firebase Storage and set f2Downloaded = true
+                // ============================================================
+                if (editableFlight === 2 && newPhotoAvailable && !f2Downloaded && imageUrl) {
+                    console.log('[REALTIME] F2: New photo available - downloading from FS...');
+                    
+                    if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                        window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                            if (err) {
+                                console.warn('[REALTIME] F2: Failed to download photo:', err.message);
+                            } else {
+                                console.log('[REALTIME] F2: Photo downloaded and stored in sessionStorage');
+                                
+                                // Set f2Downloaded = true
+                                var db = firebase.firestore();
+                                db.collection('scheduledGames').doc(gameId).update({
+                                    'photo.f2Downloaded': true,
+                                    'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                                }).then(function() {
+                                    console.log('[REALTIME] F2: f2Downloaded set to true');
+                                }).catch(function(err) {
+                                    console.warn('[REALTIME] F2: Failed to set f2Downloaded:', err.message);
+                                });
+                            }
+                        });
+                    } else {
+                        console.warn('[REALTIME] F2: downloadPhotoToSessionStorage not available');
+                    }
+                }
+                
+                // ============================================================
+                // VIEW Logic: If newPhotoAvailable = true AND viewDownloaded = false
+                // Download photo from Firebase Storage and set viewDownloaded = true
+                // ============================================================
+                if (editableFlight === 0 && newPhotoAvailable && !viewDownloaded && imageUrl) {
+                    // NOTE: editableFlight === 0 means VIEW device
+                    // VIEW's listener is in view-game.html, but we handle it here too
+                    // as a fallback for any device that has editableFlight === 0
+                    console.log('[REALTIME] VIEW: New photo available - downloading from FS...');
+                    
+                    if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                        window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                            if (err) {
+                                console.warn('[REALTIME] VIEW: Failed to download photo:', err.message);
+                            } else {
+                                console.log('[REALTIME] VIEW: Photo downloaded and stored in sessionStorage');
+                                
+                                var db = firebase.firestore();
+                                db.collection('scheduledGames').doc(gameId).update({
+                                    'photo.viewDownloaded': true,
+                                    'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                                }).then(function() {
+                                    console.log('[REALTIME] VIEW: viewDownloaded set to true');
+                                }).catch(function(err) {
+                                    console.warn('[REALTIME] VIEW: Failed to set viewDownloaded:', err.message);
+                                });
+                            }
+                        });
+                    } else {
+                        console.warn('[REALTIME] VIEW: downloadPhotoToSessionStorage not available');
+                    }
+                }
+                
+                // ============================================================
+                // F1 Logic: If newPhotoAvailable = true AND f2Downloaded = true AND viewDownloaded = true
+                // Reset all flags to false
+                // ============================================================
+                if (editableFlight === 1 && newPhotoAvailable && f2Downloaded && viewDownloaded) {
+                    console.log('[REALTIME] F1: All devices have downloaded the photo - resetting flags...');
+                    
+                    var db = firebase.firestore();
+                    db.collection('scheduledGames').doc(gameId).update({
+                        'photo.newPhotoAvailable': false,
+                        'photo.f2Downloaded': false,
+                        'photo.viewDownloaded': false,
+                        'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                    }).then(function() {
+                        console.log('[REALTIME] F1: Flags reset to F/F/F');
+                    }).catch(function(err) {
+                        console.warn('[REALTIME] F1: Failed to reset flags:', err.message);
+                    });
+                }
                 
                 var f1Changed = (currentCache.f1DataString !== data.f1?.d);
                 var f2Changed = (currentCache.f2DataString !== data.f2?.d);
@@ -1003,15 +1095,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: setupRealtimeListener() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
-   - FIXED: onCacheUpdate() now calls showGameCompleteModal(gameId) instead of showGameCompleteScreen()
-   - REASON: showGameCompleteScreen() navigates away to post-game.html immediately
-   - REASON: showGameCompleteModal() shows the Game Complete modal on current page
-   - REASON: User should click "SEE RESULTS" to navigate, not auto-navigate
-   - REASON: Restores the working behavior from yesterday
-   - PRESERVED: ALL other functionality from v1.11 unchanged
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: F2 photo flag check in setupRealtimeListener() - downloads photo if newPhotoAvailable=true and f2Downloaded=false
+   - ADDED: F1 flag reset in setupRealtimeListener() - resets all flags to false when T/T/T
+   - REASON: Flag-based photo synchronization for F2 and VIEW
+   - REASON: F1 resets flags when all devices have downloaded the photo
+   - PRESERVED: ALL other functionality from v1.12 unchanged
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
