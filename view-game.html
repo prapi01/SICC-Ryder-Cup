@@ -19,6 +19,7 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     <script src="js/firebase-config.js?v=8.03"></script>
     <script src="js/session.js?v=8.03"></script>
     <script src="js/settings.js?v=8.03"></script>
@@ -950,18 +951,18 @@ function showCelebrationModal() {
     var cache = GameLoader.getLocalCache();
     var tr = GameLoader.getTRForHole(18);
     var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
-    var winningPlayers = { 
-        teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
-        teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
+    var winningPlayers = {
+        teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+        teamB: allPlayers.filter(function(p) { return p.team === "B"; })
     };
     
     if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
         // v7.33: onClose callback does NOT navigate - user must click "HANDICAP ADJUSTMENT"
         SignCard.showCelebrationScreen(
-            winner, 
-            tr.teamA, 
-            tr.teamB, 
-            winningPlayers, 
+            winner,
+            tr.teamA,
+            tr.teamB,
+            winningPlayers,
             gameId,
             function() {
                 // onClose callback - do NOT navigate automatically
@@ -1031,7 +1032,7 @@ function renderCompactHeader() {
         nextButtonHtml = '<button class="compact-result-btn" id="compactResultBtn" style="width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">🏆 RESULT</button>';
     } else {
         var playOrder = getPlayOrder();
-        var hasSavedData = (cache.savedHoles[1]?.includes(currentHole) || false) || 
+        var hasSavedData = (cache.savedHoles[1]?.includes(currentHole) || false) ||
                           (cache.savedHoles[2]?.includes(currentHole) || false);
         var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
         var isDisabled = (!hasSavedData) || isLastHole;
