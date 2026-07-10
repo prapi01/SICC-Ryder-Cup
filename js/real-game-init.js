@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - CRITICAL FIX: Moved photo flag logic BEFORE WRV in progress check
-   - REASON: F2's photo download was being blocked by WRV in progress
-   - REASON: By the time WRV completed, F1 may have already reset flags
-   - REASON: Photo downloads should NOT be blocked by WRV
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - REMOVED: F1 flag reset logic (F1 no longer resets photo flags)
+   - REASON: F1 was resetting flags too quickly before F2/VIEW could download
+   - REASON: Only VIEW should reset flags after confirming f2Downloaded=true
+   - PRESERVED: F2 download logic (unchanged)
+   - PRESERVED: ALL other functionality from v1.14 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.14";
+window.REAL_GAME_INIT_VERSION = "1.15";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.14 - Photo flag check before WRV");
+    console.log("[REAL-GAME-INIT] Initializing v1.15 - F1 reset removed, VIEW handles reset");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -423,7 +423,8 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // v1.14: setupRealtimeListener - MOVED photo logic BEFORE WRV check
+    // v1.15: setupRealtimeListener - REMOVED F1 reset logic
+    // F1 no longer resets flags. Only VIEW resets via poll.
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -457,7 +458,7 @@ var RealGameInit = (function() {
                 if (!currentCache) return;
                 
                 // ============================================================
-                // v1.14: CRITICAL FIX - Process photo flags BEFORE WRV check
+                // v1.14: Process photo flags BEFORE WRV check
                 // Photo downloads should NOT be blocked by WRV in progress
                 // ============================================================
                 var photo = data.photo || {};
@@ -531,24 +532,10 @@ var RealGameInit = (function() {
                 }
                 
                 // ============================================================
-                // F1 Logic: If newPhotoAvailable = true AND f2Downloaded = true AND viewDownloaded = true
-                // Reset all flags to false
+                // v1.15: F1 RESET LOGIC REMOVED
+                // F1 no longer resets photo flags. Only VIEW resets via poll.
+                // This prevents flags from being reset before F2/VIEW can download.
                 // ============================================================
-                if (editableFlight === 1 && newPhotoAvailable && f2Downloaded && viewDownloaded) {
-                    console.log('[REALTIME] F1: All devices have downloaded the photo - resetting flags...');
-                    
-                    var db = firebase.firestore();
-                    db.collection('scheduledGames').doc(gameId).update({
-                        'photo.newPhotoAvailable': false,
-                        'photo.f2Downloaded': false,
-                        'photo.viewDownloaded': false,
-                        'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
-                    }).then(function() {
-                        console.log('[REALTIME] F1: Flags reset to F/F/F');
-                    }).catch(function(err) {
-                        console.warn('[REALTIME] F1: Failed to reset flags:', err.message);
-                    });
-                }
                 
                 // ============================================================
                 // v1.14: NOW check WRV flag for DATA updates only
@@ -1099,13 +1086,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - CRITICAL FIX: Moved photo flag logic BEFORE WRV in progress check
-   - REASON: F2's photo download was being blocked by WRV in progress
-   - REASON: By the time WRV completed, F1 may have already reset flags
-   - REASON: Photo downloads should NOT be blocked by WRV
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - REMOVED: F1 flag reset logic (F1 no longer resets photo flags)
+   - REASON: F1 was resetting flags too quickly before F2/VIEW could download
+   - REASON: Only VIEW should reset flags after confirming f2Downloaded=true
+   - PRESERVED: F2 download logic (unchanged)
+   - PRESERVED: ALL other functionality from v1.14 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
