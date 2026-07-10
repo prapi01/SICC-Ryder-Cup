@@ -1,12 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 8.05
-KEY CHANGES from v8.04:
-   - ADDED: Safety net in checkPhotoAndState() - checks imageUrl even when flags are reset
-   - CHANGED: Poll interval from 60s to 10 minutes (600,000 ms)
-   - REASON: VIEW may miss T/F/F flag window; should still download if imageUrl exists and is new
-   - REASON: 10-minute poll is sufficient safety net; primary updates via listener + button triggers
-   - PRESERVED: ALL other functionality from v8.04 unchanged
+VERSION: 8.06
+KEY CHANGES from v8.05:
+   - CRITICAL FIX: Real-time listener now checks newPhotoAvailable flag
+   - REASON: photoUrlChanged is false when photo URL remains the same (overwritten file)
+   - REASON: VIEW was not downloading new photos because URL didn't change
+   - FIX: If newPhotoAvailable=true OR photoUrlChanged=true, trigger download
+   - PRESERVED: ALL other functionality from v8.05 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
@@ -21,10 +21,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.05"></script>
-    <script src="js/session.js?v=8.05"></script>
-    <script src="js/settings.js?v=8.05"></script>
-    <script src="js/celebration-photo.js?v=8.05"></script>
+    <script src="js/firebase-config.js?v=8.06"></script>
+    <script src="js/session.js?v=8.06"></script>
+    <script src="js/settings.js?v=8.06"></script>
+    <script src="js/celebration-photo.js?v=8.06"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -33,11 +33,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.05"></script>
-    <script src="js/history-record.js?v=8.05"></script>
+    <script src="js/ticker.js?v=8.06"></script>
+    <script src="js/history-record.js?v=8.06"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.05"></script>
-    <script src="js/modal.js?v=8.05"></script>
+    <script src="js/hcp-adjust.js?v=8.06"></script>
+    <script src="js/modal.js?v=8.06"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -158,14 +158,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.05</div>
+<div class="version-tag">v8.06</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.05: Safety net + 10-min poll
+// VERSION CACHE-BUSTING - v8.06: Fixed newPhotoAvailable check
 // ============================================================
-var APP_VERSION = "8.05";
-var CACHE_KEY = "view_game_version_v805";
+var APP_VERSION = "8.06";
+var CACHE_KEY = "view_game_version_v806";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -183,8 +183,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.05";
-console.log("[VIEW-GAME] Initializing v8.05 - Safety net + 10-min poll");
+window.VIEW_GAME_VERSION = "8.06";
+console.log("[VIEW-GAME] Initializing v8.06 - Fixed newPhotoAvailable check");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1266,7 +1266,7 @@ function checkPhotoAndState() {
 }
 
 // ============================================================
-// v8.02: Real-time Firestore Listener - Flag-based photo sync
+// v8.06: Real-time Firestore Listener - FIXED newPhotoAvailable check
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1339,23 +1339,38 @@ function setupRealtimeListener() {
             var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
             var statusChanged = (currentCache.status !== data.status);
             
-            // v8.01: Check for photo URL change (legacy - kept for backward compatibility)
+            // v8.06: CRITICAL FIX - Check for photo URL change OR newPhotoAvailable flag
             var celebrationImageUrl = data.celebration?.imageUrl || null;
             var photoUrlChanged = (celebrationImageUrl !== null && celebrationImageUrl !== currentPhotoUrl);
             
-            console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged, "photoUrlChanged:", photoUrlChanged);
+            // v8.06: Also check photo.newPhotoAvailable flag for overwritten files
+            var newPhotoAvailable = data.photo?.newPhotoAvailable === true;
             
-            // v8.01: Handle legacy photo URL change (backward compatibility)
-            if (photoUrlChanged && celebrationImageUrl) {
-                console.log("[VIEW-GAME] New legacy photo URL detected:", celebrationImageUrl);
+            console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged, "photoUrlChanged:", photoUrlChanged, "newPhotoAvailable:", newPhotoAvailable);
+            
+            // v8.06: Trigger download if photoUrlChanged OR newPhotoAvailable is true
+            // This fixes the bug where VIEW didn't download when photo URL remained the same (overwritten file)
+            if ((photoUrlChanged || newPhotoAvailable) && celebrationImageUrl) {
+                console.log("[VIEW-GAME] New photo detected (URL changed or flag set):", celebrationImageUrl);
                 currentPhotoUrl = celebrationImageUrl;
                 
                 if (typeof window.downloadPhotoToSessionStorage === 'function') {
                     window.downloadPhotoToSessionStorage(celebrationImageUrl, function(err) {
                         if (err) {
-                            console.warn('[VIEW-GAME] Failed to download legacy photo:', err.message);
+                            console.warn('[VIEW-GAME] Failed to download photo:', err.message);
                         } else {
-                            console.log('[VIEW-GAME] Legacy photo pre-loaded successfully');
+                            console.log('[VIEW-GAME] Photo downloaded and stored in sessionStorage');
+                            // Also set viewDownloaded if using flag system
+                            if (newPhotoAvailable) {
+                                db.collection('scheduledGames').doc(gameId).update({
+                                    'photo.viewDownloaded': true,
+                                    'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                                }).then(function() {
+                                    console.log('[VIEW-GAME] viewDownloaded set to true');
+                                }).catch(function(err) {
+                                    console.warn('[VIEW-GAME] Failed to set viewDownloaded:', err.message);
+                                });
+                            }
                         }
                     });
                 } else {
@@ -1610,7 +1625,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.05: Initialization - Safety net + 10-min poll
+// v8.06: Initialization - Fixed newPhotoAvailable check
 // ============================================================
 
 async function init() {
@@ -1765,7 +1780,7 @@ async function init() {
         }
     });
     
-    console.log('[VIEW-GAME] v8.05 initialized with 10-min polling + safety net');
+    console.log('[VIEW-GAME] v8.06 initialized with fixed newPhotoAvailable check');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1777,13 +1792,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.05
-KEY CHANGES from v8.04:
-   - ADDED: Safety net in checkPhotoAndState() - checks imageUrl even when flags are reset
-   - CHANGED: Poll interval from 60s to 10 minutes (600,000 ms)
-   - REASON: VIEW may miss T/F/F flag window; should still download if imageUrl exists and is new
-   - REASON: 10-minute poll is sufficient safety net; primary updates via listener + button triggers
-   - PRESERVED: ALL other functionality from v8.04 unchanged
+VERSION: 8.06
+KEY CHANGES from v8.05:
+   - CRITICAL FIX: Real-time listener now checks newPhotoAvailable flag
+   - REASON: photoUrlChanged is false when photo URL remains the same (overwritten file)
+   - REASON: VIEW was not downloading new photos because URL didn't change
+   - FIX: If newPhotoAvailable=true OR photoUrlChanged=true, trigger download
+   - PRESERVED: ALL other functionality from v8.05 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
