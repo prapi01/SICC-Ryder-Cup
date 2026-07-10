@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: F2 photo flag check in setupRealtimeListener() - downloads photo if newPhotoAvailable=true and f2Downloaded=false
-   - ADDED: F1 flag reset in setupRealtimeListener() - resets all flags to false when T/T/T
-   - REASON: Flag-based photo synchronization for F2 and VIEW
-   - REASON: F1 resets flags when all devices have downloaded the photo
-   - PRESERVED: ALL other functionality from v1.12 unchanged
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CRITICAL FIX: Moved photo flag logic BEFORE WRV in progress check
+   - REASON: F2's photo download was being blocked by WRV in progress
+   - REASON: By the time WRV completed, F1 may have already reset flags
+   - REASON: Photo downloads should NOT be blocked by WRV
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.13";
+window.REAL_GAME_INIT_VERSION = "1.14";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.13 - Photo flag sync for F2 and VIEW");
+    console.log("[REAL-GAME-INIT] Initializing v1.14 - Photo flag check before WRV");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -423,7 +423,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // v1.13: setupRealtimeListener - ADDED photo flag sync
+    // v1.14: setupRealtimeListener - MOVED photo logic BEFORE WRV check
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -450,12 +450,6 @@ var RealGameInit = (function() {
                 RealGameState.setFirestoreChanged(true);
                 console.log('[REALTIME] Firestore changed - flag set');
                 
-                // Check WRV flag FIRST - if WRV in progress, do NOTHING
-                if (RealGameState.isWRVInProgress()) {
-                    console.log('[REALTIME] WRV in progress - ignoring Firestore update');
-                    return;
-                }
-                
                 if (!doc.exists) return;
                 
                 var data = doc.data();
@@ -463,7 +457,8 @@ var RealGameInit = (function() {
                 if (!currentCache) return;
                 
                 // ============================================================
-                // v1.13: PHOTO FLAG SYNC - Check flags on every snapshot
+                // v1.14: CRITICAL FIX - Process photo flags BEFORE WRV check
+                // Photo downloads should NOT be blocked by WRV in progress
                 // ============================================================
                 var photo = data.photo || {};
                 var newPhotoAvailable = photo.newPhotoAvailable === true;
@@ -553,6 +548,15 @@ var RealGameInit = (function() {
                     }).catch(function(err) {
                         console.warn('[REALTIME] F1: Failed to reset flags:', err.message);
                     });
+                }
+                
+                // ============================================================
+                // v1.14: NOW check WRV flag for DATA updates only
+                // Photo flags have already been processed above
+                // ============================================================
+                if (RealGameState.isWRVInProgress()) {
+                    console.log('[REALTIME] WRV in progress - ignoring Firestore data update');
+                    return;
                 }
                 
                 var f1Changed = (currentCache.f1DataString !== data.f1?.d);
@@ -1095,13 +1099,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: F2 photo flag check in setupRealtimeListener() - downloads photo if newPhotoAvailable=true and f2Downloaded=false
-   - ADDED: F1 flag reset in setupRealtimeListener() - resets all flags to false when T/T/T
-   - REASON: Flag-based photo synchronization for F2 and VIEW
-   - REASON: F1 resets flags when all devices have downloaded the photo
-   - PRESERVED: ALL other functionality from v1.12 unchanged
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CRITICAL FIX: Moved photo flag logic BEFORE WRV in progress check
+   - REASON: F2's photo download was being blocked by WRV in progress
+   - REASON: By the time WRV completed, F1 may have already reset flags
+   - REASON: Photo downloads should NOT be blocked by WRV
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
