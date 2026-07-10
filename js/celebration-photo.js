@@ -1,21 +1,17 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: setPhotoFlags() - Sets photo flags in Firestore (T/F/F)
-   - ADDED: resetPhotoFlags() - Resets all photo flags to F/F/F
-   - ADDED: checkPhotoFlags() - Reads photo flags from Firestore
-   - MODIFIED: loadDefaultCelebrationPhoto() - Now calls setPhotoFlags() after storing default photo
-   - MODIFIED: checkAndRenameCelebrationPhoto() - Now calls setPhotoFlags() after upload
-   - REASON: Flag-based synchronization for photo distribution
-   - REASON: Default photo AND new photo use same unified flow
-   - REASON: F2 and VIEW can check flags to know when to download
-   - PRESERVED: ALL other functionality from v1.12 unchanged
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CRITICAL FIX: setPhotoFlags() now uses set({ merge: true }) instead of update()
+   - REASON: update() leaves stale flags (f2Downloaded, viewDownloaded) unchanged
+   - REASON: set({ merge: true }) FORCES all flags to T/F/F
+   - REASON: This prevents the flag reset bug where F1 saw T/T/T immediately
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.13";
+window.CELEBRATION_PHOTO_VERSION = "1.14";
 
 // ============================================================
 // CONSTANTS
@@ -630,7 +626,8 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
 }
 
 // ============================================================
-// v1.13: FLAG MANAGEMENT FUNCTIONS
+// v1.14: FLAG MANAGEMENT FUNCTIONS
+// CRITICAL FIX: setPhotoFlags() now uses set({ merge: true }) instead of update()
 // ============================================================
 
 /**
@@ -663,7 +660,10 @@ function setPhotoFlags(gameId, imageUrl, callback) {
         'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    db.collection('scheduledGames').doc(gameId).update(payload)
+    // CRITICAL FIX v1.14: Use set() with merge: true to FORCE all three flags to T/F/F
+    // This overwrites any stale flags (f2Downloaded, viewDownloaded) that may exist
+    // update() would only change newPhotoAvailable and imageUrl, leaving stale flags untouched
+    db.collection('scheduledGames').doc(gameId).set(payload, { merge: true })
         .then(function() {
             console.log('[CelebrationPhoto] ✅ Flags set: T/F/F');
             if (callback) callback(null);
@@ -795,7 +795,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.13: Expose functions
+// v1.14: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -810,7 +810,7 @@ window.clearStoredPhotoUrlForHistory = clearStoredPhotoUrlForHistory;
 window.verifyPhotoUpload = verifyPhotoUpload;
 window.storeBlobInSessionStorage = storeBlobInSessionStorage;
 window.downloadPhotoToSessionStorage = downloadPhotoToSessionStorage;
-// v1.13: Flag management functions
+// v1.14: Flag management functions (preserved from v1.13, with setPhotoFlags fixed)
 window.setPhotoFlags = setPhotoFlags;
 window.resetPhotoFlags = resetPhotoFlags;
 window.checkPhotoFlags = checkPhotoFlags;
@@ -823,17 +823,13 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: setPhotoFlags() - Sets photo flags in Firestore (T/F/F)
-   - ADDED: resetPhotoFlags() - Resets all photo flags to F/F/F
-   - ADDED: checkPhotoFlags() - Reads photo flags from Firestore
-   - MODIFIED: loadDefaultCelebrationPhoto() - Now calls setPhotoFlags() after storing default photo
-   - MODIFIED: checkAndRenameCelebrationPhoto() - Now calls setPhotoFlags() after upload
-   - REASON: Flag-based synchronization for photo distribution
-   - REASON: Default photo AND new photo use same unified flow
-   - REASON: F2 and VIEW can check flags to know when to download
-   - PRESERVED: ALL other functionality from v1.12 unchanged
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CRITICAL FIX: setPhotoFlags() now uses set({ merge: true }) instead of update()
+   - REASON: update() leaves stale flags (f2Downloaded, viewDownloaded) unchanged
+   - REASON: set({ merge: true }) FORCES all flags to T/F/F
+   - REASON: This prevents the flag reset bug where F1 saw T/T/T immediately
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
