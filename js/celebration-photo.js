@@ -1,17 +1,18 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - CRITICAL FIX: setPhotoFlags() now uses set({ merge: true }) instead of update()
-   - REASON: update() leaves stale flags (f2Downloaded, viewDownloaded) unchanged
-   - REASON: set({ merge: true }) FORCES all flags to T/F/F
-   - REASON: This prevents the flag reset bug where F1 saw T/T/T immediately
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - CRITICAL FIX: setPhotoFlags() payload now uses nested photo object instead of flat dot notation
+   - CRITICAL FIX: resetPhotoFlags() payload now uses nested photo object instead of flat dot notation
+   - REASON: Dot notation ('photo.newPhotoAvailable') creates FLAT fields at document root
+   - REASON: Code expects nested photo object (data.photo.newPhotoAvailable)
+   - REASON: This mismatch caused flags to be written but never found
+   - PRESERVED: ALL other functionality from v1.14 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.14";
+window.CELEBRATION_PHOTO_VERSION = "1.15";
 
 // ============================================================
 // CONSTANTS
@@ -626,8 +627,8 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
 }
 
 // ============================================================
-// v1.14: FLAG MANAGEMENT FUNCTIONS
-// CRITICAL FIX: setPhotoFlags() now uses set({ merge: true }) instead of update()
+// v1.15: FLAG MANAGEMENT FUNCTIONS
+// CRITICAL FIX: Payload now uses nested photo object instead of flat dot notation
 // ============================================================
 
 /**
@@ -652,17 +653,22 @@ function setPhotoFlags(gameId, imageUrl, callback) {
     console.log('[CelebrationPhoto] Setting photo flags: T/F/F for game:', gameId);
     
     var db = firebase.firestore();
+    
+    // v1.15: CRITICAL FIX - Use NESTED photo object, NOT flat dot notation
+    // Previously used 'photo.newPhotoAvailable' which created FLAT fields at root
+    // Now using photo: { newPhotoAvailable: true, ... } which creates NESTED object
     var payload = {
-        'photo.newPhotoAvailable': true,
-        'photo.f2Downloaded': false,
-        'photo.viewDownloaded': false,
-        'photo.imageUrl': imageUrl,
-        'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+        photo: {
+            newPhotoAvailable: true,
+            f2Downloaded: false,
+            viewDownloaded: false,
+            imageUrl: imageUrl,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }
     };
     
-    // CRITICAL FIX v1.14: Use set() with merge: true to FORCE all three flags to T/F/F
-    // This overwrites any stale flags (f2Downloaded, viewDownloaded) that may exist
-    // update() would only change newPhotoAvailable and imageUrl, leaving stale flags untouched
+    // Use set() with merge: true to FORCE all three flags to T/F/F
+    // This overwrites any stale flags that may exist
     db.collection('scheduledGames').doc(gameId).set(payload, { merge: true })
         .then(function() {
             console.log('[CelebrationPhoto] ✅ Flags set: T/F/F');
@@ -676,7 +682,6 @@ function setPhotoFlags(gameId, imageUrl, callback) {
 
 /**
  * Reset photo flags to false
- * Called by F1 only when both f2Downloaded and viewDownloaded are true
  * 
  * @param {string} gameId - The game ID
  * @param {Function} callback - Called with (err)
@@ -690,14 +695,18 @@ function resetPhotoFlags(gameId, callback) {
     console.log('[CelebrationPhoto] Resetting photo flags: F/F/F for game:', gameId);
     
     var db = firebase.firestore();
+    
+    // v1.15: CRITICAL FIX - Use NESTED photo object, NOT flat dot notation
     var payload = {
-        'photo.newPhotoAvailable': false,
-        'photo.f2Downloaded': false,
-        'photo.viewDownloaded': false,
-        'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+        photo: {
+            newPhotoAvailable: false,
+            f2Downloaded: false,
+            viewDownloaded: false,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }
     };
     
-    db.collection('scheduledGames').doc(gameId).update(payload)
+    db.collection('scheduledGames').doc(gameId).set(payload, { merge: true })
         .then(function() {
             console.log('[CelebrationPhoto] ✅ Flags reset: F/F/F');
             if (callback) callback(null);
@@ -795,7 +804,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.14: Expose functions
+// v1.15: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -810,7 +819,7 @@ window.clearStoredPhotoUrlForHistory = clearStoredPhotoUrlForHistory;
 window.verifyPhotoUpload = verifyPhotoUpload;
 window.storeBlobInSessionStorage = storeBlobInSessionStorage;
 window.downloadPhotoToSessionStorage = downloadPhotoToSessionStorage;
-// v1.14: Flag management functions (preserved from v1.13, with setPhotoFlags fixed)
+// v1.15: Flag management functions (fixed nested object syntax)
 window.setPhotoFlags = setPhotoFlags;
 window.resetPhotoFlags = resetPhotoFlags;
 window.checkPhotoFlags = checkPhotoFlags;
@@ -823,13 +832,14 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - CRITICAL FIX: setPhotoFlags() now uses set({ merge: true }) instead of update()
-   - REASON: update() leaves stale flags (f2Downloaded, viewDownloaded) unchanged
-   - REASON: set({ merge: true }) FORCES all flags to T/F/F
-   - REASON: This prevents the flag reset bug where F1 saw T/T/T immediately
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - CRITICAL FIX: setPhotoFlags() payload now uses nested photo object instead of flat dot notation
+   - CRITICAL FIX: resetPhotoFlags() payload now uses nested photo object instead of flat dot notation
+   - REASON: Dot notation ('photo.newPhotoAvailable') creates FLAT fields at document root
+   - REASON: Code expects nested photo object (data.photo.newPhotoAvailable)
+   - REASON: This mismatch caused flags to be written but never found
+   - PRESERVED: ALL other functionality from v1.14 unchanged
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
