@@ -1,12 +1,15 @@
 <!--
 FILE: view-game.html
-VERSION: 8.07
-KEY CHANGES from v8.06:
-   - MODIFIED: checkPhotoAndState() poll now waits for f2Downloaded=true before downloading
-   - REASON: VIEW should not download until F2 has confirmed download (f2Downloaded=true)
-   - REASON: Only VIEW resets flags (F/F/F) after confirming f2Downloaded=true
-   - PRESERVED: Safety net - imageUrl check still works even if flags are reset
-   - PRESERVED: ALL other functionality from v8.06 unchanged
+VERSION: 8.08
+KEY CHANGES from v8.07:
+   - REMOVED: 10-minute polling interval (no longer needed)
+   - REMOVED: checkPhotoAndState() function (replaced by listener)
+   - REMOVED: triggerBackgroundCheck() function (no longer needed)
+   - REMOVED: Page Visibility API listener (no longer needed)
+   - ADDED: f2Downloaded check to realtime listener - VIEW resets flags after F2 confirms download
+   - REASON: VIEW's realtime listener already fires on score updates - use it for photo sync
+   - REASON: No need for separate polling - listener-based is instant and efficient
+   - PRESERVED: ALL other functionality from v8.07 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
@@ -21,10 +24,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.07"></script>
-    <script src="js/session.js?v=8.07"></script>
-    <script src="js/settings.js?v=8.07"></script>
-    <script src="js/celebration-photo.js?v=8.07"></script>
+    <script src="js/firebase-config.js?v=8.08"></script>
+    <script src="js/session.js?v=8.08"></script>
+    <script src="js/settings.js?v=8.08"></script>
+    <script src="js/celebration-photo.js?v=8.08"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -33,11 +36,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.07"></script>
-    <script src="js/history-record.js?v=8.07"></script>
+    <script src="js/ticker.js?v=8.08"></script>
+    <script src="js/history-record.js?v=8.08"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.07"></script>
-    <script src="js/modal.js?v=8.07"></script>
+    <script src="js/hcp-adjust.js?v=8.08"></script>
+    <script src="js/modal.js?v=8.08"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -158,14 +161,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.07</div>
+<div class="version-tag">v8.08</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.07: VIEW waits for f2Downloaded
+// VERSION CACHE-BUSTING - v8.08: Listener-based photo sync
 // ============================================================
-var APP_VERSION = "8.07";
-var CACHE_KEY = "view_game_version_v807";
+var APP_VERSION = "8.08";
+var CACHE_KEY = "view_game_version_v808";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -183,8 +186,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.07";
-console.log("[VIEW-GAME] Initializing v8.07 - VIEW waits for f2Downloaded before reset");
+window.VIEW_GAME_VERSION = "8.08";
+console.log("[VIEW-GAME] Initializing v8.08 - Listener-based photo sync");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1059,8 +1062,6 @@ function renderCompactHeader() {
             var newMode = GameUI.getDisplayMode() === 'play' ? 'natural' : 'play';
             GameUI.setDisplayMode(newMode, null);
             renderAll();
-            // v8.03: Trigger background check on button click
-            triggerBackgroundCheck();
         };
     }
     
@@ -1072,8 +1073,6 @@ function renderCompactHeader() {
             renderCompactHeader();
             GameUI.updateFlightBadge(currentFlight);
             renderAll();
-            // v8.03: Trigger background check on button click
-            triggerBackgroundCheck();
         };
     }
     
@@ -1081,8 +1080,6 @@ function renderCompactHeader() {
     if (prevBtn) {
         prevBtn.onclick = function() {
             prevHole();
-            // v8.03: Trigger background check on button click
-            triggerBackgroundCheck();
         };
     }
     
@@ -1091,8 +1088,6 @@ function renderCompactHeader() {
         if (resultBtn) {
             resultBtn.onclick = function() {
                 showCelebrationModal();
-                // v8.03: Trigger background check on button click
-                triggerBackgroundCheck();
             };
         }
     } else {
@@ -1100,187 +1095,14 @@ function renderCompactHeader() {
         if (nextBtn) {
             nextBtn.onclick = function() {
                 nextHole();
-                // v8.03: Trigger background check on button click
-                triggerBackgroundCheck();
             };
         }
     }
 }
 
 // ============================================================
-// v8.07: 10-minute polling + VIEW waits for f2Downloaded
-// ============================================================
-
-/**
- * Trigger a background check without blocking UI
- * Called by button clicks and timer
- */
-function triggerBackgroundCheck() {
-    if (!gameId) return;
-    
-    // Small delay to ensure UI renders first
-    setTimeout(function() {
-        checkPhotoAndState();
-    }, 50);
-}
-
-/**
- * Check photo flags and game state from Firestore
- * Reads full document, checks flags, updates if needed
- * This is the safety net for missed events
- * 
- * v8.07: VIEW waits for f2Downloaded=true before downloading and resetting
- */
-function checkPhotoAndState() {
-    if (!gameId) {
-        console.log('[VIEW-GAME] No gameId, skipping check');
-        return;
-    }
-    
-    console.log('[VIEW-GAME] 🔍 Background check starting...');
-    
-    db.collection('scheduledGames').doc(gameId).get()
-        .then(function(doc) {
-            if (!doc.exists) {
-                console.log('[VIEW-GAME] Document not found');
-                return;
-            }
-            
-            var data = doc.data();
-            var photo = data.photo || {};
-            var signatures = data.signatures || {};
-            var status = data.status || 'scheduled';
-            
-            // ============================================================
-            // Read current state
-            // ============================================================
-            var newPhotoAvailable = photo.newPhotoAvailable === true;
-            var f2Downloaded = photo.f2Downloaded === true;
-            var viewDownloaded = photo.viewDownloaded === true;
-            var imageUrl = photo.imageUrl || null;
-            var currentPhoto = sessionStorage.getItem('celebrationPhoto');
-            var currentPhotoUrl = sessionStorage.getItem('celebrationPhotoUrl');
-            
-            // ============================================================
-            // LOGIC 1: f2Downloaded = true AND viewDownloaded = false
-            // F2 has downloaded, VIEW should download and reset F/F/F
-            // ============================================================
-            if (f2Downloaded && !viewDownloaded && imageUrl) {
-                console.log('[VIEW-GAME] Polling: F2 has downloaded. VIEW downloading and resetting...');
-                if (typeof window.downloadPhotoToSessionStorage === 'function') {
-                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
-                        if (err) {
-                            console.warn('[VIEW-GAME] Polling: Download failed:', err.message);
-                            return;
-                        }
-                        
-                        console.log('[VIEW-GAME] Polling: Photo downloaded and stored');
-                        viewPhotoDownloaded = true;
-                        sessionStorage.setItem('celebrationPhotoUrl', imageUrl);
-                        
-                        // Reset all flags to F/F/F
-                        db.collection('scheduledGames').doc(gameId).update({
-                            'photo.newPhotoAvailable': false,
-                            'photo.f2Downloaded': false,
-                            'photo.viewDownloaded': false,
-                            'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
-                        }).then(function() {
-                            console.log('[VIEW-GAME] Polling: Flags reset to F/F/F');
-                        }).catch(function(err) {
-                            console.warn('[VIEW-GAME] Polling: Failed to reset flags:', err.message);
-                        });
-                    });
-                } else {
-                    console.warn('[VIEW-GAME] Polling: downloadPhotoToSessionStorage not available');
-                }
-            }
-            // ============================================================
-            // LOGIC 2: f2Downloaded = false, newPhotoAvailable = true
-            // F2 hasn't downloaded yet - wait for next poll
-            // ============================================================
-            else if (!f2Downloaded && newPhotoAvailable) {
-                console.log('[VIEW-GAME] Polling: Waiting for F2 to download first. Next poll in 10 minutes.');
-            }
-            // ============================================================
-            // LOGIC 3: Safety net - imageUrl exists and is different
-            // Even if flags are stale, download the photo
-            // ============================================================
-            else if (imageUrl && imageUrl !== currentPhotoUrl) {
-                console.log('[VIEW-GAME] Polling: Safety net - new photo URL found (flags may be stale), downloading...');
-                if (typeof window.downloadPhotoToSessionStorage === 'function') {
-                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
-                        if (err) {
-                            console.warn('[VIEW-GAME] Polling: Safety net download failed:', err.message);
-                        } else {
-                            console.log('[VIEW-GAME] Polling: Safety net - photo downloaded and stored');
-                            sessionStorage.setItem('celebrationPhotoUrl', imageUrl);
-                            viewPhotoDownloaded = true;
-                            
-                            // Try to reset flags if they are stale
-                            if (f2Downloaded && !viewDownloaded) {
-                                db.collection('scheduledGames').doc(gameId).update({
-                                    'photo.newPhotoAvailable': false,
-                                    'photo.f2Downloaded': false,
-                                    'photo.viewDownloaded': false,
-                                    'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
-                                }).then(function() {
-                                    console.log('[VIEW-GAME] Polling: Safety net - flags reset');
-                                }).catch(function(err) {
-                                    console.warn('[VIEW-GAME] Polling: Safety net - failed to reset flags:', err.message);
-                                });
-                            }
-                        }
-                    });
-                } else {
-                    console.warn('[VIEW-GAME] Polling: downloadPhotoToSessionStorage not available');
-                }
-            }
-            
-            // ============================================================
-            // Check game completion
-            // ============================================================
-            var f1Signed = signatures.f1 && signatures.f1.signed === true;
-            var f2Signed = signatures.f2 && signatures.f2.signed === true;
-            var bothSigned = f1Signed && f2Signed;
-            var isCompleted = bothSigned || status === 'completed';
-            
-            // Also check if photo shows game completed (celebration.imageUrl exists)
-            var hasCelebrationPhoto = !!(data.celebration && data.celebration.imageUrl);
-            var isCompletedFromCelebration = hasCelebrationPhoto && bothSigned;
-            
-            if ((isCompleted || isCompletedFromCelebration) && !gameCompleteFlag && !celebrationTriggered) {
-                console.log('[VIEW-GAME] Polling: Game completion detected!');
-                gameCompleteFlag = true;
-                
-                // Update cache if needed
-                var currentCache = GameLoader.getLocalCache();
-                if (currentCache) {
-                    currentCache.status = 'completed';
-                    if (!currentCache.signatures) {
-                        currentCache.signatures = { f1: { signed: false }, f2: { signed: false } };
-                    }
-                    currentCache.signatures.f1.signed = true;
-                    currentCache.signatures.f2.signed = true;
-                    GameLoader.setLocalCache(currentCache);
-                }
-                
-                // Update UI to show RESULT button
-                isPostGameContext = true;
-                renderCompactHeader();
-                renderAll();
-                
-                console.log('[VIEW-GAME] Polling: UI updated with RESULT button');
-            }
-            
-            console.log('[VIEW-GAME] Polling: Check complete');
-        })
-        .catch(function(err) {
-            console.warn('[VIEW-GAME] Polling: Failed to read document:', err.message);
-        });
-}
-
-// ============================================================
-// v8.06: Real-time Firestore Listener - FIXED newPhotoAvailable check
+// v8.08: Real-time Firestore Listener - Listener-based photo sync
+// VIEW resets flags after F2 confirms download (f2Downloaded=true)
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1305,44 +1127,90 @@ function setupRealtimeListener() {
             var currentCache = GameLoader.getLocalCache();
             
             // ============================================================
-            // v8.02: PHOTO FLAG CHECK - VIEW downloads if newPhotoAvailable=true and viewDownloaded=false
+            // v8.08: PHOTO SYNC - Check photo flags on EVERY listener fire
+            // VIEW waits for f2Downloaded=true before downloading and resetting
             // ============================================================
             var photo = data.photo || {};
             var newPhotoAvailable = photo.newPhotoAvailable === true;
+            var f2Downloaded = photo.f2Downloaded === true;
             var viewDownloaded = photo.viewDownloaded === true;
             var imageUrl = photo.imageUrl || null;
             
-            // v8.02: VIEW Logic - If newPhotoAvailable = true AND viewDownloaded = false, download photo
-            if (newPhotoAvailable && !viewDownloaded && imageUrl) {
-                console.log('[VIEW-GAME] VIEW: New photo available - downloading from FS...');
-                
-                // Update currentPhotoUrl to track this URL
-                if (imageUrl !== currentPhotoUrl) {
-                    currentPhotoUrl = imageUrl;
-                }
+            // ============================================================
+            // LOGIC 1: f2Downloaded = true AND viewDownloaded = false
+            // F2 has downloaded, VIEW should download and reset F/F/F
+            // ============================================================
+            if (f2Downloaded && !viewDownloaded && imageUrl) {
+                console.log('[VIEW-GAME] Listener: F2 has downloaded. VIEW downloading and resetting...');
                 
                 if (typeof window.downloadPhotoToSessionStorage === 'function') {
                     window.downloadPhotoToSessionStorage(imageUrl, function(err) {
                         if (err) {
-                            console.warn('[VIEW-GAME] VIEW: Failed to download photo:', err.message);
+                            console.warn('[VIEW-GAME] Listener: Download failed:', err.message);
+                            return;
+                        }
+                        
+                        console.log('[VIEW-GAME] Listener: Photo downloaded and stored');
+                        viewPhotoDownloaded = true;
+                        sessionStorage.setItem('celebrationPhotoUrl', imageUrl);
+                        currentPhotoUrl = imageUrl;
+                        
+                        // Reset all flags to F/F/F
+                        db.collection('scheduledGames').doc(gameId).update({
+                            'photo.newPhotoAvailable': false,
+                            'photo.f2Downloaded': false,
+                            'photo.viewDownloaded': false,
+                            'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                        }).then(function() {
+                            console.log('[VIEW-GAME] Listener: Flags reset to F/F/F');
+                        }).catch(function(err) {
+                            console.warn('[VIEW-GAME] Listener: Failed to reset flags:', err.message);
+                        });
+                    });
+                } else {
+                    console.warn('[VIEW-GAME] Listener: downloadPhotoToSessionStorage not available');
+                }
+            }
+            // ============================================================
+            // LOGIC 2: f2Downloaded = false, newPhotoAvailable = true
+            // F2 hasn't downloaded yet - wait for F2
+            // ============================================================
+            else if (!f2Downloaded && newPhotoAvailable) {
+                console.log('[VIEW-GAME] Listener: Waiting for F2 to download first.');
+            }
+            // ============================================================
+            // LOGIC 3: Safety net - imageUrl changed, but flags may be stale
+            // ============================================================
+            else if (imageUrl && imageUrl !== currentPhotoUrl) {
+                console.log('[VIEW-GAME] Listener: Safety net - new photo URL found (flags may be stale), downloading...');
+                
+                if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
+                        if (err) {
+                            console.warn('[VIEW-GAME] Listener: Safety net download failed:', err.message);
                         } else {
-                            console.log('[VIEW-GAME] VIEW: Photo downloaded and stored in sessionStorage');
+                            console.log('[VIEW-GAME] Listener: Safety net - photo downloaded and stored');
+                            sessionStorage.setItem('celebrationPhotoUrl', imageUrl);
                             viewPhotoDownloaded = true;
+                            currentPhotoUrl = imageUrl;
                             
-                            // v8.02: Set viewDownloaded = true in Firestore
-                            var db = firebase.firestore();
-                            db.collection('scheduledGames').doc(gameId).update({
-                                'photo.viewDownloaded': true,
-                                'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
-                            }).then(function() {
-                                console.log('[VIEW-GAME] VIEW: viewDownloaded set to true');
-                            }).catch(function(err) {
-                                console.warn('[VIEW-GAME] VIEW: Failed to set viewDownloaded:', err.message);
-                            });
+                            // Try to reset flags if f2Downloaded=true
+                            if (f2Downloaded && !viewDownloaded) {
+                                db.collection('scheduledGames').doc(gameId).update({
+                                    'photo.newPhotoAvailable': false,
+                                    'photo.f2Downloaded': false,
+                                    'photo.viewDownloaded': false,
+                                    'photo.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+                                }).then(function() {
+                                    console.log('[VIEW-GAME] Listener: Safety net - flags reset');
+                                }).catch(function(err) {
+                                    console.warn('[VIEW-GAME] Listener: Safety net - failed to reset flags:', err.message);
+                                });
+                            }
                         }
                     });
                 } else {
-                    console.warn('[VIEW-GAME] VIEW: downloadPhotoToSessionStorage not available');
+                    console.warn('[VIEW-GAME] Listener: downloadPhotoToSessionStorage not available');
                 }
             }
             
@@ -1639,7 +1507,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.07: Initialization - VIEW waits for f2Downloaded
+// v8.08: Initialization - Listener-based photo sync
 // ============================================================
 
 async function init() {
@@ -1767,34 +1635,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    // ============================================================
-    // v8.05: START 10-MINUTE POLLING
-    // ============================================================
-    // Safety net for missed Firestore events
-    // v8.07: VIEW waits for f2Downloaded=true before downloading
-    // ============================================================
-    setInterval(function() {
-        if (!document.hidden && gameId) {
-            console.log('[VIEW-GAME] ⏱️ 10-minute poll');
-            checkPhotoAndState();
-        } else {
-            console.log('[VIEW-GAME] ⏱️ Poll skipped (tab hidden or no gameId)');
-        }
-    }, 600000); // 10 minutes (600,000 ms)
-    
-    // ============================================================
-    // v8.03: PAGE VISIBILITY API
-    // ============================================================
-    // Check for updates when user returns to tab
-    // ============================================================
-    document.addEventListener('visibilitychange', function() {
-        if (!document.hidden && gameId) {
-            console.log('[VIEW-GAME] 👁️ Tab visible - checking for updates');
-            triggerBackgroundCheck();
-        }
-    });
-    
-    console.log('[VIEW-GAME] v8.07 initialized - VIEW waits for f2Downloaded before reset');
+    console.log('[VIEW-GAME] v8.08 initialized - Listener-based photo sync');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1806,13 +1647,16 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.07
-KEY CHANGES from v8.06:
-   - MODIFIED: checkPhotoAndState() poll now waits for f2Downloaded=true before downloading
-   - REASON: VIEW should not download until F2 has confirmed download (f2Downloaded=true)
-   - REASON: Only VIEW resets flags (F/F/F) after confirming f2Downloaded=true
-   - PRESERVED: Safety net - imageUrl check still works even if flags are reset
-   - PRESERVED: ALL other functionality from v8.06 unchanged
+VERSION: 8.08
+KEY CHANGES from v8.07:
+   - REMOVED: 10-minute polling interval (no longer needed)
+   - REMOVED: checkPhotoAndState() function (replaced by listener)
+   - REMOVED: triggerBackgroundCheck() function (no longer needed)
+   - REMOVED: Page Visibility API listener (no longer needed)
+   - ADDED: f2Downloaded check to realtime listener - VIEW resets flags after F2 confirms download
+   - REASON: VIEW's realtime listener already fires on score updates - use it for photo sync
+   - REASON: No need for separate polling - listener-based is instant and efficient
+   - PRESERVED: ALL other functionality from v8.07 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
