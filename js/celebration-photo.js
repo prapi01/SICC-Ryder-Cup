@@ -1,20 +1,18 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: checkAndRenameCelebrationPhoto() now uses direct Firestore update (no WRV verification)
-   - FIXED: copyCelebrationPhoto() now uses direct Firestore update (no WRV verification)
-   - REASON: Photo file is already verified in Storage via verifyPhotoUpload()
-   - REASON: WRV verification fails because the document has fields not in the payload
-   - REASON: WRV verification is unnecessary for the photo pointer update
-   - REASON: This eliminates the "payload mismatch" error in WRV
-   - PRESERVED: ALL other functionality from v1.17 unchanged
-   - PRESERVED: setPhotoFlags() and resetPhotoFlags() unchanged (use WRV for flag writes)
-DEPENDS ON: Firebase Storage, Firestore
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - ADDED: Defensive check at start of checkAndRenameCelebrationPhoto() - only F1 runs this
+   - REASON: F2 was running photo uploads because URL missing &flight=2 parameter
+   - REASON: F2 calling setPhotoFlags() was overwriting f2Downloaded back to false
+   - REASON: This caused the flag flow (T/F/F → T/T/F → F/F/F) to break
+   - FIX: If RealGameState.getEditableFlight() !== 1, skip photo check entirely
+   - PRESERVED: ALL other functionality from v1.18 unchanged
+DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.18";
+window.CELEBRATION_PHOTO_VERSION = "1.19";
 
 // ============================================================
 // CONSTANTS
@@ -517,11 +515,20 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.18: CHECK AND RENAME PHOTO WITH FLAGS
-// F1 ONLY - Checks GitHub ETag, downloads, uploads, sets flags
-// FIXED: Uses nested celebration object + deletes flat fields + direct Firestore update
+// v1.19: CHECK AND RENAME PHOTO WITH FLAGS
+// F1 ONLY - Defensive check prevents F2 from running this
+// v1.19: ADDED defensive check - only F1 runs this
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
+    // v1.19: Defensive check - only F1 should run photo uploads
+    // F2 should NOT upload photos or set flags
+    var currentFlight = typeof RealGameState !== 'undefined' && RealGameState.getEditableFlight ? RealGameState.getEditableFlight() : 1;
+    if (currentFlight !== 1) {
+        console.log('[CelebrationPhoto] ⏭️ Skipping photo check - only F1 runs this (current flight:', currentFlight, ')');
+        if (callback) callback(null);
+        return;
+    }
+    
     // Handle optional parameters
     if (typeof holeNumber === 'function') {
         callback = holeNumber;
@@ -808,7 +815,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.18: Expose functions
+// v1.19: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -836,16 +843,14 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: checkAndRenameCelebrationPhoto() now uses direct Firestore update (no WRV verification)
-   - FIXED: copyCelebrationPhoto() now uses direct Firestore update (no WRV verification)
-   - REASON: Photo file is already verified in Storage via verifyPhotoUpload()
-   - REASON: WRV verification fails because the document has fields not in the payload
-   - REASON: WRV verification is unnecessary for the photo pointer update
-   - REASON: This eliminates the "payload mismatch" error in WRV
-   - PRESERVED: ALL other functionality from v1.17 unchanged
-   - PRESERVED: setPhotoFlags() and resetPhotoFlags() unchanged (use WRV for flag writes)
-DEPENDS ON: Firebase Storage, Firestore
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - ADDED: Defensive check at start of checkAndRenameCelebrationPhoto() - only F1 runs this
+   - REASON: F2 was running photo uploads because URL missing &flight=2 parameter
+   - REASON: F2 calling setPhotoFlags() was overwriting f2Downloaded back to false
+   - REASON: This caused the flag flow (T/F/F → T/T/F → F/F/F) to break
+   - FIX: If RealGameState.getEditableFlight() !== 1, skip photo check entirely
+   - PRESERVED: ALL other functionality from v1.18 unchanged
+DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
