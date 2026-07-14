@@ -1,15 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 8.13
-KEY CHANGES from v8.12:
-   - REMOVED: Photo check on every navigation from nextHole() and prevHole()
-   - REMOVED: H17 mandatory trigger from nextHole() and prevHole()
-   - ADDED: Photo check in setupRealtimeListener() on every score update
-   - ADDED: Skip photo check only when H18 play order hole is saved (game complete)
-   - ADDED: isHoleSavedInData() helper function for data string checking
-   - REASON: View users can join at any stage, need photo ready for celebration screen
-   - REASON: ETag check is lightweight, checking on every score update is reliable
-   - PRESERVED: ALL other functionality from v8.12 unchanged
+VERSION: 8.14
+KEY CHANGES from v8.13:
+   - CHANGED: VIEW now uses shared Firebase Storage ETag key ('celebration_photo_etag_firebase')
+   - REMOVED: view-specific ETag key ('view_photo_etag_' + gameId)
+   - REASON: F1 and VIEW must compare the SAME ETag for sync
+   - REASON: F1 stores Firebase Storage ETag after upload, VIEW uses it for comparison
+   - PRESERVED: ALL other functionality from v8.13 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
@@ -24,10 +21,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.13"></script>
-    <script src="js/session.js?v=8.13"></script>
-    <script src="js/settings.js?v=8.13"></script>
-    <script src="js/celebration-photo.js?v=8.13"></script>
+    <script src="js/firebase-config.js?v=8.14"></script>
+    <script src="js/session.js?v=8.14"></script>
+    <script src="js/settings.js?v=8.14"></script>
+    <script src="js/celebration-photo.js?v=8.14"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -36,11 +33,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.13"></script>
-    <script src="js/history-record.js?v=8.13"></script>
+    <script src="js/ticker.js?v=8.14"></script>
+    <script src="js/history-record.js?v=8.14"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.13"></script>
-    <script src="js/modal.js?v=8.13"></script>
+    <script src="js/hcp-adjust.js?v=8.14"></script>
+    <script src="js/modal.js?v=8.14"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -161,14 +158,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.13</div>
+<div class="version-tag">v8.14</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.13: Photo check on score updates
+// VERSION CACHE-BUSTING - v8.14: Shared Firebase Storage ETag
 // ============================================================
-var APP_VERSION = "8.13";
-var CACHE_KEY = "view_game_version_v813";
+var APP_VERSION = "8.14";
+var CACHE_KEY = "view_game_version_v814";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -186,8 +183,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.13";
-console.log("[VIEW-GAME] Initializing v8.13 - Photo check on score updates");
+window.VIEW_GAME_VERSION = "8.14";
+console.log("[VIEW-GAME] Initializing v8.14 - Shared Firebase Storage ETag");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -889,7 +886,7 @@ function getLastPlayableHole() {
 }
 
 // ============================================================
-// v8.12: VIEW PHOTO CHECK - Direct ETag from Firebase Storage with logging
+// v8.14: VIEW PHOTO CHECK - Shared Firebase Storage ETag
 // ============================================================
 
 function checkPhotoForView() {
@@ -902,7 +899,8 @@ function checkPhotoForView() {
     var archiveId = gameId + '_H';
     var storage = firebase.storage();
     var destRef = storage.ref('celebration/' + archiveId + '.jpg');
-    var etagKey = 'view_photo_etag_' + gameId;
+    // v8.14: Use shared Firebase Storage ETag key (same as F1)
+    var etagKey = 'celebration_photo_etag_firebase';
     
     // Check if photo exists in sessionStorage (in memory)
     var hasPhotoInMemory = !!sessionStorage.getItem('celebrationPhoto');
@@ -1200,7 +1198,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v8.13: Real-time Firestore Listener - Photo check on every score update
+// v8.14: Real-time Firestore Listener - Photo check on every score update
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1233,7 +1231,7 @@ function setupRealtimeListener() {
             var statusChanged = (currentCache.status !== data.status);
             
             // ============================================================
-            // v8.13: PHOTO CHECK - Trigger on every score update EXCEPT H18 play order
+            // v8.14: PHOTO CHECK - Trigger on every score update EXCEPT H18 play order
             // ============================================================
             if (f1Changed || f2Changed) {
                 // Get the H18 play order hole (last hole in play order)
@@ -1504,7 +1502,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.13: Initialization - Photo check via listener on score updates
+// v8.14: Initialization - Photo check via listener on score updates
 // ============================================================
 
 async function init() {
@@ -1545,7 +1543,7 @@ async function init() {
         return;
     }
     
-    // v8.13: Photo check will be triggered by realtime listener on score updates
+    // v8.14: Photo check will be triggered by realtime listener on score updates
     console.log('[VIEW-GAME] 📸 Photo check will be triggered by realtime listener on score updates');
     
     var collection = "scheduledGames";
@@ -1692,7 +1690,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.13 initialized - Photo check on score updates');
+    console.log('[VIEW-GAME] v8.14 initialized - Shared Firebase Storage ETag');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1704,16 +1702,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.13
-KEY CHANGES from v8.12:
-   - REMOVED: Photo check on every navigation from nextHole() and prevHole()
-   - REMOVED: H17 mandatory trigger from nextHole() and prevHole()
-   - ADDED: Photo check in setupRealtimeListener() on every score update
-   - ADDED: Skip photo check only when H18 play order hole is saved (game complete)
-   - ADDED: isHoleSavedInData() helper function for data string checking
-   - REASON: View users can join at any stage, need photo ready for celebration screen
-   - REASON: ETag check is lightweight, checking on every score update is reliable
-   - PRESERVED: ALL other functionality from v8.12 unchanged
+VERSION: 8.14
+KEY CHANGES from v8.13:
+   - CHANGED: VIEW now uses shared Firebase Storage ETag key ('celebration_photo_etag_firebase')
+   - REMOVED: view-specific ETag key ('view_photo_etag_' + gameId)
+   - REASON: F1 and VIEW must compare the SAME ETag for sync
+   - REASON: F1 stores Firebase Storage ETag after upload, VIEW uses it for comparison
+   - PRESERVED: ALL other functionality from v8.13 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
