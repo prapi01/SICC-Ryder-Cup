@@ -2,12 +2,12 @@
 FILE: js/sign-card.js
 VERSION: 1.34
 KEY CHANGES from v1.33:
-   - CHANGED: Celebration score layout from horizontal to stacked
+   - CHANGED: Celebration score layout to match view-history (single divider between columns)
    - REASON: "Team B" label was overflowing on 393px screens
-   - CHANGED: Scores now display below team labels
-   - CHANGED: Layout: "Team A | Team B" on top row, scores on bottom row
+   - CHANGED: Layout now uses ONE divider between Team A and Team B columns
+   - CHANGED: Labels on top row, scores on bottom row (matching view-history style)
+   - PRESERVED: ALL font sizes and colors unchanged from v1.33
    - PRESERVED: ALL other functionality from v1.33 unchanged
-   - PRESERVED: ALL font sizes and styling unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
@@ -193,7 +193,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.34: Stacked score layout
+    // Celebration Screen - v1.34: Single divider between columns
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -251,7 +251,7 @@ var SignCard = (function() {
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
-            // v1.34: Stacked score layout - Team labels on top row, scores on bottom row
+            // v1.34: Score layout with ONE divider between columns (matching view-history)
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
@@ -261,16 +261,17 @@ var SignCard = (function() {
                         <div class="celebration-winner ${winnerClass}">
                             ${winnerText}
                         </div>
-                        <div class="celebration-score" style="display:flex; flex-direction:column; align-items:center; padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a; gap:4px;">
-                            <div class="score-row-top" style="display:flex; justify-content:center; align-items:center; width:100%; gap:16px;">
-                                <span class="score-team-a" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</span>
-                                <span class="score-vs" style="font-size:1.6rem; color:#555;">|</span>
-                                <span class="score-team-b" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</span>
-                            </div>
-                            <div class="score-row-bottom" style="display:flex; justify-content:center; align-items:center; width:100%; gap:16px;">
-                                <span class="score-number-a" style="font-size:2.4rem; font-weight:700; color:${teamAColor};">${teamADisplay}</span>
-                                <span class="score-vs" style="font-size:1.6rem; color:#555;">|</span>
-                                <span class="score-number-b" style="font-size:2.4rem; font-weight:700; color:${teamBColor};">${teamBDisplay}</span>
+                        <div class="celebration-score" style="padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a;">
+                            <div style="display:flex; justify-content:center; align-items:center; gap:20px;">
+                                <div style="text-align:center; flex:1;">
+                                    <div style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</div>
+                                    <div style="font-size:2.4rem; font-weight:700; color:${teamAColor};">${teamADisplay}</div>
+                                </div>
+                                <div style="font-size:1.6rem; color:#555555;">│</div>
+                                <div style="text-align:center; flex:1;">
+                                    <div style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</div>
+                                    <div style="font-size:2.4rem; font-weight:700; color:${teamBColor};">${teamBDisplay}</div>
+                                </div>
                             </div>
                         </div>
                         <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
@@ -361,7 +362,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Styles - v1.34: Stacked score layout
+    // Celebration Styles - v1.34: Updated to match new layout
     // ============================================================
     
     function addCelebrationStyles() {
@@ -504,39 +505,34 @@ var SignCard = (function() {
                     border: 1px solid #ffaa44;
                 }
                 
-                /* v1.34: Stacked score layout */
+                /* v1.34: Celebration score with single divider */
                 .celebration-score {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
                     padding: 12px 0;
                     border-top: 1px solid #2a2a2a;
                     border-bottom: 1px solid #2a2a2a;
-                    gap: 4px;
                 }
-                .celebration-score .score-row-top,
-                .celebration-score .score-row-bottom {
+                .celebration-score .score-container {
                     display: flex;
                     justify-content: center;
                     align-items: center;
-                    width: 100%;
-                    gap: 16px;
+                    gap: 20px;
                 }
-                .celebration-score .score-team-a,
-                .celebration-score .score-team-b {
+                .celebration-score .score-col {
+                    text-align: center;
+                    flex: 1;
+                }
+                .celebration-score .score-label {
                     font-size: 1.2rem;
                     font-weight: 600;
                     color: #4caf50;
-                    white-space: nowrap;
                 }
-                .celebration-score .score-number-a,
-                .celebration-score .score-number-b {
+                .celebration-score .score-number {
                     font-size: 2.4rem;
                     font-weight: 700;
                 }
-                .celebration-score .score-vs {
+                .celebration-score .score-divider {
                     font-size: 1.6rem;
-                    color: #555;
+                    color: #555555;
                 }
                 
                 .celebration-btn {
@@ -570,13 +566,10 @@ var SignCard = (function() {
                     .celebration-title { font-size: 22px; }
                     .celebration-beer { font-size: 28px; }
                     .celebration-winner { font-size: 18px; padding: 8px 16px; }
-                    .celebration-score .score-team-a,
-                    .celebration-score .score-team-b { font-size: 1rem; }
-                    .celebration-score .score-number-a,
-                    .celebration-score .score-number-b { font-size: 1.8rem; }
-                    .celebration-score .score-vs { font-size: 1.2rem; }
-                    .celebration-score .score-row-top,
-                    .celebration-score .score-row-bottom { gap: 8px; }
+                    .celebration-score .score-container { gap: 12px; }
+                    .celebration-score .score-label { font-size: 1rem; }
+                    .celebration-score .score-number { font-size: 1.8rem; }
+                    .celebration-score .score-divider { font-size: 1.2rem; }
                     .celebration-btn { font-size: 16px; padding: 14px 16px; }
                     .celebration-image { max-height: 30vh; min-height: 80px; }
                 }
@@ -586,8 +579,7 @@ var SignCard = (function() {
                     .celebration-title { font-size: 28px; }
                     .celebration-beer { font-size: 36px; }
                     .celebration-winner { font-size: 24px; }
-                    .celebration-score .score-number-a,
-                    .celebration-score .score-number-b { font-size: 2.4rem; }
+                    .celebration-score .score-number { font-size: 2.4rem; }
                     .celebration-image { max-height: 35vh; }
                 }
                 
@@ -596,8 +588,7 @@ var SignCard = (function() {
                     .celebration-title { font-size: 32px; }
                     .celebration-beer { font-size: 40px; }
                     .celebration-winner { font-size: 28px; padding: 14px 28px; }
-                    .celebration-score .score-number-a,
-                    .celebration-score .score-number-b { font-size: 3rem; }
+                    .celebration-score .score-number { font-size: 3rem; }
                     .celebration-btn { font-size: 22px; padding: 18px 28px; }
                     .celebration-image { max-height: 45vh; }
                 }
@@ -1066,12 +1057,12 @@ window.SIGN_CARD_VERSION = "1.34";
 FILE: js/sign-card.js
 VERSION: 1.34
 KEY CHANGES from v1.33:
-   - CHANGED: Celebration score layout from horizontal to stacked
+   - CHANGED: Celebration score layout to match view-history (single divider between columns)
    - REASON: "Team B" label was overflowing on 393px screens
-   - CHANGED: Scores now display below team labels
-   - CHANGED: Layout: "Team A | Team B" on top row, scores on bottom row
+   - CHANGED: Layout now uses ONE divider between Team A and Team B columns
+   - CHANGED: Labels on top row, scores on bottom row (matching view-history style)
+   - PRESERVED: ALL font sizes and colors unchanged from v1.33
    - PRESERVED: ALL other functionality from v1.33 unchanged
-   - PRESERVED: ALL font sizes and styling unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
