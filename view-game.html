@@ -1,19 +1,16 @@
 <!--
 FILE: view-game.html
-VERSION: 8.10
-KEY CHANGES from v8.09:
-   - REMOVED: All photo flag checks (newPhotoAvailable, f2Downloaded, viewDownloaded)
-   - REMOVED: All Firestore updates for photo flags (VIEW is read-only)
-   - ADDED: checkPhotoForView() - simple URL-based download, NO flags
-   - ADDED: displayPhotoFromSessionStorage() - display cached photo
-   - ADDED: Photo check on every navigation (Next/Back)
-   - ADDED: Mandatory photo check at H17 (last chance before completion)
-   - CHANGED: Listener now only checks celebration.imageUrl for changes
-   - CHANGED: Initial load uses sessionStorage only (no default photo load)
-   - REASON: VIEW should never write to Firestore
-   - REASON: Multiple VIEW users should not conflict with flags
-   - REASON: H17 is last chance for VIEW to get the photo
-   - PRESERVED: ALL other functionality from v8.09 unchanged
+VERSION: 8.11
+KEY CHANGES from v8.10:
+   - REPLACED: checkPhotoForView() with direct ETag-based approach
+   - REMOVED: cache.celebration.imageUrl checks (unreliable)
+   - ADDED: Direct Firebase Storage metadata call for ETag
+   - ADDED: ETag stored in localStorage for comparison
+   - CHANGED: Photo check now works regardless of cache state
+   - REASON: cache.celebration.imageUrl was undefined even when photo existed
+   - REASON: ETag check is the most reliable way to detect photo changes
+   - REASON: No sessionStorage URL checks - direct Storage check every time
+   - PRESERVED: ALL other functionality from v8.10 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
@@ -28,10 +25,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.10"></script>
-    <script src="js/session.js?v=8.10"></script>
-    <script src="js/settings.js?v=8.10"></script>
-    <script src="js/celebration-photo.js?v=8.10"></script>
+    <script src="js/firebase-config.js?v=8.11"></script>
+    <script src="js/session.js?v=8.11"></script>
+    <script src="js/settings.js?v=8.11"></script>
+    <script src="js/celebration-photo.js?v=8.11"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -40,11 +37,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.10"></script>
-    <script src="js/history-record.js?v=8.10"></script>
+    <script src="js/ticker.js?v=8.11"></script>
+    <script src="js/history-record.js?v=8.11"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.10"></script>
-    <script src="js/modal.js?v=8.10"></script>
+    <script src="js/hcp-adjust.js?v=8.11"></script>
+    <script src="js/modal.js?v=8.11"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -165,14 +162,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.10</div>
+<div class="version-tag">v8.11</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.10: VIEW read-only photo check
+// VERSION CACHE-BUSTING - v8.11: Direct ETag photo check
 // ============================================================
-var APP_VERSION = "8.10";
-var CACHE_KEY = "view_game_version_v810";
+var APP_VERSION = "8.11";
+var CACHE_KEY = "view_game_version_v811";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -190,8 +187,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.10";
-console.log("[VIEW-GAME] Initializing v8.10 - VIEW read-only photo check");
+window.VIEW_GAME_VERSION = "8.11";
+console.log("[VIEW-GAME] Initializing v8.11 - Direct ETag photo check");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -229,9 +226,6 @@ var hasSwitchedToHistory = false;
 var isPostGameContext = false;
 
 var firestoreUnsubscribe = null;
-
-// v8.01: Track current photo URL to avoid redundant downloads
-var currentPhotoUrl = null;
 
 // ============================================================
 // v7.40: Check completion from Firestore status (source of truth)
@@ -889,52 +883,76 @@ function getLastPlayableHole() {
 }
 
 // ============================================================
-// v8.10: VIEW PHOTO CHECK - NO flags, simple URL-based download
+// v8.11: VIEW PHOTO CHECK - Direct ETag from Firebase Storage
 // ============================================================
 
 function checkPhotoForView() {
-    var cache = GameLoader.getLocalCache();
-    if (!cache) return;
-    
-    // Check celebration.imageUrl from cache (Firestore data)
-    var imageUrl = cache.celebration?.imageUrl || null;
-    if (!imageUrl) {
-        console.log('[VIEW-GAME] 📸 No photo URL in cache');
+    var gameId = getGameId();
+    if (!gameId) {
+        console.log('[VIEW-GAME] 📸 No gameId - skipping photo check');
         return;
     }
     
-    // Check if already have this photo in sessionStorage
-    var storedUrl = sessionStorage.getItem('celebrationPhotoUrl');
-    if (storedUrl === imageUrl) {
-        console.log('[VIEW-GAME] 📸 Photo already cached');
-        return;
-    }
+    var archiveId = gameId + '_H';
+    var storage = firebase.storage();
+    var destRef = storage.ref('celebration/' + archiveId + '.jpg');
+    var etagKey = 'view_photo_etag_' + gameId;
     
-    console.log('[VIEW-GAME] 📸 New photo detected - downloading...');
+    console.log('[VIEW-GAME] 📸 Checking photo ETag for:', archiveId + '.jpg');
     
-    if (typeof window.downloadPhotoToSessionStorage === 'function') {
-        window.downloadPhotoToSessionStorage(imageUrl, function(err) {
-            if (err) {
-                console.warn('[VIEW-GAME] ❌ Photo download failed:', err.message);
+    destRef.getMetadata()
+        .then(function(metadata) {
+            var currentETag = metadata.etag || String(metadata.generation || Date.now());
+            var cachedETag = localStorage.getItem(etagKey);
+            
+            if (currentETag === cachedETag) {
+                console.log('[VIEW-GAME] 📸 ETag unchanged - using cached');
+                displayPhotoFromSessionStorage();
                 return;
             }
-            console.log('[VIEW-GAME] ✅ Photo downloaded and stored');
-            sessionStorage.setItem('celebrationPhotoUrl', imageUrl);
-            // Display the photo if container exists
-            displayPhotoFromSessionStorage();
+            
+            console.log('[VIEW-GAME] 📸 ETag changed - downloading...');
+            localStorage.setItem(etagKey, currentETag);
+            
+            destRef.getDownloadURL()
+                .then(function(url) {
+                    if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                        window.downloadPhotoToSessionStorage(url, function(err) {
+                            if (err) {
+                                console.warn('[VIEW-GAME] ❌ Download failed:', err.message);
+                                return;
+                            }
+                            console.log('[VIEW-GAME] ✅ Photo downloaded and stored');
+                            sessionStorage.setItem('celebrationPhotoUrl', url);
+                            displayPhotoFromSessionStorage();
+                        });
+                    } else {
+                        console.warn('[VIEW-GAME] downloadPhotoToSessionStorage not available');
+                    }
+                })
+                .catch(function(err) {
+                    console.warn('[VIEW-GAME] ❌ Failed to get download URL:', err.message);
+                });
+        })
+        .catch(function(err) {
+            console.log('[VIEW-GAME] 📸 No photo in Storage');
+            if (localStorage.getItem(etagKey)) {
+                localStorage.removeItem(etagKey);
+            }
         });
-    } else {
-        console.warn('[VIEW-GAME] downloadPhotoToSessionStorage not available');
-    }
 }
 
 function displayPhotoFromSessionStorage() {
     var photoData = sessionStorage.getItem('celebrationPhoto');
     if (!photoData) return;
     
+    // Check for photo container - if none exists, photo will be displayed when container is created
     var photoContainer = document.getElementById('celebrationPhotoContainer') || 
                          document.querySelector('.celebration-photo-container');
-    if (!photoContainer) return;
+    if (!photoContainer) {
+        console.log('[VIEW-GAME] 📸 Photo container not found - skipping display');
+        return;
+    }
     
     var img = photoContainer.querySelector('img');
     if (!img) {
@@ -947,10 +965,11 @@ function displayPhotoFromSessionStorage() {
     }
     img.src = photoData;
     img.style.display = 'block';
+    console.log('[VIEW-GAME] 📸 Photo displayed from sessionStorage');
 }
 
 // ============================================================
-// Navigation Functions - v8.10: Added photo check
+// Navigation Functions - v8.11: Photo check on navigation
 // ============================================================
 
 function nextHole() {
@@ -976,10 +995,10 @@ function nextHole() {
         updateHoleNumberDisplay();
         renderAll();
         
-        // v8.10: Photo check on every navigation
+        // v8.11: Photo check on every navigation
         checkPhotoForView();
         
-        // v8.10: Mandatory photo check at H17 (last chance before completion)
+        // v8.11: Mandatory photo check at H17 (last chance before completion)
         if (nextHoleNumber === 17) {
             console.log('[VIEW-GAME] 📸 H17 reached - mandatory photo check');
             checkPhotoForView();
@@ -997,10 +1016,10 @@ function prevHole() {
         updateHoleNumberDisplay();
         renderAll();
         
-        // v8.10: Photo check on every navigation
+        // v8.11: Photo check on every navigation
         checkPhotoForView();
         
-        // v8.10: Mandatory photo check at H17 (last chance before completion)
+        // v8.11: Mandatory photo check at H17 (last chance before completion)
         if (prevHoleNumber === 17) {
             console.log('[VIEW-GAME] 📸 H17 reached - mandatory photo check');
             checkPhotoForView();
@@ -1183,8 +1202,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v8.10: Real-time Firestore Listener - VIEW read-only photo check
-// Removed all flag settings - VIEW only downloads and displays
+// v8.11: Real-time Firestore Listener - VIEW read-only
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1209,28 +1227,14 @@ function setupRealtimeListener() {
             var currentCache = GameLoader.getLocalCache();
             
             // ============================================================
-            // v8.10: PHOTO CHECK - Simple URL-based download (NO flags)
+            // v8.11: PHOTO CHECK - Listener triggers ETag check
             // VIEW is read-only - no flag reads, no flag writes
             // ============================================================
+            // Check if photo URL might have changed - trigger ETag check
             var imageUrl = data.celebration?.imageUrl || null;
-            
-            if (imageUrl && imageUrl !== currentPhotoUrl) {
-                console.log('[VIEW-GAME] Listener: New photo detected:', imageUrl);
-                currentPhotoUrl = imageUrl;
-                
-                if (typeof window.downloadPhotoToSessionStorage === 'function') {
-                    window.downloadPhotoToSessionStorage(imageUrl, function(err) {
-                        if (err) {
-                            console.warn('[VIEW-GAME] Listener: Download failed:', err.message);
-                            return;
-                        }
-                        console.log('[VIEW-GAME] Listener: Photo downloaded and stored');
-                        sessionStorage.setItem('celebrationPhotoUrl', imageUrl);
-                        displayPhotoFromSessionStorage();
-                    });
-                } else {
-                    console.warn('[VIEW-GAME] Listener: downloadPhotoToSessionStorage not available');
-                }
+            if (imageUrl) {
+                console.log('[VIEW-GAME] Listener: Photo URL present - checking ETag');
+                checkPhotoForView();
             }
             
             // Check what changed
@@ -1488,7 +1492,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.10: Initialization - VIEW read-only photo check
+// v8.11: Initialization - Direct ETag photo check
 // ============================================================
 
 async function init() {
@@ -1529,14 +1533,8 @@ async function init() {
         return;
     }
     
-    // v8.10: VIEW loads photo from sessionStorage if available
-    var cachedPhoto = sessionStorage.getItem('celebrationPhoto');
-    if (cachedPhoto) {
-        console.log('[VIEW-GAME] Photo found in sessionStorage');
-        displayPhotoFromSessionStorage();
-    } else {
-        console.log('[VIEW-GAME] No photo in sessionStorage - will check on navigation');
-    }
+    // v8.11: Photo will be checked on first navigation
+    console.log('[VIEW-GAME] 📸 Photo check will run on first navigation');
     
     var collection = "scheduledGames";
     GameLoader.addDataCallback(onCacheUpdate);
@@ -1682,7 +1680,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.10 initialized - VIEW read-only photo check');
+    console.log('[VIEW-GAME] v8.11 initialized - Direct ETag photo check');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1694,20 +1692,17 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.10
-KEY CHANGES from v8.09:
-   - REMOVED: All photo flag checks (newPhotoAvailable, f2Downloaded, viewDownloaded)
-   - REMOVED: All Firestore updates for photo flags (VIEW is read-only)
-   - ADDED: checkPhotoForView() - simple URL-based download, NO flags
-   - ADDED: displayPhotoFromSessionStorage() - display cached photo
-   - ADDED: Photo check on every navigation (Next/Back)
-   - ADDED: Mandatory photo check at H17 (last chance before completion)
-   - CHANGED: Listener now only checks celebration.imageUrl for changes
-   - CHANGED: Initial load uses sessionStorage only (no default photo load)
-   - REASON: VIEW should never write to Firestore
-   - REASON: Multiple VIEW users should not conflict with flags
-   - REASON: H17 is last chance for VIEW to get the photo
-   - PRESERVED: ALL other functionality from v8.09 unchanged
+VERSION: 8.11
+KEY CHANGES from v8.10:
+   - REPLACED: checkPhotoForView() with direct ETag-based approach
+   - REMOVED: cache.celebration.imageUrl checks (unreliable)
+   - ADDED: Direct Firebase Storage metadata call for ETag
+   - ADDED: ETag stored in localStorage for comparison
+   - CHANGED: Photo check now works regardless of cache state
+   - REASON: cache.celebration.imageUrl was undefined even when photo existed
+   - REASON: ETag check is the most reliable way to detect photo changes
+   - REASON: No sessionStorage URL checks - direct Storage check every time
+   - PRESERVED: ALL other functionality from v8.10 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
