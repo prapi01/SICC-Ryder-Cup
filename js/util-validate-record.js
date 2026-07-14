@@ -1,24 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - FIXED: calculateMatchGamePerHole() now uses play order instead of natural order
-   - ADDED: startingHole parameter to calculateMatchGamePerHole()
-   - ADDED: startingHole parameter to buildCompleteResultsFromRawData()
-   - CHANGED: validateRecord() now passes startingHole to buildCompleteResultsFromRawData()
-   - REASON: For shotgun starts, cumulative lead should start at the first played hole
-   - REASON: Natural order (H1-H18) was causing incorrect cumulative leads
-   - PRESERVED: ALL other functionality from v1.28 unchanged
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - FIXED: calculateTeamGame() now uses play order instead of natural order
+   - FIXED: calculateStrokeGame() now uses play order instead of natural order
+   - ADDED: startingHole parameter to calculateTeamGame()
+   - ADDED: startingHole parameter to calculateStrokeGame()
+   - REASON: Same shotgun start bug existed in T-1/T-2 and Stroke Game calculations
+   - REASON: Natural order was causing incorrect T-1/T-2 and Stroke displays
+   - PRESERVED: ALL other functionality from v1.29 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.29";
+window.UTIL_VALIDATE_VERSION = "1.30";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.29 - Fixed shotgun start play order");
+    console.log("[UTIL-VALIDATE] Initializing v1.30 - Fixed Team Game and Stroke Game play order");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -287,7 +287,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // TEAM GAME CALCULATION
+    // TEAM GAME CALCULATION - v1.30: Added startingHole, play order
     // ============================================================
     
     function getNetScoreTeamGame(gross, handicap, si) {
@@ -296,18 +296,27 @@ var UtilValidate = (function() {
         return gross - strokes;
     }
     
-    function calculateTeamGame(flightScores, players, flightNum, courseSi) {
+    function calculateTeamGame(flightScores, players, flightNum, courseSi, startingHole) {
         var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
         var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var results = [], running = 0;
-        for (var idx = 0; idx < 18; idx++) {
-            var hole = flightScores[idx];
+        
+        // v1.30: Build play order based on starting hole
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        
+        // v1.30: Loop over play order
+        for (var pos = 0; pos < 18; pos++) {
+            var holeNum = playOrder[pos];
+            var hole = flightScores[holeNum - 1];
+            
             if (!hole || !hole.saved) {
-                results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0, trPointsB: 0, teamGameTR: { A: 0, B: 0 } });
+                results.push({ hole: holeNum, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0, trPointsB: 0, teamGameTR: { A: 0, B: 0 } });
                 continue;
             }
-            var si = courseSi && courseSi[idx] ? courseSi[idx] : 1;
+            var si = courseSi && courseSi[holeNum - 1] ? courseSi[holeNum - 1] : 1;
             var teamAGross = [hole.a1, hole.a2];
             var teamBGross = [hole.b1, hole.b2];
             var teamANets = [], teamBNets = [];
@@ -330,7 +339,7 @@ var UtilValidate = (function() {
             else if (running < 0) { trPointsA = 0; trPointsB = 1; }
             else { trPointsA = 0.5; trPointsB = 0.5; }
             results.push({
-                hole: idx+1,
+                hole: holeNum,
                 match1: match1,
                 match2: match2,
                 holeResult: holeResult,
@@ -345,19 +354,29 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // STROKE GAME CALCULATION
+    // STROKE GAME CALCULATION - v1.30: Added startingHole, play order
     // ============================================================
     
-    function calculateStrokeGame(f1Scores, f2Scores, players) {
+    function calculateStrokeGame(f1Scores, f2Scores, players, startingHole) {
         var teamA = players.filter(function(p) { return p.team === 'A'; });
         var teamB = players.filter(function(p) { return p.team === 'B'; });
         var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
         var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
         var results = [], cumA = 0, cumB = 0;
+        
+        // v1.30: Build play order based on starting hole
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        
+        // v1.30: Loop over play order
         for (var pos = 0; pos < 18; pos++) {
-            var f1 = f1Scores[pos], f2 = f2Scores[pos];
+            var holeNum = playOrder[pos];
+            var f1 = f1Scores[holeNum - 1];
+            var f2 = f2Scores[holeNum - 1];
+            
             if (!f1 || !f1.saved || !f2 || !f2.saved) {
-                results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0, trPointsB: 0, strokeTR: { A: 0, B: 0 } });
+                results.push({ hole: holeNum, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0, trPointsB: 0, strokeTR: { A: 0, B: 0 } });
                 continue;
             }
             var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
@@ -375,7 +394,7 @@ var UtilValidate = (function() {
             else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
             else { trPointsA = 0; trPointsB = 1; }
             results.push({
-                hole: pos+1,
+                hole: holeNum,
                 grossA: grossA,
                 grossB: grossB,
                 netA: netA,
@@ -573,13 +592,14 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD COMPLETE RESULTS FROM RAW DATA - v1.29: Added startingHole
+    // BUILD COMPLETE RESULTS FROM RAW DATA - v1.30: Pass startingHole to team/stroke
     // ============================================================
     
     function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole) {
-        var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
-        var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
-        var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
+        // v1.30: Pass startingHole to calculateTeamGame and calculateStrokeGame
+        var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi, startingHole);
+        var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi, startingHole);
+        var strkResults = calculateStrokeGame(f1Scores, f2Scores, players, startingHole);
         // v1.29: Pass startingHole to calculateMatchGamePerHole
         var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar, startingHole);
         var orderedPlayers = matchData.orderedPlayers;
@@ -1585,7 +1605,7 @@ var UtilValidate = (function() {
             for (var i = 0; i < 18; i++) coursePar[i] = 4;
         }
         
-        // v1.29: Pass startingHole to buildCompleteResultsFromRawData
+        // v1.30: Pass startingHole to buildCompleteResultsFromRawData
         var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole);
         
         var fieldValidation = validateAllFields(recordData, recalculated);
@@ -2026,15 +2046,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - FIXED: calculateMatchGamePerHole() now uses play order instead of natural order
-   - ADDED: startingHole parameter to calculateMatchGamePerHole()
-   - ADDED: startingHole parameter to buildCompleteResultsFromRawData()
-   - CHANGED: validateRecord() now passes startingHole to buildCompleteResultsFromRawData()
-   - REASON: For shotgun starts, cumulative lead should start at the first played hole
-   - REASON: Natural order (H1-H18) was causing incorrect cumulative leads
-   - PRESERVED: ALL other functionality from v1.28 unchanged
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - FIXED: calculateTeamGame() now uses play order instead of natural order
+   - FIXED: calculateStrokeGame() now uses play order instead of natural order
+   - ADDED: startingHole parameter to calculateTeamGame()
+   - ADDED: startingHole parameter to calculateStrokeGame()
+   - REASON: Same shotgun start bug existed in T-1/T-2 and Stroke Game calculations
+   - REASON: Natural order was causing incorrect T-1/T-2 and Stroke displays
+   - PRESERVED: ALL other functionality from v1.29 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
