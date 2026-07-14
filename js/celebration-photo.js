@@ -1,18 +1,18 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - ADDED: Defensive check at start of checkAndRenameCelebrationPhoto() - only F1 runs this
-   - REASON: F2 was running photo uploads because URL missing &flight=2 parameter
-   - REASON: F2 calling setPhotoFlags() was overwriting f2Downloaded back to false
-   - REASON: This caused the flag flow (T/F/F → T/T/F → F/F/F) to break
-   - FIX: If RealGameState.getEditableFlight() !== 1, skip photo check entirely
-   - PRESERVED: ALL other functionality from v1.18 unchanged
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - ADDED: Store Firebase Storage ETag after successful upload
+   - ADDED: New localStorage key: 'celebration_photo_etag_firebase'
+   - REASON: F1 and VIEW need to compare the SAME ETag for sync
+   - REASON: GitHub ETag (celebration_photo_etag) remains separate for F1 change detection
+   - REASON: Firebase Storage ETag is shared across all devices for quick sync check
+   - PRESERVED: ALL other functionality from v1.19 unchanged
 DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.19";
+window.CELEBRATION_PHOTO_VERSION = "1.20";
 
 // ============================================================
 // CONSTANTS
@@ -24,6 +24,9 @@ var SESSION_STORAGE_KEY = 'celebrationPhoto';
 // v1.04: ETag storage keys (preserved)
 var ETAG_STORAGE_KEY = 'celebration_photo_etag';
 var SIZE_STORAGE_KEY = 'celebration_photo_size';
+
+// v1.20: Firebase Storage ETag for sync (separate from GitHub ETag)
+var FIREBASE_ETAG_STORAGE_KEY = 'celebration_photo_etag_firebase';
 
 // v1.06: GitHub C.jpg URL
 var GITHUB_PHOTO_URL = 'https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg';
@@ -518,6 +521,7 @@ function clearStoredPhotoUrlForHistory(gameId) {
 // v1.19: CHECK AND RENAME PHOTO WITH FLAGS
 // F1 ONLY - Defensive check prevents F2 from running this
 // v1.19: ADDED defensive check - only F1 runs this
+// v1.20: ADDED Firebase Storage ETag storage after upload
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // v1.19: Defensive check - only F1 should run photo uploads
@@ -621,6 +625,18 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                             storePhotoUrlForHistory(gameId, verifiedUrl);
                         }
                     });
+                    
+                    // v1.20: Store Firebase Storage ETag for sync (separate from GitHub ETag)
+                    var storageRef = firebase.storage().ref('celebration/' + archiveId + '.jpg');
+                    storageRef.getMetadata()
+                        .then(function(metadata) {
+                            var firebaseETag = metadata.etag || String(metadata.generation || Date.now());
+                            localStorage.setItem(FIREBASE_ETAG_STORAGE_KEY, firebaseETag);
+                            console.log('[CelebrationPhoto] ✅ Firebase Storage ETag stored:', firebaseETag);
+                        })
+                        .catch(function(err) {
+                            console.warn('[CelebrationPhoto] ⚠️ Failed to get Firebase Storage ETag:', err.message);
+                        });
                     
                     // v1.13: SET FLAGS T/F/F after upload
                     setPhotoFlags(gameId, verifiedUrl, function(flagErr) {
@@ -815,7 +831,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.19: Expose functions
+// v1.20: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -838,19 +854,20 @@ window.SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 window.DEFAULT_PHOTO_PATH = DEFAULT_PHOTO_PATH;
 window.ETAG_STORAGE_KEY = ETAG_STORAGE_KEY;
 window.SIZE_STORAGE_KEY = SIZE_STORAGE_KEY;
+window.FIREBASE_ETAG_STORAGE_KEY = FIREBASE_ETAG_STORAGE_KEY;
 window.GITHUB_PHOTO_URL = GITHUB_PHOTO_URL;
 window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - ADDED: Defensive check at start of checkAndRenameCelebrationPhoto() - only F1 runs this
-   - REASON: F2 was running photo uploads because URL missing &flight=2 parameter
-   - REASON: F2 calling setPhotoFlags() was overwriting f2Downloaded back to false
-   - REASON: This caused the flag flow (T/F/F → T/T/F → F/F/F) to break
-   - FIX: If RealGameState.getEditableFlight() !== 1, skip photo check entirely
-   - PRESERVED: ALL other functionality from v1.18 unchanged
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - ADDED: Store Firebase Storage ETag after successful upload
+   - ADDED: New localStorage key: 'celebration_photo_etag_firebase'
+   - REASON: F1 and VIEW need to compare the SAME ETag for sync
+   - REASON: GitHub ETag (celebration_photo_etag) remains separate for F1 change detection
+   - REASON: Firebase Storage ETag is shared across all devices for quick sync check
+   - PRESERVED: ALL other functionality from v1.19 unchanged
 DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
