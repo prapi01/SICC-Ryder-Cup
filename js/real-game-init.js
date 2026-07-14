@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - REMOVED: F1 flag reset logic (F1 no longer resets photo flags)
-   - REASON: F1 was resetting flags too quickly before F2/VIEW could download
-   - REASON: Only VIEW should reset flags after confirming f2Downloaded=true
-   - PRESERVED: F2 download logic (unchanged)
-   - PRESERVED: ALL other functionality from v1.14 unchanged
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: F2 stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
+   - ADDED: VIEW stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
+   - REASON: All devices must compare the SAME ETag for sync
+   - REASON: F1, F2, and VIEW now all use the shared key
+   - PRESERVED: ALL other functionality from v1.15 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.15";
+window.REAL_GAME_INIT_VERSION = "1.16";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.15 - F1 reset removed, VIEW handles reset");
+    console.log("[REAL-GAME-INIT] Initializing v1.16 - Shared Firebase Storage ETag");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -423,8 +423,8 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // v1.15: setupRealtimeListener - REMOVED F1 reset logic
-    // F1 no longer resets flags. Only VIEW resets via poll.
+    // v1.16: setupRealtimeListener - Shared Firebase Storage ETag
+    // F2 and VIEW now store ETag using shared key
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -470,6 +470,7 @@ var RealGameInit = (function() {
                 // ============================================================
                 // F2 Logic: If newPhotoAvailable = true AND f2Downloaded = false
                 // Download photo from Firebase Storage and set f2Downloaded = true
+                // v1.16: Store Firebase Storage ETag using shared key
                 // ============================================================
                 if (editableFlight === 2 && newPhotoAvailable && !f2Downloaded && imageUrl) {
                     console.log('[REALTIME] F2: New photo available - downloading from FS...');
@@ -480,6 +481,19 @@ var RealGameInit = (function() {
                                 console.warn('[REALTIME] F2: Failed to download photo:', err.message);
                             } else {
                                 console.log('[REALTIME] F2: Photo downloaded and stored in sessionStorage');
+                                
+                                // v1.16: Store Firebase Storage ETag (shared key)
+                                var archiveId = gameId + '_H';
+                                var storageRef = firebase.storage().ref('celebration/' + archiveId + '.jpg');
+                                storageRef.getMetadata()
+                                    .then(function(metadata) {
+                                        var firebaseETag = metadata.etag || String(metadata.generation || Date.now());
+                                        localStorage.setItem('celebration_photo_etag_firebase', firebaseETag);
+                                        console.log('[REALTIME] F2: Firebase Storage ETag stored:', firebaseETag);
+                                    })
+                                    .catch(function(err) {
+                                        console.warn('[REALTIME] F2: Failed to get Firebase Storage ETag:', err.message);
+                                    });
                                 
                                 // Set f2Downloaded = true
                                 var db = firebase.firestore();
@@ -501,6 +515,7 @@ var RealGameInit = (function() {
                 // ============================================================
                 // VIEW Logic: If newPhotoAvailable = true AND viewDownloaded = false
                 // Download photo from Firebase Storage and set viewDownloaded = true
+                // v1.16: Store Firebase Storage ETag using shared key
                 // ============================================================
                 if (editableFlight === 0 && newPhotoAvailable && !viewDownloaded && imageUrl) {
                     // NOTE: editableFlight === 0 means VIEW device
@@ -514,6 +529,19 @@ var RealGameInit = (function() {
                                 console.warn('[REALTIME] VIEW: Failed to download photo:', err.message);
                             } else {
                                 console.log('[REALTIME] VIEW: Photo downloaded and stored in sessionStorage');
+                                
+                                // v1.16: Store Firebase Storage ETag (shared key)
+                                var archiveId = gameId + '_H';
+                                var storageRef = firebase.storage().ref('celebration/' + archiveId + '.jpg');
+                                storageRef.getMetadata()
+                                    .then(function(metadata) {
+                                        var firebaseETag = metadata.etag || String(metadata.generation || Date.now());
+                                        localStorage.setItem('celebration_photo_etag_firebase', firebaseETag);
+                                        console.log('[REALTIME] VIEW: Firebase Storage ETag stored:', firebaseETag);
+                                    })
+                                    .catch(function(err) {
+                                        console.warn('[REALTIME] VIEW: Failed to get Firebase Storage ETag:', err.message);
+                                    });
                                 
                                 var db = firebase.firestore();
                                 db.collection('scheduledGames').doc(gameId).update({
@@ -1086,13 +1114,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - REMOVED: F1 flag reset logic (F1 no longer resets photo flags)
-   - REASON: F1 was resetting flags too quickly before F2/VIEW could download
-   - REASON: Only VIEW should reset flags after confirming f2Downloaded=true
-   - PRESERVED: F2 download logic (unchanged)
-   - PRESERVED: ALL other functionality from v1.14 unchanged
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: F2 stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
+   - ADDED: VIEW stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
+   - REASON: All devices must compare the SAME ETag for sync
+   - REASON: F1, F2, and VIEW now all use the shared key
+   - PRESERVED: ALL other functionality from v1.15 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
