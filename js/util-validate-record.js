@@ -1,22 +1,22 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - FIXED: buildFixPayload() now uses validateCurrentValidation.handicapRecalculated directly
-   - REMOVED: Unnecessary fresh recalculation that was producing wrong values
-   - The correct recalculated data is already computed in validateCurrentValidation
-   - This prevents writing wrong values to Firestore
-   - PRESERVED: All existing validation logic from v1.26
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - ADDED: Debug logging for Match Game calculation at H10
+   - REASON: Need to see the actual match data being calculated for validation
+   - Logs each match at H10 with pointsA and pointsB
+   - Logs total Match Game points at H10
+   - PRESERVED: ALL other functionality from v1.27 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.27";
+window.UTIL_VALIDATE_VERSION = "1.28";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.27 - Use validateCurrentValidation.handicapRecalculated directly");
+    console.log("[UTIL-VALIDATE] Initializing v1.28 - Added Match Game debug logging");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -535,6 +535,23 @@ var UtilValidate = (function() {
                 playerClinchHole: playerClinchHole
             });
             matchPointsPerHole.push(holeMatchPoints);
+        }
+        
+        // ============================================================
+        // v1.28: DEBUG - Log H10 Match Game calculation
+        // ============================================================
+        if (matchPointsPerHole && matchPointsPerHole.length > 9) {
+            var h10Data = matchPointsPerHole[9] || {};
+            console.log('=== MATCH GAME DEBUG H10 ===');
+            var debugA = 0, debugB = 0;
+            for (var key in h10Data) {
+                var match = h10Data[key];
+                debugA += match.pointsA || 0;
+                debugB += match.pointsB || 0;
+                console.log('  ' + key + ' → ' + match.pointsA + '-' + match.pointsB);
+            }
+            console.log('  TOTAL: ' + debugA + '-' + debugB);
+            console.log('  Expected: 8.0-8.0');
         }
         
         return {
@@ -1995,13 +2012,13 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - FIXED: buildFixPayload() now uses validateCurrentValidation.handicapRecalculated directly
-   - REMOVED: Unnecessary fresh recalculation that was producing wrong values
-   - The correct recalculated data is already computed in validateCurrentValidation
-   - This prevents writing wrong values to Firestore
-   - PRESERVED: All existing validation logic from v1.26
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - ADDED: Debug logging for Match Game calculation at H10
+   - REASON: Need to see the actual match data being calculated for validation
+   - Logs each match at H10 with pointsA and pointsB
+   - Logs total Match Game points at H10
+   - PRESERVED: ALL other functionality from v1.27 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
