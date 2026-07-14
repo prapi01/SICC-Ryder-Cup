@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.41
-KEY CHANGES from v1.39:
-   - CHANGED: triggerPhotoCheck() now only called for F1 (editableFlight === 1)
-   - REASON: ONLY F1 should check GitHub ETag and upload photos
-   - REASON: F2 handles history records, NOT photo uploads
-   - REASON: Prevents redundant uploads and overwrites
-   - PRESERVED: ALL other functionality from v1.39 unchanged
+VERSION: 1.42
+KEY CHANGES from v1.41:
+   - ADDED: Clinch hole assignment to cache in writeNewHoleData()
+   - REASON: flight1ClinchedHole and flight2ClinchedHole were calculated but never stored
+   - REASON: game-scorecard.js reads cache.results.game2.flight1/2.clinchedHole for GOLD display
+   - REASON: Without this, T-x rows never show GOLD even when clinched
+   - PRESERVED: ALL other functionality from v1.41 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.41";
+window.REAL_GAME_SAVE_VERSION = "1.42";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.41 - Photo check restricted to F1 only");
+    console.log("[REAL-GAME-SAVE] Initializing v1.42 - Clinch hole assignment to cache");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -578,6 +578,16 @@ var RealGameSave = (function() {
             allPlayers, cache.f1DataString, cache.f2DataString, 
             courseSi, startingHole, teamGameFormat, remainingHolesByPosition
         ) : null;
+        
+        // v1.42: Store clinch holes in cache for UI display (GOLD)
+        if (teamGameResults) {
+            if (teamGameResults.flight1ClinchedHole !== null && teamGameResults.flight1ClinchedHole !== undefined) {
+                cache.results.game2.flight1.clinchedHole = teamGameResults.flight1ClinchedHole;
+            }
+            if (teamGameResults.flight2ClinchedHole !== null && teamGameResults.flight2ClinchedHole !== undefined) {
+                cache.results.game2.flight2.clinchedHole = teamGameResults.flight2ClinchedHole;
+            }
+        }
         
         var existingClinched = cache.results.clinchedAt || {};
         var deviceId = typeof SessionManager !== 'undefined' ? SessionManager.getDeviceIdDisplay() : "unknown";
@@ -1574,13 +1584,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.41
-KEY CHANGES from v1.39:
-   - CHANGED: triggerPhotoCheck() now only called for F1 (editableFlight === 1)
-   - REASON: ONLY F1 should check GitHub ETag and upload photos
-   - REASON: F2 handles history records, NOT photo uploads
-   - REASON: Prevents redundant uploads and overwrites
-   - PRESERVED: ALL other functionality from v1.39 unchanged
+VERSION: 1.42
+KEY CHANGES from v1.41:
+   - ADDED: Clinch hole assignment to cache in writeNewHoleData()
+   - REASON: flight1ClinchedHole and flight2ClinchedHole were calculated but never stored
+   - REASON: game-scorecard.js reads cache.results.game2.flight1/2.clinchedHole for GOLD display
+   - REASON: Without this, T-x rows never show GOLD even when clinched
+   - PRESERVED: ALL other functionality from v1.41 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
