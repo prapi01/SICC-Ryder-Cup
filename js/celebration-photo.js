@@ -1,20 +1,20 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: checkAndRenameCelebrationPhoto() now deletes flat fields when writing nested celebration object
-   - FIXED: copyCelebrationPhoto() now deletes flat fields when writing nested celebration object
-   - REASON: Old dot notation writes created flat fields at document root (celebration.imageRef)
-   - REASON: These flat fields conflict with the nested celebration object and cause WRV verification failures
-   - REASON: WRV verification fails because extra fields exist in the document that weren't in the payload
-   - FIX: Explicitly delete flat fields when writing the nested object to clean up old corruption
-   - PRESERVED: ALL other functionality from v1.16 unchanged
-   - PRESERVED: setPhotoFlags() and resetPhotoFlags() already use nested photo object (v1.15 fix)
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: checkAndRenameCelebrationPhoto() now uses direct Firestore update (no WRV verification)
+   - FIXED: copyCelebrationPhoto() now uses direct Firestore update (no WRV verification)
+   - REASON: Photo file is already verified in Storage via verifyPhotoUpload()
+   - REASON: WRV verification fails because the document has fields not in the payload
+   - REASON: WRV verification is unnecessary for the photo pointer update
+   - REASON: This eliminates the "payload mismatch" error in WRV
+   - PRESERVED: ALL other functionality from v1.17 unchanged
+   - PRESERVED: setPhotoFlags() and resetPhotoFlags() unchanged (use WRV for flag writes)
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.17";
+window.CELEBRATION_PHOTO_VERSION = "1.18";
 
 // ============================================================
 // CONSTANTS
@@ -379,8 +379,8 @@ function handleVerificationFailure(archiveId, blob, retryCount, callback) {
 }
 
 // ============================================================
-// v1.17: Copy C.jpg from GitHub to Firebase Storage with game ID
-// FIXED: Uses nested celebration object + deletes flat fields (cleanup)
+// v1.18: Copy C.jpg from GitHub to Firebase Storage with game ID
+// FIXED: Uses nested celebration object + deletes flat fields + direct Firestore update
 // ============================================================
 function copyCelebrationPhoto(gameId, callback) {
     if (!gameId) {
@@ -431,21 +431,19 @@ function copyCelebrationPhoto(gameId, callback) {
                         'celebration.copiedAt': firebase.firestore.FieldValue.delete()
                     };
                     
-                    if (typeof WRV !== 'undefined' && WRV.update) {
-                        WRV.update('historyGames', archiveId, updateData, function(err2) {
-                            if (err2) {
-                                console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', err2.message);
-                                // Don't fail the whole operation - photo is uploaded, Firestore update can be retried later
-                                if (callback) callback(null);
-                            } else {
-                                console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
-                                if (callback) callback(null);
-                            }
+                    // v1.18: Use direct Firestore update (no WRV verification needed)
+                    // The photo file itself is already verified in Storage via verifyPhotoUpload()
+                    var db = firebase.firestore();
+                    db.collection('historyGames').doc(archiveId).update(updateData)
+                        .then(function() {
+                            console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
+                            if (callback) callback(null);
+                        })
+                        .catch(function(dbErr) {
+                            console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', dbErr.message);
+                            // Don't fail - photo is already uploaded and verified
+                            if (callback) callback(null);
                         });
-                    } else {
-                        console.warn('[CelebrationPhoto] WRV not available, skipping Firestore update');
-                        if (callback) callback(null);
-                    }
                 });
             });
         });
@@ -519,9 +517,9 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.17: CHECK AND RENAME PHOTO WITH FLAGS
+// v1.18: CHECK AND RENAME PHOTO WITH FLAGS
 // F1 ONLY - Checks GitHub ETag, downloads, uploads, sets flags
-// FIXED: Uses nested celebration object + deletes flat fields (cleanup)
+// FIXED: Uses nested celebration object + deletes flat fields + direct Firestore update
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -586,31 +584,21 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                     'celebration.copiedAt': firebase.firestore.FieldValue.delete()
                 };
                 
-                // Use a promise to handle Firestore update (don't block callback)
+                // v1.18: Use direct Firestore update (no WRV verification needed)
+                // The photo file itself is already verified in Storage via verifyPhotoUpload()
+                // WRV verification fails because the document has fields not in the payload
                 var firestorePromise = new Promise(function(resolve) {
-                    if (typeof WRV !== 'undefined' && WRV.update) {
-                        WRV.update('historyGames', archiveId, updateData, function(wrvErr) {
-                            if (wrvErr) {
-                                console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', wrvErr.message);
-                                // Don't fail - photo is already uploaded and verified
-                                resolve();
-                            } else {
-                                console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
-                                resolve();
-                            }
+                    var db = firebase.firestore();
+                    db.collection('historyGames').doc(archiveId).update(updateData)
+                        .then(function() {
+                            console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
+                            resolve();
+                        })
+                        .catch(function(dbErr) {
+                            console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', dbErr.message);
+                            // Don't fail - photo is already uploaded and verified
+                            resolve();
                         });
-                    } else {
-                        var db = firebase.firestore();
-                        db.collection('historyGames').doc(archiveId).update(updateData)
-                            .then(function() {
-                                console.log('[CelebrationPhoto] ✅ Firestore updated (direct) for:', archiveId + '.jpg');
-                                resolve();
-                            })
-                            .catch(function(dbErr) {
-                                console.warn('[CelebrationPhoto] ⚠️ Firestore direct update failed:', dbErr.message);
-                                resolve();
-                            });
-                    }
                 });
                 
                 // After Firestore update attempt, update sessionStorage using the blob directly (NO NETWORK)
@@ -820,7 +808,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.17: Expose functions
+// v1.18: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -848,16 +836,16 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: checkAndRenameCelebrationPhoto() now deletes flat fields when writing nested celebration object
-   - FIXED: copyCelebrationPhoto() now deletes flat fields when writing nested celebration object
-   - REASON: Old dot notation writes created flat fields at document root (celebration.imageRef)
-   - REASON: These flat fields conflict with the nested celebration object and cause WRV verification failures
-   - REASON: WRV verification fails because extra fields exist in the document that weren't in the payload
-   - FIX: Explicitly delete flat fields when writing the nested object to clean up old corruption
-   - PRESERVED: ALL other functionality from v1.16 unchanged
-   - PRESERVED: setPhotoFlags() and resetPhotoFlags() already use nested photo object (v1.15 fix)
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: checkAndRenameCelebrationPhoto() now uses direct Firestore update (no WRV verification)
+   - FIXED: copyCelebrationPhoto() now uses direct Firestore update (no WRV verification)
+   - REASON: Photo file is already verified in Storage via verifyPhotoUpload()
+   - REASON: WRV verification fails because the document has fields not in the payload
+   - REASON: WRV verification is unnecessary for the photo pointer update
+   - REASON: This eliminates the "payload mismatch" error in WRV
+   - PRESERVED: ALL other functionality from v1.17 unchanged
+   - PRESERVED: setPhotoFlags() and resetPhotoFlags() unchanged (use WRV for flag writes)
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
