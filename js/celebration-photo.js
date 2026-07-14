@@ -1,20 +1,20 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - FIXED: checkAndRenameCelebrationPhoto() now uses nested celebration object instead of dot notation
-   - FIXED: copyCelebrationPhoto() now uses nested celebration object instead of dot notation
-   - REASON: history-record.js writes celebration as a nested object, not flat fields
-   - REASON: Dot notation was creating flat fields at document root (celebration.imageRef)
-   - REASON: This caused data inconsistency where both flat and nested fields existed
-   - REASON: Nested object notation aligns with history-record.js write pattern
-   - PRESERVED: ALL other functionality from v1.15 unchanged
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: checkAndRenameCelebrationPhoto() now deletes flat fields when writing nested celebration object
+   - FIXED: copyCelebrationPhoto() now deletes flat fields when writing nested celebration object
+   - REASON: Old dot notation writes created flat fields at document root (celebration.imageRef)
+   - REASON: These flat fields conflict with the nested celebration object and cause WRV verification failures
+   - REASON: WRV verification fails because extra fields exist in the document that weren't in the payload
+   - FIX: Explicitly delete flat fields when writing the nested object to clean up old corruption
+   - PRESERVED: ALL other functionality from v1.16 unchanged
    - PRESERVED: setPhotoFlags() and resetPhotoFlags() already use nested photo object (v1.15 fix)
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.16";
+window.CELEBRATION_PHOTO_VERSION = "1.17";
 
 // ============================================================
 // CONSTANTS
@@ -379,8 +379,8 @@ function handleVerificationFailure(archiveId, blob, retryCount, callback) {
 }
 
 // ============================================================
-// v1.16: Copy C.jpg from GitHub to Firebase Storage with game ID
-// FIXED: Uses nested celebration object instead of dot notation
+// v1.17: Copy C.jpg from GitHub to Firebase Storage with game ID
+// FIXED: Uses nested celebration object + deletes flat fields (cleanup)
 // ============================================================
 function copyCelebrationPhoto(gameId, callback) {
     if (!gameId) {
@@ -418,13 +418,17 @@ function copyCelebrationPhoto(gameId, callback) {
                         return;
                     }
                     
-                    // v1.16: FIXED - Use nested celebration object (matches history-record.js)
+                    // v1.17: Use nested celebration object + delete flat fields (cleanup)
                     var updateData = {
                         celebration: {
                             imageRef: 'celebration/' + archiveId + '.jpg',
                             imageUrl: url,
                             copiedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }
+                        },
+                        // v1.17: Delete flat fields if they exist (cleanup from old dot notation writes)
+                        'celebration.imageRef': firebase.firestore.FieldValue.delete(),
+                        'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
+                        'celebration.copiedAt': firebase.firestore.FieldValue.delete()
                     };
                     
                     if (typeof WRV !== 'undefined' && WRV.update) {
@@ -515,9 +519,9 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.16: CHECK AND RENAME PHOTO WITH FLAGS
+// v1.17: CHECK AND RENAME PHOTO WITH FLAGS
 // F1 ONLY - Checks GitHub ETag, downloads, uploads, sets flags
-// FIXED: Uses nested celebration object instead of dot notation
+// FIXED: Uses nested celebration object + deletes flat fields (cleanup)
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // Handle optional parameters
@@ -569,13 +573,17 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                 // ✅ VERIFIED - upload succeeded
                 console.log('[CelebrationPhoto] ✅ Uploaded and VERIFIED to:', archiveId + '.jpg');
                 
-                // v1.16: FIXED - Use nested celebration object (matches history-record.js)
+                // v1.17: Use nested celebration object + delete flat fields (cleanup)
                 var updateData = {
                     celebration: {
                         imageRef: 'celebration/' + archiveId + '.jpg',
                         imageUrl: verifiedUrl,
                         copiedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }
+                    },
+                    // v1.17: Delete flat fields if they exist (cleanup from old dot notation writes)
+                    'celebration.imageRef': firebase.firestore.FieldValue.delete(),
+                    'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
+                    'celebration.copiedAt': firebase.firestore.FieldValue.delete()
                 };
                 
                 // Use a promise to handle Firestore update (don't block callback)
@@ -812,7 +820,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.16: Expose functions
+// v1.17: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -840,15 +848,15 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - FIXED: checkAndRenameCelebrationPhoto() now uses nested celebration object instead of dot notation
-   - FIXED: copyCelebrationPhoto() now uses nested celebration object instead of dot notation
-   - REASON: history-record.js writes celebration as a nested object, not flat fields
-   - REASON: Dot notation was creating flat fields at document root (celebration.imageRef)
-   - REASON: This caused data inconsistency where both flat and nested fields existed
-   - REASON: Nested object notation aligns with history-record.js write pattern
-   - PRESERVED: ALL other functionality from v1.15 unchanged
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: checkAndRenameCelebrationPhoto() now deletes flat fields when writing nested celebration object
+   - FIXED: copyCelebrationPhoto() now deletes flat fields when writing nested celebration object
+   - REASON: Old dot notation writes created flat fields at document root (celebration.imageRef)
+   - REASON: These flat fields conflict with the nested celebration object and cause WRV verification failures
+   - REASON: WRV verification fails because extra fields exist in the document that weren't in the payload
+   - FIX: Explicitly delete flat fields when writing the nested object to clean up old corruption
+   - PRESERVED: ALL other functionality from v1.16 unchanged
    - PRESERVED: setPhotoFlags() and resetPhotoFlags() already use nested photo object (v1.15 fix)
 DEPENDS ON: Firebase Storage, Firestore
 STATUS: Ready for integration
