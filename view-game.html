@@ -1,15 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 8.08
-KEY CHANGES from v8.07:
-   - REMOVED: 10-minute polling interval (no longer needed)
-   - REMOVED: checkPhotoAndState() function (replaced by listener)
-   - REMOVED: triggerBackgroundCheck() function (no longer needed)
-   - REMOVED: Page Visibility API listener (no longer needed)
-   - ADDED: f2Downloaded check to realtime listener - VIEW resets flags after F2 confirms download
-   - REASON: VIEW's realtime listener already fires on score updates - use it for photo sync
-   - REASON: No need for separate polling - listener-based is instant and efficient
-   - PRESERVED: ALL other functionality from v8.07 unchanged
+VERSION: 8.09
+KEY CHANGES from v8.08:
+   - ADDED: Waiting screen shown during data load in init()
+   - ADDED: celebrationData created from cache when VIEW loads cold after game completion
+   - REASON: VIEW joining cold after game completion had no celebrationData in sessionStorage
+   - REASON: post-game.html requires celebrationData to display celebration screen
+   - ADDED: WaitingScreen.hide() after data is ready in both load paths
+   - PRESERVED: ALL other functionality from v8.08 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
@@ -24,10 +22,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.08"></script>
-    <script src="js/session.js?v=8.08"></script>
-    <script src="js/settings.js?v=8.08"></script>
-    <script src="js/celebration-photo.js?v=8.08"></script>
+    <script src="js/firebase-config.js?v=8.09"></script>
+    <script src="js/session.js?v=8.09"></script>
+    <script src="js/settings.js?v=8.09"></script>
+    <script src="js/celebration-photo.js?v=8.09"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -36,11 +34,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.08"></script>
-    <script src="js/history-record.js?v=8.08"></script>
+    <script src="js/ticker.js?v=8.09"></script>
+    <script src="js/history-record.js?v=8.09"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.08"></script>
-    <script src="js/modal.js?v=8.08"></script>
+    <script src="js/hcp-adjust.js?v=8.09"></script>
+    <script src="js/modal.js?v=8.09"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -161,14 +159,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.08</div>
+<div class="version-tag">v8.09</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.08: Listener-based photo sync
+// VERSION CACHE-BUSTING - v8.09: Cold VIEW celebrationData fix
 // ============================================================
-var APP_VERSION = "8.08";
-var CACHE_KEY = "view_game_version_v808";
+var APP_VERSION = "8.09";
+var CACHE_KEY = "view_game_version_v809";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -186,8 +184,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.08";
-console.log("[VIEW-GAME] Initializing v8.08 - Listener-based photo sync");
+window.VIEW_GAME_VERSION = "8.09";
+console.log("[VIEW-GAME] Initializing v8.09 - Cold VIEW celebrationData fix");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1101,7 +1099,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v8.08: Real-time Firestore Listener - Listener-based photo sync
+// v8.09: Real-time Firestore Listener - Cold VIEW celebrationData fix
 // VIEW resets flags after F2 confirms download (f2Downloaded=true)
 // ============================================================
 
@@ -1507,10 +1505,15 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.08: Initialization - Listener-based photo sync
+// v8.09: Initialization - Cold VIEW celebrationData fix
 // ============================================================
 
 async function init() {
+    // v8.09: Show waiting screen immediately while data loads
+    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+        WaitingScreen.show('Loading Game...');
+    }
+    
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "👁️ " + myDeviceShortName;
     
@@ -1536,6 +1539,10 @@ async function init() {
     
     if (!gameId) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
+        // v8.09: Hide waiting screen on error
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+        }
         return;
     }
     
@@ -1574,6 +1581,11 @@ async function init() {
         if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
         renderAll();
         
+        // v8.09: Hide waiting screen after preloaded data is ready
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+        }
+        
         GameLoader.loadGame(gameId, collection, function(result) {
             if (result.success) {
                 var cache = result.cache;
@@ -1590,6 +1602,30 @@ async function init() {
                 }
                 gameCompleteFlag = isGameComplete();
                 isPostGameContext = checkPostGameContext(cache);
+                
+                // v8.09: If game is completed and celebrationData doesn't exist, create it
+                if (gameCompleteFlag) {
+                    var celebrationDataStr = sessionStorage.getItem('celebrationData');
+                    if (!celebrationDataStr) {
+                        console.log('[VIEW-GAME] Game completed - creating celebrationData for cold VIEW');
+                        var tr = GameLoader.getTRForHole(18);
+                        var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
+                        var winningPlayers = {
+                            teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+                            teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+                        };
+                        var celebrationData = {
+                            winner: winner,
+                            teamAScore: tr.teamA,
+                            teamBScore: tr.teamB,
+                            winningPlayers: winningPlayers,
+                            gameId: gameId
+                        };
+                        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+                        console.log('[VIEW-GAME] celebrationData created for cold VIEW');
+                    }
+                }
+                
                 renderAll();
             }
         });
@@ -1598,6 +1634,10 @@ async function init() {
         GameLoader.loadGame(gameId, collection, function(result) {
             if (!result.success) {
                 document.getElementById("debug").innerHTML = "Error: " + result.error;
+                // v8.09: Hide waiting screen on error
+                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                    WaitingScreen.hide();
+                }
                 return;
             }
             
@@ -1624,18 +1664,47 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
+            // v8.09: If game is completed and celebrationData doesn't exist, create it
+            if (gameCompleteFlag) {
+                var celebrationDataStr = sessionStorage.getItem('celebrationData');
+                if (!celebrationDataStr) {
+                    console.log('[VIEW-GAME] Game completed - creating celebrationData for cold VIEW');
+                    var tr = GameLoader.getTRForHole(18);
+                    var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
+                    var winningPlayers = {
+                        teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+                        teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+                    };
+                    var celebrationData = {
+                        winner: winner,
+                        teamAScore: tr.teamA,
+                        teamBScore: tr.teamB,
+                        winningPlayers: winningPlayers,
+                        gameId: gameId
+                    };
+                    sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+                    console.log('[VIEW-GAME] celebrationData created for cold VIEW');
+                }
+            }
+            
             // v8.00: REMOVED auto-redirect to post-game.html
             // User should see the RESULT button and click it manually
             // Redirect only happens when user clicks RESULT button -> showCelebrationModal()
             
             renderAll();
             document.getElementById("mainContainer").classList.add("data-ready");
+            
+            // v8.09: Hide waiting screen when data is ready
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
+            }
+            
             setupRealtimeListener();
         });
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.08 initialized - Listener-based photo sync');
+    console.log('[VIEW-GAME] v8.09 initialized - Cold VIEW celebrationData fix');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1647,16 +1716,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.08
-KEY CHANGES from v8.07:
-   - REMOVED: 10-minute polling interval (no longer needed)
-   - REMOVED: checkPhotoAndState() function (replaced by listener)
-   - REMOVED: triggerBackgroundCheck() function (no longer needed)
-   - REMOVED: Page Visibility API listener (no longer needed)
-   - ADDED: f2Downloaded check to realtime listener - VIEW resets flags after F2 confirms download
-   - REASON: VIEW's realtime listener already fires on score updates - use it for photo sync
-   - REASON: No need for separate polling - listener-based is instant and efficient
-   - PRESERVED: ALL other functionality from v8.07 unchanged
+VERSION: 8.09
+KEY CHANGES from v8.08:
+   - ADDED: Waiting screen shown during data load in init()
+   - ADDED: celebrationData created from cache when VIEW loads cold after game completion
+   - REASON: VIEW joining cold after game completion had no celebrationData in sessionStorage
+   - REASON: post-game.html requires celebrationData to display celebration screen
+   - ADDED: WaitingScreen.hide() after data is ready in both load paths
+   - PRESERVED: ALL other functionality from v8.08 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
