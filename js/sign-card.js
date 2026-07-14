@@ -1,14 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - FIXED: submitSignature() listener now checks BOTH signatures (f1SignedCheck && f2SignedCheck)
-   - REMOVED: ourFlightSigned variable (was causing waiting screen to hang)
-   - REASON: F1.signed was not being detected because listener only checked current flight
-   - REASON: Both F1 and F2 would get stuck on waiting screen
-   - PRESERVED: ALL other functionality from v1.34 unchanged
-   - PRESERVED: refreshCacheBeforeSigning, buildHistoryPayload, triggerHistoryRecordWrite
-   - PRESERVED: Celebration layout, UI styles, photo handling
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: submitSignature() now uses atomic update (no read-modify-write)
+   - REASON: F2's signature write was failing on mobile networks
+   - REASON: read-modify-write requires two network operations and can fail
+   - CHANGED: Direct update with dot notation for nested fields
+   - PRESERVED: ALL other functionality from v1.35 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
@@ -763,7 +761,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.35: FIXED - Listener now checks BOTH signatures
+    // v1.36: FIXED - Direct atomic update with retry
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -771,20 +769,17 @@ var SignCard = (function() {
             var db = getDb();
             var docRef = db.collection(collection).doc(gameId);
             var flightKey = 'f' + flight;
-            var otherFlightKey = flight === 1 ? 'f2' : 'f1';
             
             console.log('[SignCard] submitSignature called: flight', flight, 'gameId', gameId);
             
             // ============================================================
             // STEP 1: Refresh cache from Firestore BEFORE signing
-            // This ensures we have the latest data from the other flight
             // ============================================================
             refreshCacheBeforeSigning(gameId, function(refreshErr, refreshedCache) {
                 if (refreshErr) {
                     console.warn('[SignCard] Cache refresh had issues, continuing with existing:', refreshErr.message);
                 }
                 
-                // Get the (now refreshed) cache
                 var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
                 var f1Signed = false;
                 var f2Signed = false;
@@ -794,18 +789,13 @@ var SignCard = (function() {
                     if (!cache.signatures.f1) cache.signatures.f1 = { signed: false };
                     if (!cache.signatures.f2) cache.signatures.f2 = { signed: false };
                     
-                    // Update cache with our signature immediately
-                    cache.signatures[flightKey] = {
-                        signed: true
-                    };
+                    cache.signatures[flightKey] = { signed: true };
                     
                     f1Signed = cache.signatures.f1.signed === true;
                     f2Signed = cache.signatures.f2.signed === true;
                     
                     console.log('[SignCard] Cache updated IMMEDIATELY for flight', flight);
                     console.log('[SignCard] Cache now: f1.signed=' + f1Signed + ', f2.signed=' + f2Signed);
-                } else {
-                    console.warn('[SignCard] No cache available - UI may not update immediately');
                 }
                 
                 var bothSigned = f1Signed && f2Signed;
@@ -820,8 +810,8 @@ var SignCard = (function() {
                 }
                 
                 // ============================================================
-                // STEP 3: Write signature to Firestore (both F1 and F2)
-                // v1.35: Listener checks BOTH signatures (f1SignedCheck && f2SignedCheck)
+                // STEP 3: Write signature to Firestore (atomic, no read first)
+                // v1.36: Direct update with dot notation for nested fields
                 // ============================================================
                 var maxRetries = 5;
                 var attemptCount = 0;
@@ -833,31 +823,12 @@ var SignCard = (function() {
                     attemptCount = retryCount + 1;
                     console.log('[SignCard] Write attempt', attemptCount, 'for flight', flight);
                     
-                    docRef.get()
-                        .then(function(doc) {
-                            if (!doc.exists) {
-                                throw new Error('Game document not found');
-                            }
-                            
-                            var data = doc.data();
-                            var signatures = data.signatures || {};
-                            
-                            if (!signatures.f1) {
-                                signatures.f1 = { signed: false };
-                            }
-                            if (!signatures.f2) {
-                                signatures.f2 = { signed: false };
-                            }
-                            
-                            signatures[flightKey] = {
-                                signed: true
-                            };
-                            
-                            return docRef.update({
-                                signatures: signatures,
-                                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        })
+                    // v1.36: Direct atomic update (no read first)
+                    var updateObj = {};
+                    updateObj['signatures.' + flightKey + '.signed'] = true;
+                    updateObj.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    
+                    docRef.update(updateObj)
                         .then(function() {
                             console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
                             
@@ -875,7 +846,7 @@ var SignCard = (function() {
                                 var f1SignedCheck = signatures.f1?.signed === true;
                                 var f2SignedCheck = signatures.f2?.signed === true;
                                 
-                                // v1.35: FIXED - Check BOTH signatures, not just current flight
+                                // v1.36: Check BOTH signatures
                                 if (f1SignedCheck && f2SignedCheck) {
                                     if (!confirmed) {
                                         confirmed = true;
@@ -892,10 +863,8 @@ var SignCard = (function() {
                                         
                                         console.log('[SignCard] Both signed (confirmed)!');
                                         
-                                        // If this is F2, ensure history record is written
                                         if (flight === 2) {
                                             console.log('[SignCard] F2: History record write triggered from cache');
-                                            // Trigger history record write (background)
                                             var gameData = cache ? cache._gameData : null;
                                             if (!gameData) {
                                                 docRef.get().then(function(doc) {
@@ -913,7 +882,6 @@ var SignCard = (function() {
                                             console.log('[SignCard] F1 - not writing history record (F2 handles this)');
                                         }
                                         
-                                        // Show completion modal (navigation happens here)
                                         if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
                                             RealGameNav.showGameCompleteModal(gameId);
                                         } else {
@@ -1040,19 +1008,17 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.35";
+window.SIGN_CARD_VERSION = "1.36";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - FIXED: submitSignature() listener now checks BOTH signatures (f1SignedCheck && f2SignedCheck)
-   - REMOVED: ourFlightSigned variable (was causing waiting screen to hang)
-   - REASON: F1.signed was not being detected because listener only checked current flight
-   - REASON: Both F1 and F2 would get stuck on waiting screen
-   - PRESERVED: ALL other functionality from v1.34 unchanged
-   - PRESERVED: refreshCacheBeforeSigning, buildHistoryPayload, triggerHistoryRecordWrite
-   - PRESERVED: Celebration layout, UI styles, photo handling
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: submitSignature() now uses atomic update (no read-modify-write)
+   - REASON: F2's signature write was failing on mobile networks
+   - REASON: read-modify-write requires two network operations and can fail
+   - CHANGED: Direct update with dot notation for nested fields
+   - PRESERVED: ALL other functionality from v1.35 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
