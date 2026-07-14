@@ -1,17 +1,16 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.09
-KEY CHANGES from v3.08:
-   - REMOVED: getStoredPhotoUrlForHistory() - no longer needed
-   - REMOVED: localStorage checks for photo URL (device-specific, unreliable)
-   - ADDED: getPhotoPathForHistory() - constructs photo path from game ID
-   - CHANGED: celebration.imageRef set to 'celebration/{gameId}_H.jpg'
-   - CHANGED: celebration.imageUrl set to null (frontend uses getDownloadURL)
-   - REASON: Photo ID is fixed by convention - no need to store URL
-   - REASON: localStorage is device-specific and caused cross-device issues
-   - PRESERVED: ALL other functionality from v3.08 unchanged
-   - PRESERVED: Status="completed" when both signed
-   - PRESERVED: Signatures simplified (only signed: true/false)
+VERSION: 3.10
+KEY CHANGES from v3.09:
+   - REMOVED: celebration.imageUrl: null from both CREATE and UPDATE (no longer written)
+   - REMOVED: adjustedHandicaps: null from CREATE (field omitted entirely)
+   - REASON: Setting imageUrl: null created conflicting data with dot notation writes
+   - REASON: adjustedHandicaps: null caused validation to report missing data
+   - REASON: Photo code (celebration-photo.js) will populate imageUrl later via nested object
+   - REASON: Handicap data will be written by updateWithHandicap() when available
+   - PRESERVED: ALL other functionality from v3.09 unchanged
+   - PRESERVED: getPhotoPathForHistory() unchanged
+   - PRESERVED: Status determination logic unchanged
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
@@ -165,6 +164,7 @@ var HistoryRecord = (function() {
     // v3.07: Retrieve photo URL from localStorage when creating/updating
     // v3.08: Removed signedAt/captainName, fixed status to "completed" when both signed
     // v3.09: REMOVED localStorage photo URL check - use fixed convention instead
+    // v3.10: REMOVED celebration.imageUrl: null and adjustedHandicaps: null
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -196,10 +196,9 @@ var HistoryRecord = (function() {
                     // UPDATE existing record
                     console.log("Updating existing archive record:", docId);
                     
-                    // v3.09: Build celebration field with photo path (no URL)
+                    // v3.10: Build celebration field with photo path (NO imageUrl: null)
                     var celebrationData = {
                         imageRef: photoPath,
-                        imageUrl: null,  // Frontend will call getDownloadURL()
                         status: 'pending',
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
@@ -228,7 +227,7 @@ var HistoryRecord = (function() {
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
                         results: results,
-                        // v3.09: celebration field with photo path (no URL)
+                        // v3.10: celebration field with photo path (NO imageUrl: null)
                         celebration: celebrationData
                     };
                     
@@ -268,10 +267,9 @@ var HistoryRecord = (function() {
                         };
                     });
                     
-                    // v3.09: Build celebration field with photo path (no URL)
+                    // v3.10: Build celebration field with photo path (NO imageUrl: null)
                     var celebrationData = {
                         imageRef: photoPath,
-                        imageUrl: null,  // Frontend will call getDownloadURL()
                         status: 'pending',
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
@@ -322,13 +320,12 @@ var HistoryRecord = (function() {
                         f2DataString: flight2DataString || "",
                         results: results,
                         
-                        // Placeholder for handicap adjustment (to be filled later)
-                        adjustedHandicaps: null,
+                        // v3.10: adjustedHandicaps field OMITTED entirely (will be added by updateWithHandicap)
                         
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                         archiveId: docId,
                         
-                        // v3.09: celebration field with photo path (no URL)
+                        // v3.10: celebration field with photo path (NO imageUrl: null)
                         celebration: celebrationData
                     };
                     
@@ -599,18 +596,17 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.09
-KEY CHANGES from v3.08:
-   - REMOVED: getStoredPhotoUrlForHistory() - no longer needed
-   - REMOVED: localStorage checks for photo URL (device-specific, unreliable)
-   - ADDED: getPhotoPathForHistory() - constructs photo path from game ID
-   - CHANGED: celebration.imageRef set to 'celebration/{gameId}_H.jpg'
-   - CHANGED: celebration.imageUrl set to null (frontend uses getDownloadURL)
-   - REASON: Photo ID is fixed by convention - no need to store URL
-   - REASON: localStorage is device-specific and caused cross-device issues
-   - PRESERVED: ALL other functionality from v3.08 unchanged
-   - PRESERVED: Status="completed" when both signed
-   - PRESERVED: Signatures simplified (only signed: true/false)
+VERSION: 3.10
+KEY CHANGES from v3.09:
+   - REMOVED: celebration.imageUrl: null from both CREATE and UPDATE (no longer written)
+   - REMOVED: adjustedHandicaps: null from CREATE (field omitted entirely)
+   - REASON: Setting imageUrl: null created conflicting data with dot notation writes
+   - REASON: adjustedHandicaps: null caused validation to report missing data
+   - REASON: Photo code (celebration-photo.js) will populate imageUrl later via nested object
+   - REASON: Handicap data will be written by updateWithHandicap() when available
+   - PRESERVED: ALL other functionality from v3.09 unchanged
+   - PRESERVED: getPhotoPathForHistory() unchanged
+   - PRESERVED: Status determination logic unchanged
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
