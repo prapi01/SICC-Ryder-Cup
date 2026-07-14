@@ -1,21 +1,22 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: renderValidateResults() now uses validation.recalculated data instead of recalculating independently
-   - FIXED: Team Game, Stroke Game, and Match Game now respect startingHole from the record
-   - FALLBACK: If recalculated data is missing, falls back to independent calculation (preserves existing behavior)
-   - REASON: v1.30 broke all calculations because renderValidateResults() was calling calculateTeamGame() and calculateStrokeGame() without startingHole
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: renderValidateResults() now calls calculation functions directly with startingHole
+   - REMOVED: Dependency on recalculated.teamGame.flight1 (summary data, not per-hole data)
+   - REASON: v1.30 broke all calculations because UI was using summary data instead of per-hole data
+   - v1.18 tried to use recalculated data but the structure didn't match what renderTRTable() expects
+   - v1.19 restores v1.29 behavior with proper startingHole support for all three games
    - PRESERVED: All existing functionality from v1.17
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.18";
+window.UTIL_VALIDATE_UI_VERSION = "1.19";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.18 - Fixed renderValidateResults to use recalculated data");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.19 - Fixed renderValidateResults to pass startingHole");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -1247,14 +1248,13 @@ var UtilValidateUI = (function() {
             return;
         }
         
-        // v1.18: Use recalculated data from validation (which already has correct startingHole)
-        // Fallback to independent calculation if recalculated data is missing
-        var t1Calc = recalculated.teamGame && recalculated.teamGame.flight1 ? recalculated.teamGame.flight1 : UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
-        var t2Calc = recalculated.teamGame && recalculated.teamGame.flight2 ? recalculated.teamGame.flight2 : UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || []);
-        var strkCalc = recalculated.strokeGame ? recalculated.strokeGame : UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
-        var matchData = recalculated.matchPlay && recalculated.matchPlay.results ? 
-            { orderedPlayers: recalculated.matchPlay.orderedPlayers || [], results: recalculated.matchPlay.results || [], matchPointsPerHole: recalculated.matchPlay.matchPointsPerHole || [] } : 
-            UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || []);
+        // v1.19: Always calculate with startingHole from the record
+        // This ensures per-hole data with teamGameTR and strokeTR is available for renderTRTable()
+        var startingHole = recordData.gameInfo?.startingHole || recordData.startingHole || 1;
+        var t1Calc = UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || [], startingHole);
+        var t2Calc = UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || [], startingHole);
+        var strkCalc = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players, startingHole);
+        var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || [], startingHole);
         var orderedPlayers = matchData.orderedPlayers || [];
         var matchResults = matchData.results || [];
         var matchPointsPerHole = matchData.matchPointsPerHole || [];
@@ -1888,16 +1888,17 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.18 - Fixed renderValidateResults to use recalculated data');
+console.log('[UTIL-VALIDATE-UI] v1.19 - Fixed renderValidateResults to pass startingHole');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: renderValidateResults() now uses validation.recalculated data instead of recalculating independently
-   - FIXED: Team Game, Stroke Game, and Match Game now respect startingHole from the record
-   - FALLBACK: If recalculated data is missing, falls back to independent calculation (preserves existing behavior)
-   - REASON: v1.30 broke all calculations because renderValidateResults() was calling calculateTeamGame() and calculateStrokeGame() without startingHole
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: renderValidateResults() now calls calculation functions directly with startingHole
+   - REMOVED: Dependency on recalculated.teamGame.flight1 (summary data, not per-hole data)
+   - REASON: v1.30 broke all calculations because UI was using summary data instead of per-hole data
+   - v1.18 tried to use recalculated data but the structure didn't match what renderTRTable() expects
+   - v1.19 restores v1.29 behavior with proper startingHole support for all three games
    - PRESERVED: All existing functionality from v1.17
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
