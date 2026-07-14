@@ -1,22 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - ADDED: Debug logging for Match Game calculation at H10
-   - REASON: Need to see the actual match data being calculated for validation
-   - Logs each match at H10 with pointsA and pointsB
-   - Logs total Match Game points at H10
-   - PRESERVED: ALL other functionality from v1.27 unchanged
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - FIXED: calculateMatchGamePerHole() now uses play order instead of natural order
+   - ADDED: startingHole parameter to calculateMatchGamePerHole()
+   - ADDED: startingHole parameter to buildCompleteResultsFromRawData()
+   - CHANGED: validateRecord() now passes startingHole to buildCompleteResultsFromRawData()
+   - REASON: For shotgun starts, cumulative lead should start at the first played hole
+   - REASON: Natural order (H1-H18) was causing incorrect cumulative leads
+   - PRESERVED: ALL other functionality from v1.28 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.28";
+window.UTIL_VALIDATE_VERSION = "1.29";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.28 - Added Match Game debug logging");
+    console.log("[UTIL-VALIDATE] Initializing v1.29 - Fixed shotgun start play order");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -389,10 +391,10 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // MATCH GAME CALCULATION (with clinch detection)
+    // MATCH GAME CALCULATION (with clinch detection) - v1.29: Fixed shotgun start
     // ============================================================
     
-    function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
+    function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar, startingHole) {
         var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
         var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
         
@@ -430,7 +432,15 @@ var UtilValidate = (function() {
             matchClinched[keyB] = false;
         }
         
-        for (var hole = 1; hole <= 18; hole++) {
+        // v1.29: Build play order based on starting hole (shotgun start support)
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        
+        // v1.29: Loop over play order instead of natural order
+        for (var pos = 0; pos < 18; pos++) {
+            var hole = playOrder[pos];
+            
             var holePoints = {};
             var holeClinchInfo = {};
             var holeMatchPoints = {};
@@ -438,7 +448,7 @@ var UtilValidate = (function() {
                 holePoints[orderedPlayers[p].name] = 0;
                 holeClinchInfo[orderedPlayers[p].name] = { clinched: false, asAtH18: false };
             }
-            var remainingHoles = 18 - hole;
+            var remainingHoles = 18 - (pos + 1); // Remaining holes after this position
             
             for (var m = 0; m < allMatches.length; m++) {
                 var match = allMatches[m];
@@ -502,7 +512,7 @@ var UtilValidate = (function() {
                     }
                 }
                 
-                var isASAtH18 = (hole === 18 && leadA === 0 && leadB === 0);
+                var isASAtH18 = (pos === 17 && leadA === 0 && leadB === 0);
                 
                 if (isClinchHole) {
                     holePoints[match.playerA.name] += pointsA;
@@ -563,14 +573,15 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD COMPLETE RESULTS FROM RAW DATA
+    // BUILD COMPLETE RESULTS FROM RAW DATA - v1.29: Added startingHole
     // ============================================================
     
-    function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
+    function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole) {
         var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
         var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
         var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
-        var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+        // v1.29: Pass startingHole to calculateMatchGamePerHole
+        var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar, startingHole);
         var orderedPlayers = matchData.orderedPlayers;
         var matchResults = matchData.results;
         var matchPointsPerHole = matchData.matchPointsPerHole;
@@ -1544,6 +1555,8 @@ var UtilValidate = (function() {
         var players = recordData.players || [];
         var courseSi = (recordData.gameInfo?.course?.si) || (recordData.course?.si) || [];
         var coursePar = (recordData.gameInfo?.course?.par) || (recordData.course?.par) || [];
+        // v1.29: Get startingHole from record data
+        var startingHole = recordData.gameInfo?.startingHole || recordData.startingHole || 1;
         
         if (!f1Scores && !f2Scores) {
             return { valid: false, error: 'No valid flight data found' };
@@ -1572,7 +1585,8 @@ var UtilValidate = (function() {
             for (var i = 0; i < 18; i++) coursePar[i] = 4;
         }
         
-        var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
+        // v1.29: Pass startingHole to buildCompleteResultsFromRawData
+        var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole);
         
         var fieldValidation = validateAllFields(recordData, recalculated);
         
@@ -2012,13 +2026,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - ADDED: Debug logging for Match Game calculation at H10
-   - REASON: Need to see the actual match data being calculated for validation
-   - Logs each match at H10 with pointsA and pointsB
-   - Logs total Match Game points at H10
-   - PRESERVED: ALL other functionality from v1.27 unchanged
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - FIXED: calculateMatchGamePerHole() now uses play order instead of natural order
+   - ADDED: startingHole parameter to calculateMatchGamePerHole()
+   - ADDED: startingHole parameter to buildCompleteResultsFromRawData()
+   - CHANGED: validateRecord() now passes startingHole to buildCompleteResultsFromRawData()
+   - REASON: For shotgun starts, cumulative lead should start at the first played hole
+   - REASON: Natural order (H1-H18) was causing incorrect cumulative leads
+   - PRESERVED: ALL other functionality from v1.28 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
