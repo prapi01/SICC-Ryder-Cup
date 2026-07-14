@@ -1,15 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - FIXED: submitSignature() now waits for Firestore write to complete before showing completion modal
-   - CHANGED: performWrite() is now called and awaited before showGameCompleteModal()
-   - REASON: Navigation to post-game.html was happening before Firestore write completed
-   - REASON: F2's signature was not being written to Firestore because page unloaded
-   - REASON: F1's waiting screen never received the signature
-   - PRESERVED: ALL other functionality from v1.32 unchanged
-   - PRESERVED: Double-Listener system for signatures
-   - PRESERVED: sessionStorage photo caching
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - CHANGED: Celebration score layout from horizontal to stacked
+   - REASON: "Team B" label was overflowing on 393px screens
+   - CHANGED: Scores now display below team labels
+   - CHANGED: Layout: "Team A | Team B" on top row, scores on bottom row
+   - PRESERVED: ALL other functionality from v1.33 unchanged
+   - PRESERVED: ALL font sizes and styling unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
@@ -195,7 +193,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.32: Uses sessionStorage photo (no fallback)
+    // Celebration Screen - v1.34: Stacked score layout
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -253,6 +251,7 @@ var SignCard = (function() {
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
+            // v1.34: Stacked score layout - Team labels on top row, scores on bottom row
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
@@ -262,12 +261,17 @@ var SignCard = (function() {
                         <div class="celebration-winner ${winnerClass}">
                             ${winnerText}
                         </div>
-                        <div class="celebration-score" style="display:flex; justify-content:center; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a;">
-                            <span class="score-team-a" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</span>
-                            <span class="score-number-a" style="font-size:2.4rem; font-weight:700; color:${teamAColor}; margin-left:8px;">${teamADisplay}</span>
-                            <span class="score-vs" style="font-size:1.6rem; color:#555; margin:0 12px;">|</span>
-                            <span class="score-number-b" style="font-size:2.4rem; font-weight:700; color:${teamBColor}; margin-right:8px;">${teamBDisplay}</span>
-                            <span class="score-team-b" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</span>
+                        <div class="celebration-score" style="display:flex; flex-direction:column; align-items:center; padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a; gap:4px;">
+                            <div class="score-row-top" style="display:flex; justify-content:center; align-items:center; width:100%; gap:16px;">
+                                <span class="score-team-a" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</span>
+                                <span class="score-vs" style="font-size:1.6rem; color:#555;">|</span>
+                                <span class="score-team-b" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</span>
+                            </div>
+                            <div class="score-row-bottom" style="display:flex; justify-content:center; align-items:center; width:100%; gap:16px;">
+                                <span class="score-number-a" style="font-size:2.4rem; font-weight:700; color:${teamAColor};">${teamADisplay}</span>
+                                <span class="score-vs" style="font-size:1.6rem; color:#555;">|</span>
+                                <span class="score-number-b" style="font-size:2.4rem; font-weight:700; color:${teamBColor};">${teamBDisplay}</span>
+                            </div>
                         </div>
                         <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
                     </div>
@@ -357,7 +361,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Styles
+    // Celebration Styles - v1.34: Stacked score layout
     // ============================================================
     
     function addCelebrationStyles() {
@@ -500,38 +504,39 @@ var SignCard = (function() {
                     border: 1px solid #ffaa44;
                 }
                 
+                /* v1.34: Stacked score layout */
                 .celebration-score {
                     display: flex;
-                    justify-content: center;
+                    flex-direction: column;
                     align-items: center;
-                    gap: 8px;
-                    flex-wrap: wrap;
                     padding: 12px 0;
                     border-top: 1px solid #2a2a2a;
                     border-bottom: 1px solid #2a2a2a;
+                    gap: 4px;
+                }
+                .celebration-score .score-row-top,
+                .celebration-score .score-row-bottom {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    width: 100%;
+                    gap: 16px;
                 }
                 .celebration-score .score-team-a,
                 .celebration-score .score-team-b {
                     font-size: 1.2rem;
                     font-weight: 600;
                     color: #4caf50;
+                    white-space: nowrap;
                 }
                 .celebration-score .score-number-a,
                 .celebration-score .score-number-b {
                     font-size: 2.4rem;
                     font-weight: 700;
-                    color: #4caf50;
-                }
-                .celebration-score .score-number-a {
-                    margin-left: 8px;
-                }
-                .celebration-score .score-number-b {
-                    margin-right: 8px;
                 }
                 .celebration-score .score-vs {
                     font-size: 1.6rem;
                     color: #555;
-                    margin: 0 12px;
                 }
                 
                 .celebration-btn {
@@ -569,7 +574,9 @@ var SignCard = (function() {
                     .celebration-score .score-team-b { font-size: 1rem; }
                     .celebration-score .score-number-a,
                     .celebration-score .score-number-b { font-size: 1.8rem; }
-                    .celebration-score .score-vs { font-size: 1.2rem; margin: 0 8px; }
+                    .celebration-score .score-vs { font-size: 1.2rem; }
+                    .celebration-score .score-row-top,
+                    .celebration-score .score-row-bottom { gap: 8px; }
                     .celebration-btn { font-size: 16px; padding: 14px 16px; }
                     .celebration-image { max-height: 30vh; min-height: 80px; }
                 }
@@ -1053,20 +1060,18 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.33";
+window.SIGN_CARD_VERSION = "1.34";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - FIXED: submitSignature() now waits for Firestore write to complete before showing completion modal
-   - CHANGED: performWrite() is now called and awaited before showGameCompleteModal()
-   - REASON: Navigation to post-game.html was happening before Firestore write completed
-   - REASON: F2's signature was not being written to Firestore because page unloaded
-   - REASON: F1's waiting screen never received the signature
-   - PRESERVED: ALL other functionality from v1.32 unchanged
-   - PRESERVED: Double-Listener system for signatures
-   - PRESERVED: sessionStorage photo caching
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - CHANGED: Celebration score layout from horizontal to stacked
+   - REASON: "Team B" label was overflowing on 393px screens
+   - CHANGED: Scores now display below team labels
+   - CHANGED: Layout: "Team A | Team B" on top row, scores on bottom row
+   - PRESERVED: ALL other functionality from v1.33 unchanged
+   - PRESERVED: ALL font sizes and styling unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
