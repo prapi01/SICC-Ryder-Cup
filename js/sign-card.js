@@ -1,13 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - CHANGED: Celebration score layout to match view-history (single divider between columns)
-   - REASON: "Team B" label was overflowing on 393px screens
-   - CHANGED: Layout now uses ONE divider between Team A and Team B columns
-   - CHANGED: Labels on top row, scores on bottom row (matching view-history style)
-   - PRESERVED: ALL font sizes and colors unchanged from v1.33
-   - PRESERVED: ALL other functionality from v1.33 unchanged
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - FIXED: submitSignature() listener now checks BOTH signatures (f1SignedCheck && f2SignedCheck)
+   - REMOVED: ourFlightSigned variable (was causing waiting screen to hang)
+   - REASON: F1.signed was not being detected because listener only checked current flight
+   - REASON: Both F1 and F2 would get stuck on waiting screen
+   - PRESERVED: ALL other functionality from v1.34 unchanged
+   - PRESERVED: refreshCacheBeforeSigning, buildHistoryPayload, triggerHistoryRecordWrite
+   - PRESERVED: Celebration layout, UI styles, photo handling
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
@@ -762,11 +763,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.33: DOUBLE-LISTENER SYSTEM FOR SIGNATURE FLAGS - FIXED WRITE ORDER
-    // - REFRESHES CACHE BEFORE SIGNING (ensures latest data)
-    // - WAITS for Firestore write to complete before showing completion
-    // - F2 writes history record (F1 never writes)
-    // - WRV write is background (user never waits)
+    // v1.35: FIXED - Listener now checks BOTH signatures
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -824,7 +821,7 @@ var SignCard = (function() {
                 
                 // ============================================================
                 // STEP 3: Write signature to Firestore (both F1 and F2)
-                // v1.33: This must COMPLETE before showing completion modal
+                // v1.35: Listener checks BOTH signatures (f1SignedCheck && f2SignedCheck)
                 // ============================================================
                 var maxRetries = 5;
                 var attemptCount = 0;
@@ -878,12 +875,11 @@ var SignCard = (function() {
                                 var f1SignedCheck = signatures.f1?.signed === true;
                                 var f2SignedCheck = signatures.f2?.signed === true;
                                 
-                                var ourFlightSigned = flight === 1 ? f1SignedCheck : f2SignedCheck;
-                                
-                                if (ourFlightSigned) {
+                                // v1.35: FIXED - Check BOTH signatures, not just current flight
+                                if (f1SignedCheck && f2SignedCheck) {
                                     if (!confirmed) {
                                         confirmed = true;
-                                        console.log('[SignCard] ✅ CONFIRMED via listener: flight', flight, 'signed=true');
+                                        console.log('[SignCard] ✅ BOTH signatures confirmed via listener!');
                                         
                                         if (listenerUnsubscribe) {
                                             listenerUnsubscribe();
@@ -894,37 +890,34 @@ var SignCard = (function() {
                                             writeTimeout = null;
                                         }
                                         
-                                        // v1.33: Now that write is confirmed, check both signed
-                                        if (f1SignedCheck && f2SignedCheck) {
-                                            console.log('[SignCard] Both signed (confirmed)!');
-                                            
-                                            // If this is F2, ensure history record is written
-                                            if (flight === 2) {
-                                                console.log('[SignCard] F2: History record write triggered from cache');
-                                                // Trigger history record write (background)
-                                                var gameData = cache ? cache._gameData : null;
-                                                if (!gameData) {
-                                                    docRef.get().then(function(doc) {
-                                                        if (doc.exists) {
-                                                            gameData = doc.data();
-                                                        }
-                                                        triggerHistoryRecordWrite(gameId, cache, gameData);
-                                                    }).catch(function() {
-                                                        triggerHistoryRecordWrite(gameId, cache, null);
-                                                    });
-                                                } else {
+                                        console.log('[SignCard] Both signed (confirmed)!');
+                                        
+                                        // If this is F2, ensure history record is written
+                                        if (flight === 2) {
+                                            console.log('[SignCard] F2: History record write triggered from cache');
+                                            // Trigger history record write (background)
+                                            var gameData = cache ? cache._gameData : null;
+                                            if (!gameData) {
+                                                docRef.get().then(function(doc) {
+                                                    if (doc.exists) {
+                                                        gameData = doc.data();
+                                                    }
                                                     triggerHistoryRecordWrite(gameId, cache, gameData);
-                                                }
+                                                }).catch(function() {
+                                                    triggerHistoryRecordWrite(gameId, cache, null);
+                                                });
                                             } else {
-                                                console.log('[SignCard] F1 - not writing history record (F2 handles this)');
+                                                triggerHistoryRecordWrite(gameId, cache, gameData);
                                             }
-                                            
-                                            // v1.33: Now show completion modal (navigation happens here)
-                                            if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
-                                                RealGameNav.showGameCompleteModal(gameId);
-                                            } else {
-                                                showGameCompleteModalDirect(gameId);
-                                            }
+                                        } else {
+                                            console.log('[SignCard] F1 - not writing history record (F2 handles this)');
+                                        }
+                                        
+                                        // Show completion modal (navigation happens here)
+                                        if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                                            RealGameNav.showGameCompleteModal(gameId);
+                                        } else {
+                                            showGameCompleteModalDirect(gameId);
                                         }
                                         
                                         resolve(true);
@@ -972,11 +965,7 @@ var SignCard = (function() {
                         });
                 }
                 
-                // v1.33: IMPORTANT - Wait for Firestore write to complete before showing completion
                 performWrite(0);
-                
-                // v1.33: Removed the immediate showGameCompleteModal() call here
-                // It is now called inside performWrite() after confirmation
             });
         });
     }
@@ -1051,18 +1040,19 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.34";
+window.SIGN_CARD_VERSION = "1.35";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - CHANGED: Celebration score layout to match view-history (single divider between columns)
-   - REASON: "Team B" label was overflowing on 393px screens
-   - CHANGED: Layout now uses ONE divider between Team A and Team B columns
-   - CHANGED: Labels on top row, scores on bottom row (matching view-history style)
-   - PRESERVED: ALL font sizes and colors unchanged from v1.33
-   - PRESERVED: ALL other functionality from v1.33 unchanged
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - FIXED: submitSignature() listener now checks BOTH signatures (f1SignedCheck && f2SignedCheck)
+   - REMOVED: ourFlightSigned variable (was causing waiting screen to hang)
+   - REASON: F1.signed was not being detected because listener only checked current flight
+   - REASON: Both F1 and F2 would get stuck on waiting screen
+   - PRESERVED: ALL other functionality from v1.34 unchanged
+   - PRESERVED: refreshCacheBeforeSigning, buildHistoryPayload, triggerHistoryRecordWrite
+   - PRESERVED: Celebration layout, UI styles, photo handling
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
