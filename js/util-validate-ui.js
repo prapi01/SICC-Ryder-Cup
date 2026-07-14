@@ -1,21 +1,21 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: New column now displays zero-rised handicap (newAnchor) instead of rawNew
-     - finalExp fallback order: newHcp → newAnchor → finalHcp → rawNew
-   - FIXED: Removed ▲/▼ arrows from Raw HCP column (cleaner display)
-   - CHANGED: Raw HCP now shows only the number with color coding (no arrows)
-   - PRESERVED: All existing functionality from v1.16
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: renderValidateResults() now uses validation.recalculated data instead of recalculating independently
+   - FIXED: Team Game, Stroke Game, and Match Game now respect startingHole from the record
+   - FALLBACK: If recalculated data is missing, falls back to independent calculation (preserves existing behavior)
+   - REASON: v1.30 broke all calculations because renderValidateResults() was calling calculateTeamGame() and calculateStrokeGame() without startingHole
+   - PRESERVED: All existing functionality from v1.17
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.17";
+window.UTIL_VALIDATE_UI_VERSION = "1.18";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.17 - Fixed New column zero-rise, removed arrows");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.18 - Fixed renderValidateResults to use recalculated data");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -1247,20 +1247,22 @@ var UtilValidateUI = (function() {
             return;
         }
         
-        var t1Calc = UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
-        var t2Calc = UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || []);
-        var strkCalc = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
+        // v1.18: Use recalculated data from validation (which already has correct startingHole)
+        // Fallback to independent calculation if recalculated data is missing
+        var t1Calc = recalculated.teamGame && recalculated.teamGame.flight1 ? recalculated.teamGame.flight1 : UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
+        var t2Calc = recalculated.teamGame && recalculated.teamGame.flight2 ? recalculated.teamGame.flight2 : UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || []);
+        var strkCalc = recalculated.strokeGame ? recalculated.strokeGame : UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
+        var matchData = recalculated.matchPlay && recalculated.matchPlay.results ? 
+            { orderedPlayers: recalculated.matchPlay.orderedPlayers || [], results: recalculated.matchPlay.results || [], matchPointsPerHole: recalculated.matchPlay.matchPointsPerHole || [] } : 
+            UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || []);
+        var orderedPlayers = matchData.orderedPlayers || [];
+        var matchResults = matchData.results || [];
+        var matchPointsPerHole = matchData.matchPointsPerHole || [];
         
         renderTeamGameTable(t1Calc, 'validateT1', 'T-1');
         renderTeamGameTable(t2Calc, 'validateT2', 'T-2');
         renderStrkTable(strkCalc, 'validateStrk');
-        
-        var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, validation.courseSi || [], validation.coursePar || []);
-        var orderedPlayers = matchData.orderedPlayers || [];
-        var matchResults = matchData.results || [];
         renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
-        
-        var matchPointsPerHole = matchData.matchPointsPerHole || [];
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
         // v1.17: Render Handicap Adjustment card with fixed New column zero-rise
@@ -1886,17 +1888,17 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.17 - Fixed New column zero-rise, removed arrows');
+console.log('[UTIL-VALIDATE-UI] v1.18 - Fixed renderValidateResults to use recalculated data');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: New column now displays zero-rised handicap (newAnchor) instead of rawNew
-     - finalExp fallback order: newHcp → newAnchor → finalHcp → rawNew
-   - FIXED: Removed ▲/▼ arrows from Raw HCP column (cleaner display)
-   - CHANGED: Raw HCP now shows only the number with color coding (no arrows)
-   - PRESERVED: All existing functionality from v1.16
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: renderValidateResults() now uses validation.recalculated data instead of recalculating independently
+   - FIXED: Team Game, Stroke Game, and Match Game now respect startingHole from the record
+   - FALLBACK: If recalculated data is missing, falls back to independent calculation (preserves existing behavior)
+   - REASON: v1.30 broke all calculations because renderValidateResults() was calling calculateTeamGame() and calculateStrokeGame() without startingHole
+   - PRESERVED: All existing functionality from v1.17
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
