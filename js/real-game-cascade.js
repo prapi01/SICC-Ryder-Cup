@@ -1,19 +1,22 @@
 /*
 FILE: js/real-game-cascade.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: Clinch hole assignment to cache in calculateHoleResultsWithCumulative()
+   - REASON: flight1ClinchedHole and flight2ClinchedHole were calculated but never stored in cascade path
+   - REASON: game-scorecard.js reads cache.results.game2.flight1/2.clinchedHole for GOLD display
+   - REASON: Without this, T-x rows never show GOLD even when clinched during cascade recalculation
+   - PRESERVED: ALL other functionality from v1.01 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameMatch, GameTeam, GameStroke, GameLoader
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_CASCADE_VERSION = "1.01";
+window.REAL_GAME_CASCADE_VERSION = "1.02";
 
 var RealGameCascade = (function() {
     
-    console.log("[REAL-GAME-CASCADE] Initializing v1.01");
+    console.log("[REAL-GAME-CASCADE] Initializing v1.02 - Clinch hole assignment to cache");
     
     // ============================================================
     // Private Helpers
@@ -103,6 +106,16 @@ var RealGameCascade = (function() {
                 allPlayers, cache.f1DataString, cache.f2DataString, 
                 courseSi, startingHole, teamGameFormat, remainingHolesByPosition
             );
+        }
+        
+        // v1.02: Store clinch holes in cache for UI display (GOLD)
+        if (teamGameResults) {
+            if (teamGameResults.flight1ClinchedHole !== null && teamGameResults.flight1ClinchedHole !== undefined) {
+                cache.results.game2.flight1.clinchedHole = teamGameResults.flight1ClinchedHole;
+            }
+            if (teamGameResults.flight2ClinchedHole !== null && teamGameResults.flight2ClinchedHole !== undefined) {
+                cache.results.game2.flight2.clinchedHole = teamGameResults.flight2ClinchedHole;
+            }
         }
         
         var flight1ClinchedHoleResult = teamGameResults ? teamGameResults.flight1ClinchedHole : null;
@@ -333,10 +346,13 @@ window.RealGameCascade = RealGameCascade;
 
 /*
 FILE: js/real-game-cascade.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: Clinch hole assignment to cache in calculateHoleResultsWithCumulative()
+   - REASON: flight1ClinchedHole and flight2ClinchedHole were calculated but never stored in cascade path
+   - REASON: game-scorecard.js reads cache.results.game2.flight1/2.clinchedHole for GOLD display
+   - REASON: Without this, T-x rows never show GOLD even when clinched during cascade recalculation
+   - PRESERVED: ALL other functionality from v1.01 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameMatch, GameTeam, GameStroke, GameLoader
 STATUS: Ready for integration
 */
