@@ -1,12 +1,14 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - CHANGED: loadHcpData() now calls HandicapAdjustment.initForHistory() instead of init()
-   - REASON: v2.59's init() requires multiple parameters (winningPlayers, matchPoints, etc.)
-   - REASON: initForHistory() is the correct function for read-only display from historyGames
-   - REASON: hcp-adjust is a standalone display page for completed games
-   - PRESERVED: ALL other functionality from v1.31 unchanged
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - FIXED: loadHcpData() now detects LIVE vs HISTORY mode
+   - ADDED: LIVE game detection via sessionStorage.celebrationData
+   - CHANGED: LIVE game → calls HandicapAdjustment.init()
+   - CHANGED: HISTORY view → calls HandicapAdjustment.initForHistory()
+   - REASON: v1.32 always called initForHistory() which broke live game handicap display
+   - REASON: Live game data is in memory, not in historyGames yet
+   - PRESERVED: ALL other functionality from v1.32 unchanged
    - PRESERVED: UI styling, version tag, cache-busting
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/modal.js, js/hcp-adjust.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
@@ -24,10 +26,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.32"></script>
-    <script src="js/session.js?v=1.32"></script>
-    <script src="js/settings.js?v=1.32"></script>
-    <script src="js/modal.js?v=1.32"></script>
+    <script src="js/firebase-config.js?v=1.33"></script>
+    <script src="js/session.js?v=1.33"></script>
+    <script src="js/settings.js?v=1.33"></script>
+    <script src="js/modal.js?v=1.33"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <!-- WRV support -->
@@ -249,7 +251,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.32</div>
+<div class="version-tag">v1.33</div>
 
 <script>
 // ============================================================
@@ -262,10 +264,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.32: Use initForHistory() instead of init()
+// VERSION CACHE-BUSTING - v1.33: Detect LIVE vs HISTORY
 // ============================================================
-var APP_VERSION = "1.32";
-var CACHE_KEY = "hcp_adjust_version_v132";
+var APP_VERSION = "1.33";
+var CACHE_KEY = "hcp_adjust_version_v133";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -282,8 +284,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.32";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.32 - Using initForHistory()");
+window.HCP_ADJUST_PAGE_VERSION = "1.33";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.33 - LIVE vs HISTORY detection");
 
 // ============================================================
 // Main Logic
@@ -299,7 +301,7 @@ function getUrlParams() {
 }
 
 // ============================================================
-// v1.32: Render close button only
+// v1.33: Render close button only
 // ============================================================
 
 function renderButtons() {
@@ -327,7 +329,7 @@ function renderButtons() {
 }
 
 // ============================================================
-// v1.32: Load handicap data from history record using initForHistory()
+// v1.33: Load handicap data - DETECT LIVE vs HISTORY
 // ============================================================
 
 function loadHcpData() {
@@ -344,45 +346,77 @@ function loadHcpData() {
     
     console.log("[HCP-ADJUST-PAGE] Loading handicap data for game:", gameId);
     
-    // v1.32: Use initForHistory() for read-only display from historyGames
-    if (typeof HandicapAdjustment !== 'undefined') {
-        if (HandicapAdjustment.initForHistory) {
-            HandicapAdjustment.initForHistory(gameId, null, 'view-history.html?gameId=' + gameId);
-            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForHistory called");
-        } else if (HandicapAdjustment.init) {
-            // Fallback to init() if initForHistory not available
-            HandicapAdjustment.init(gameId);
-            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.init called (fallback)");
-        } else {
-            console.error("[HCP-ADJUST-PAGE] HandicapAdjustment not available");
-            document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
-            return;
-        }
-        
-        // Show container when table renders
-        var container = document.getElementById('hcpTableContainer');
-        if (container) {
-            var checkTable = setInterval(function() {
-                if (container.querySelector('table')) {
-                    container.classList.add('visible');
-                    console.log("[HCP-ADJUST-PAGE] Table detected, container shown");
-                    clearInterval(checkTable);
-                }
-            }, 100);
-            setTimeout(function() {
-                clearInterval(checkTable);
-                if (!container.classList.contains('visible')) {
-                    container.classList.add('visible');
-                    console.log("[HCP-ADJUST-PAGE] Timeout - container shown anyway");
-                }
-            }, 5000);
-        }
-        
-        renderButtons();
-    } else {
+    if (typeof HandicapAdjustment === 'undefined') {
         console.error("[HCP-ADJUST-PAGE] HandicapAdjustment not defined");
         document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
+        return;
     }
+    
+    // v1.33: DETECT LIVE vs HISTORY mode
+    // LIVE game: celebrationData exists in sessionStorage
+    // HISTORY view: no celebrationData
+    var celebrationDataStr = sessionStorage.getItem('celebrationData');
+    var isLiveGame = celebrationDataStr !== null && celebrationDataStr !== '';
+    
+    if (isLiveGame && HandicapAdjustment.init) {
+        // ============================================================
+        // LIVE GAME - Use init() with data from sessionStorage
+        // ============================================================
+        try {
+            var celebrationData = JSON.parse(celebrationDataStr);
+            var winningPlayers = celebrationData.winningPlayers || { teamA: [], teamB: [] };
+            
+            console.log("[HCP-ADJUST-PAGE] LIVE game detected - calling HandicapAdjustment.init()");
+            console.log("[HCP-ADJUST-PAGE] winningPlayers:", winningPlayers);
+            
+            // Pass null for matchPoints and holeResults - init() will load from GameData
+            HandicapAdjustment.init(gameId, null, winningPlayers, null, null, false);
+            console.log("[HCP-ADJUST-PAGE] ✅ HandicapAdjustment.init called (LIVE game)");
+        } catch(e) {
+            console.warn("[HCP-ADJUST-PAGE] Failed to parse celebrationData:", e.message);
+            // Fallback: try initForHistory
+            if (HandicapAdjustment.initForHistory) {
+                HandicapAdjustment.initForHistory(gameId, null, 'view-history.html?gameId=' + gameId);
+                console.log("[HCP-ADJUST-PAGE] ⚠️ Fallback to initForHistory");
+            }
+        }
+    } else if (HandicapAdjustment.initForHistory) {
+        // ============================================================
+        // HISTORY VIEW - Use initForHistory() (read-only display)
+        // ============================================================
+        console.log("[HCP-ADJUST-PAGE] HISTORY view detected - calling HandicapAdjustment.initForHistory()");
+        HandicapAdjustment.initForHistory(gameId, null, 'view-history.html?gameId=' + gameId);
+        console.log("[HCP-ADJUST-PAGE] ✅ HandicapAdjustment.initForHistory called (HISTORY view)");
+    } else if (HandicapAdjustment.init) {
+        // Fallback: init() if initForHistory not available
+        console.log("[HCP-ADJUST-PAGE] Fallback - calling HandicapAdjustment.init()");
+        HandicapAdjustment.init(gameId);
+    } else {
+        console.error("[HCP-ADJUST-PAGE] No valid HandicapAdjustment function available");
+        document.getElementById('debug').textContent = 'Error: HandicapAdjustment not available';
+        return;
+    }
+    
+    // Show container when table renders
+    var container = document.getElementById('hcpTableContainer');
+    if (container) {
+        var checkTable = setInterval(function() {
+            if (container.querySelector('table')) {
+                container.classList.add('visible');
+                console.log("[HCP-ADJUST-PAGE] Table detected, container shown");
+                clearInterval(checkTable);
+            }
+        }, 100);
+        setTimeout(function() {
+            clearInterval(checkTable);
+            if (!container.classList.contains('visible')) {
+                container.classList.add('visible');
+                console.log("[HCP-ADJUST-PAGE] Timeout - container shown anyway");
+            }
+        }, 5000);
+    }
+    
+    renderButtons();
 }
 
 // ============================================================
@@ -425,13 +459,15 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - CHANGED: loadHcpData() now calls HandicapAdjustment.initForHistory() instead of init()
-   - REASON: v2.59's init() requires multiple parameters (winningPlayers, matchPoints, etc.)
-   - REASON: initForHistory() is the correct function for read-only display from historyGames
-   - REASON: hcp-adjust is a standalone display page for completed games
-   - PRESERVED: ALL other functionality from v1.31 unchanged
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - FIXED: loadHcpData() now detects LIVE vs HISTORY mode
+   - ADDED: LIVE game detection via sessionStorage.celebrationData
+   - CHANGED: LIVE game → calls HandicapAdjustment.init()
+   - CHANGED: HISTORY view → calls HandicapAdjustment.initForHistory()
+   - REASON: v1.32 always called initForHistory() which broke live game handicap display
+   - REASON: Live game data is in memory, not in historyGames yet
+   - PRESERVED: ALL other functionality from v1.32 unchanged
    - PRESERVED: UI styling, version tag, cache-busting
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/modal.js, js/hcp-adjust.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
