@@ -1,15 +1,15 @@
 <!--
 FILE: view-game.html
-VERSION: 8.12
-KEY CHANGES from v8.11:
-   - FIXED: checkPhotoForView() now uses global gameId variable (getGameId was undefined)
-   - ADDED: Photo in memory? YES/NO log
-   - ADDED: ETag comparison log (Current ETag, Cached ETag)
-   - ADDED: ETag MATCH - SKIP DOWNLOAD log
-   - CHANGED: "ETag changed - downloading..." to "New Photo Detected - downloading photo..."
-   - REASON: getGameId() was not defined in view-game.html
-   - REASON: Need visibility into ETag check decision flow
-   - PRESERVED: ALL other functionality from v8.11 unchanged
+VERSION: 8.13
+KEY CHANGES from v8.12:
+   - REMOVED: Photo check on every navigation from nextHole() and prevHole()
+   - REMOVED: H17 mandatory trigger from nextHole() and prevHole()
+   - ADDED: Photo check in setupRealtimeListener() on every score update
+   - ADDED: Skip photo check only when H18 play order hole is saved (game complete)
+   - ADDED: isHoleSavedInData() helper function for data string checking
+   - REASON: View users can join at any stage, need photo ready for celebration screen
+   - REASON: ETag check is lightweight, checking on every score update is reliable
+   - PRESERVED: ALL other functionality from v8.12 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
@@ -24,10 +24,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.12"></script>
-    <script src="js/session.js?v=8.12"></script>
-    <script src="js/settings.js?v=8.12"></script>
-    <script src="js/celebration-photo.js?v=8.12"></script>
+    <script src="js/firebase-config.js?v=8.13"></script>
+    <script src="js/session.js?v=8.13"></script>
+    <script src="js/settings.js?v=8.13"></script>
+    <script src="js/celebration-photo.js?v=8.13"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -36,11 +36,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.12"></script>
-    <script src="js/history-record.js?v=8.12"></script>
+    <script src="js/ticker.js?v=8.13"></script>
+    <script src="js/history-record.js?v=8.13"></script>
     <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.12"></script>
-    <script src="js/modal.js?v=8.12"></script>
+    <script src="js/hcp-adjust.js?v=8.13"></script>
+    <script src="js/modal.js?v=8.13"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -161,14 +161,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.12</div>
+<div class="version-tag">v8.13</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.12: Fixed ETag logging
+// VERSION CACHE-BUSTING - v8.13: Photo check on score updates
 // ============================================================
-var APP_VERSION = "8.12";
-var CACHE_KEY = "view_game_version_v812";
+var APP_VERSION = "8.13";
+var CACHE_KEY = "view_game_version_v813";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -186,8 +186,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.12";
-console.log("[VIEW-GAME] Initializing v8.12 - Fixed ETag logging");
+window.VIEW_GAME_VERSION = "8.13";
+console.log("[VIEW-GAME] Initializing v8.13 - Photo check on score updates");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -730,6 +730,13 @@ function isHoleSaved(flight, hole) {
     return cache.savedHoles[flight] && cache.savedHoles[flight].indexOf(hole) !== -1;
 }
 
+// v8.13: Helper to check if a hole is saved in a data string
+function isHoleSavedInData(dataString, holeNumber) {
+    if (!dataString) return false;
+    var holeData = GameData.parseHoleData(dataString, holeNumber);
+    return holeData && holeData.saved === true;
+}
+
 function isCurrentHoleSavedByAnyFlight() {
     return isHoleSaved(1, currentHole) || isHoleSaved(2, currentHole);
 }
@@ -978,7 +985,7 @@ function displayPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// Navigation Functions - v8.12: Photo check on navigation
+// Navigation Functions - v8.13: Removed photo check from navigation
 // ============================================================
 
 function nextHole() {
@@ -1003,15 +1010,6 @@ function nextHole() {
         currentHole = nextHoleNumber;
         updateHoleNumberDisplay();
         renderAll();
-        
-        // v8.12: Photo check on every navigation
-        checkPhotoForView();
-        
-        // v8.12: Mandatory photo check at H17 (last chance before completion)
-        if (nextHoleNumber === 17) {
-            console.log('[VIEW-GAME] 📸 H17 reached - mandatory photo check');
-            checkPhotoForView();
-        }
     }
 }
 
@@ -1024,15 +1022,6 @@ function prevHole() {
         currentHole = prevHoleNumber;
         updateHoleNumberDisplay();
         renderAll();
-        
-        // v8.12: Photo check on every navigation
-        checkPhotoForView();
-        
-        // v8.12: Mandatory photo check at H17 (last chance before completion)
-        if (prevHoleNumber === 17) {
-            console.log('[VIEW-GAME] 📸 H17 reached - mandatory photo check');
-            checkPhotoForView();
-        }
     }
 }
 
@@ -1211,7 +1200,7 @@ function renderCompactHeader() {
 }
 
 // ============================================================
-// v8.12: Real-time Firestore Listener - VIEW read-only
+// v8.13: Real-time Firestore Listener - Photo check on every score update
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1234,17 +1223,7 @@ function setupRealtimeListener() {
             
             var data = doc.data();
             var currentCache = GameLoader.getLocalCache();
-            
-            // ============================================================
-            // v8.12: PHOTO CHECK - Listener triggers ETag check
-            // VIEW is read-only - no flag reads, no flag writes
-            // ============================================================
-            // Check if photo URL might have changed - trigger ETag check
             var imageUrl = data.celebration?.imageUrl || null;
-            if (imageUrl) {
-                console.log('[VIEW-GAME] Listener: Photo URL present - checking ETag');
-                checkPhotoForView();
-            }
             
             // Check what changed
             var f1Changed = (currentCache.f1DataString !== data.f1?.d);
@@ -1253,7 +1232,31 @@ function setupRealtimeListener() {
             var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
             var statusChanged = (currentCache.status !== data.status);
             
-            console.log("[VIEW-GAME] Realtime update - signaturesChanged:", signaturesChanged, "statusChanged:", statusChanged);
+            // ============================================================
+            // v8.13: PHOTO CHECK - Trigger on every score update EXCEPT H18 play order
+            // ============================================================
+            if (f1Changed || f2Changed) {
+                // Get the H18 play order hole (last hole in play order)
+                var playOrder = getPlayOrder();
+                var h18NaturalHole = playOrder[playOrder.length - 1];
+                
+                // Check if H18 play order hole is now fully saved
+                var h18SavedNow = isHoleSavedInData(data.f1?.d, h18NaturalHole) && 
+                                  isHoleSavedInData(data.f2?.d, h18NaturalHole);
+                var h18WasSaved = currentCache.savedHoles?.[1]?.includes(h18NaturalHole) && 
+                                  currentCache.savedHoles?.[2]?.includes(h18NaturalHole);
+                
+                if (h18SavedNow && !h18WasSaved) {
+                    console.log('[VIEW-GAME] 📸 H18 play order (' + h18NaturalHole + ') completed - skipping photo check (game complete)');
+                } else {
+                    console.log('[VIEW-GAME] 📸 Score update detected - checking photo');
+                    checkPhotoForView();
+                }
+            } else if (imageUrl) {
+                // Fallback: if imageUrl exists but no score change, still check
+                console.log('[VIEW-GAME] Listener: Photo URL present - checking ETag');
+                checkPhotoForView();
+            }
             
             // v7.43: ALWAYS process signature changes first
             if (signaturesChanged || statusChanged) {
@@ -1501,7 +1504,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.12: Initialization - Direct ETag photo check
+// v8.13: Initialization - Photo check via listener on score updates
 // ============================================================
 
 async function init() {
@@ -1542,8 +1545,8 @@ async function init() {
         return;
     }
     
-    // v8.12: Photo check will run on first navigation
-    console.log('[VIEW-GAME] 📸 Photo check will run on first navigation');
+    // v8.13: Photo check will be triggered by realtime listener on score updates
+    console.log('[VIEW-GAME] 📸 Photo check will be triggered by realtime listener on score updates');
     
     var collection = "scheduledGames";
     GameLoader.addDataCallback(onCacheUpdate);
@@ -1689,7 +1692,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.12 initialized - Fixed ETag logging');
+    console.log('[VIEW-GAME] v8.13 initialized - Photo check on score updates');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1701,16 +1704,16 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.12
-KEY CHANGES from v8.11:
-   - FIXED: checkPhotoForView() now uses global gameId variable (getGameId was undefined)
-   - ADDED: Photo in memory? YES/NO log
-   - ADDED: ETag comparison log (Current ETag, Cached ETag)
-   - ADDED: ETag MATCH - SKIP DOWNLOAD log
-   - CHANGED: "ETag changed - downloading..." to "New Photo Detected - downloading photo..."
-   - REASON: getGameId() was not defined in view-game.html
-   - REASON: Need visibility into ETag check decision flow
-   - PRESERVED: ALL other functionality from v8.11 unchanged
+VERSION: 8.13
+KEY CHANGES from v8.12:
+   - REMOVED: Photo check on every navigation from nextHole() and prevHole()
+   - REMOVED: H17 mandatory trigger from nextHole() and prevHole()
+   - ADDED: Photo check in setupRealtimeListener() on every score update
+   - ADDED: Skip photo check only when H18 play order hole is saved (game complete)
+   - ADDED: isHoleSavedInData() helper function for data string checking
+   - REASON: View users can join at any stage, need photo ready for celebration screen
+   - REASON: ETag check is lightweight, checking on every score update is reliable
+   - PRESERVED: ALL other functionality from v8.12 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
 STATUS: Ready for integration
 -->
