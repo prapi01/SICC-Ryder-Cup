@@ -1,13 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 8.18
-KEY CHANGES from v8.17:
-   - FIXED: db (Firestore) initialization moved inside init()
-   - REASON: load-game.js loads scripts asynchronously, so firebase may not be ready when inline script runs
-   - REASON: db was undefined, causing VIEW to fail to load
-   - CHANGED: var db = firebase.firestore() moved from top-level to inside init()
-   - PRESERVED: ALL other functionality from v8.17 unchanged
-   - PRESERVED: All third-party libraries (Firebase SDK) unchanged
+VERSION: 8.19
+KEY CHANGES from v8.18:
+   - REMOVED: version parameter from load-game.js script tag
+   - REASON: load-game.js now handles its own versioning via CDN cache TTL
+   - REASON: No longer need to edit HTML when load-game.js changes
+   - PRESERVED: ALL other functionality from v8.18 unchanged
 DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
 STATUS: Ready for integration
 -->
@@ -23,8 +21,8 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
-    <!-- v8.18: Universal script loader - loads ALL game .js files from versions.json -->
-    <script src="js/load-game.js?v=8.18"></script>
+    <!-- v8.19: load-game.js handles versioning internally (no ?v needed) -->
+    <script src="js/load-game.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -144,14 +142,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.18</div>
+<div class="version-tag">v8.19</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.18: db initialization fix
+// VERSION CACHE-BUSTING - v8.19: load-game.js no-version approach
 // ============================================================
-var APP_VERSION = "8.18";
-var CACHE_KEY = "view_game_version_v818";
+var APP_VERSION = "8.19";
+var CACHE_KEY = "view_game_version_v819";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -169,8 +167,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.18";
-console.log("[VIEW-GAME] Initializing v8.18 - db initialization fix");
+window.VIEW_GAME_VERSION = "8.19";
+console.log("[VIEW-GAME] Initializing v8.19 - load-game.js no-version approach");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1484,7 +1482,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.18: Initialization - db initialized after Firebase is ready
+// v8.19: Initialization - load-game.js no-version approach
 // ============================================================
 
 async function init() {
@@ -1677,7 +1675,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.18 initialized - db initialization fix');
+    console.log('[VIEW-GAME] v8.19 initialized - load-game.js no-version approach');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1689,14 +1687,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.18
-KEY CHANGES from v8.17:
-   - FIXED: db (Firestore) initialization moved inside init()
-   - REASON: load-game.js loads scripts asynchronously, so firebase may not be ready when inline script runs
-   - REASON: db was undefined, causing VIEW to fail to load
-   - CHANGED: var db = firebase.firestore() moved from top-level to inside init()
-   - PRESERVED: ALL other functionality from v8.17 unchanged
-   - PRESERVED: All third-party libraries (Firebase SDK) unchanged
+VERSION: 8.19
+KEY CHANGES from v8.18:
+   - REMOVED: version parameter from load-game.js script tag
+   - REASON: load-game.js now handles its own versioning via CDN cache TTL
+   - REASON: No longer need to edit HTML when load-game.js changes
+   - PRESERVED: ALL other functionality from v8.18 unchanged
 DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
 STATUS: Ready for integration
 -->
