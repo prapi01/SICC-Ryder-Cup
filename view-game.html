@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 8.19
-KEY CHANGES from v8.18:
-   - REMOVED: version parameter from load-game.js script tag
-   - REASON: load-game.js now handles its own versioning via CDN cache TTL
-   - REASON: No longer need to edit HTML when load-game.js changes
-   - PRESERVED: ALL other functionality from v8.18 unchanged
-DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
+VERSION: 8.16
+KEY CHANGES from v8.15:
+   - UPDATED: hcp-adjust.js from v8.15 to v2.60 (getData() function added)
+   - REASON: v2.60 exposes getData() for auto-save to history record
+   - PRESERVED: ALL other functionality from v8.15 unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js (v1.38), js/hcp-adjust.js (v2.60), js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
 
@@ -20,9 +19,24 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    
-    <!-- v8.19: load-game.js handles versioning internally (no ?v needed) -->
-    <script src="js/load-game.js"></script>
+    <script src="js/firebase-config.js?v=8.16"></script>
+    <script src="js/session.js?v=8.16"></script>
+    <script src="js/settings.js?v=8.16"></script>
+    <script src="js/celebration-photo.js?v=8.16"></script>
+    <script src="js/game-order.js?v=1.00"></script>
+    <script src="js/game-data.js?v=2.07"></script>
+    <script src="js/game-match.js?v=2.24"></script>
+    <script src="js/game-team.js?v=1.12"></script>
+    <script src="js/game-stroke.js?v=1.06"></script>
+    <script src="js/game-scorecard.js?v=1.13"></script>
+    <script src="js/game-ui.js?v=5.08"></script>
+    <script src="js/game-loader.js?v=1.16"></script>
+    <script src="js/ticker.js?v=8.16"></script>
+    <script src="js/history-record.js?v=8.16"></script>
+    <script src="js/sign-card.js?v=1.38"></script>
+    <script src="js/hcp-adjust.js?v=2.60"></script>
+    <script src="js/modal.js?v=8.16"></script>
+    <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -142,14 +156,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.19</div>
+<div class="version-tag">v8.16</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.19: load-game.js no-version approach
+// VERSION CACHE-BUSTING - v8.16: Updated hcp-adjust.js to v2.60
 // ============================================================
-var APP_VERSION = "8.19";
-var CACHE_KEY = "view_game_version_v819";
+var APP_VERSION = "8.16";
+var CACHE_KEY = "view_game_version_v816";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -167,8 +181,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.19";
-console.log("[VIEW-GAME] Initializing v8.19 - load-game.js no-version approach");
+window.VIEW_GAME_VERSION = "8.16";
+console.log("[VIEW-GAME] Initializing v8.16 - Updated hcp-adjust.js to v2.60");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -178,6 +192,11 @@ if (typeof AppSettings !== 'undefined') {
 } else {
     console.warn("[VIEW-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
+
+// ============================================================
+// Firebase already initialized in firebase-config.js
+// ============================================================
+var db = firebase.firestore();
 
 // ============================================================
 // Game State
@@ -201,7 +220,6 @@ var hasSwitchedToHistory = false;
 var isPostGameContext = false;
 
 var firestoreUnsubscribe = null;
-var db = null;  // v8.18: db initialized inside init() after Firebase is ready
 
 // ============================================================
 // v7.40: Check completion from Firestore status (source of truth)
@@ -1482,15 +1500,10 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.19: Initialization - load-game.js no-version approach
+// v8.16: Initialization - Updated hcp-adjust.js to v2.60
 // ============================================================
 
 async function init() {
-    // v8.18: Initialize db AFTER Firebase is ready
-    // load-game.js has already loaded firebase-config.js at this point
-    db = firebase.firestore();
-    console.log('[VIEW-GAME] db initialized');
-
     // v8.09: Show waiting screen immediately while data loads
     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
         WaitingScreen.show('Loading Game...');
@@ -1675,7 +1688,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.19 initialized - load-game.js no-version approach');
+    console.log('[VIEW-GAME] v8.16 initialized - Updated hcp-adjust.js to v2.60');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1687,12 +1700,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.19
-KEY CHANGES from v8.18:
-   - REMOVED: version parameter from load-game.js script tag
-   - REASON: load-game.js now handles its own versioning via CDN cache TTL
-   - REASON: No longer need to edit HTML when load-game.js changes
-   - PRESERVED: ALL other functionality from v8.18 unchanged
-DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
+VERSION: 8.16
+KEY CHANGES from v8.15:
+   - UPDATED: hcp-adjust.js from v8.15 to v2.60 (getData() function added)
+   - REASON: v2.60 exposes getData() for auto-save to history record
+   - PRESERVED: ALL other functionality from v8.15 unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js (v1.38), js/hcp-adjust.js (v2.60), js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
