@@ -1,8 +1,7 @@
 {
   "META": {
-    "version": "1.00",
-    "updatedAt": "2026-07-16",
-    "description": "Master version manifest for all .js files"
+    "version": "1.02",
+    "updatedAt": "2026-07-16"
   },
   "auth-pin.js": "2.08",
   "card-submit.js": "1.01",
@@ -22,6 +21,7 @@
   "hcp-adjust.js": "2.60",
   "history-record.js": "3.10",
   "index-hidden.js": "1.08",
+  "load-game.js": "1.03",
   "modal.js": "1.03",
   "real-game-cascade.js": "1.02",
   "real-game-init.js": "1.16",
