@@ -1,11 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - FIXED: Retry loop no longer triggers after successful write
-   - REASON: Timer was retrying even when write succeeded (waiting for other flight)
-   - CHANGED: Added listenerFired flag to distinguish "listener never fired" from "waiting for other flight"
-   - PRESERVED: ALL other functionality from v1.37 unchanged
+VERSION: 1.39
+KEY CHANGES from v1.38:
+   - REMOVED: History record write from listener (was causing skip on second firing)
+   - ADDED: History record write in submitSignature() after F2 write succeeds (async, user never waits)
+   - REASON: Listener fires multiple times → history write only happened on first firing
+   - REASON: Moving to submitSignature() ensures write happens ONCE when F2 confirms
+   - PRESERVED: ALL other functionality from v1.38 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
@@ -761,7 +762,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.38: FIXED - Retry loop stops after successful write
+    // v1.39: FIXED - History write moved from listener to submitSignature
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -833,6 +834,31 @@ var SignCard = (function() {
                         .then(function() {
                             console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
                             
+                            // v1.39: If F2 write succeeded, trigger history record write (async, user never waits)
+                            if (flight === 2) {
+                                console.log('[SignCard] F2: Triggering background history record write...');
+                                // Get fresh gameData for the record
+                                docRef.get().then(function(doc) {
+                                    if (doc.exists) {
+                                        var gameData = doc.data();
+                                        // v1.39: Fire and forget - user never waits
+                                        setTimeout(function() {
+                                            triggerHistoryRecordWrite(gameId, cache, gameData);
+                                        }, 100);
+                                    } else {
+                                        // Fallback: use cache data
+                                        setTimeout(function() {
+                                            triggerHistoryRecordWrite(gameId, cache, null);
+                                        }, 100);
+                                    }
+                                }).catch(function() {
+                                    // Fallback: use cache data
+                                    setTimeout(function() {
+                                        triggerHistoryRecordWrite(gameId, cache, null);
+                                    }, 100);
+                                });
+                            }
+                            
                             var confirmTimeout = 3000;
                             
                             if (listenerUnsubscribe) {
@@ -872,24 +898,7 @@ var SignCard = (function() {
                                     
                                     console.log('[SignCard] Both signed (confirmed)!');
                                     
-                                    if (flight === 2) {
-                                        console.log('[SignCard] F2: History record write triggered from cache');
-                                        var gameData = cache ? cache._gameData : null;
-                                        if (!gameData) {
-                                            docRef.get().then(function(doc) {
-                                                if (doc.exists) {
-                                                    gameData = doc.data();
-                                                }
-                                                triggerHistoryRecordWrite(gameId, cache, gameData);
-                                            }).catch(function() {
-                                                triggerHistoryRecordWrite(gameId, cache, null);
-                                            });
-                                        } else {
-                                            triggerHistoryRecordWrite(gameId, cache, gameData);
-                                        }
-                                    } else {
-                                        console.log('[SignCard] F1 - not writing history record (F2 handles this)');
-                                    }
+                                    // v1.39: History write removed from listener - now handled in F2 write success above
                                     
                                     if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
                                         RealGameNav.showGameCompleteModal(gameId);
@@ -1021,16 +1030,17 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.38";
+window.SIGN_CARD_VERSION = "1.39";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - FIXED: Retry loop no longer triggers after successful write
-   - REASON: Timer was retrying even when write succeeded (waiting for other flight)
-   - CHANGED: Added listenerFired flag to distinguish "listener never fired" from "waiting for other flight"
-   - PRESERVED: ALL other functionality from v1.37 unchanged
+VERSION: 1.39
+KEY CHANGES from v1.38:
+   - REMOVED: History record write from listener (was causing skip on second firing)
+   - ADDED: History record write in submitSignature() after F2 write succeeds (async, user never waits)
+   - REASON: Listener fires multiple times → history write only happened on first firing
+   - REASON: Moving to submitSignature() ensures write happens ONCE when F2 confirms
+   - PRESERVED: ALL other functionality from v1.38 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
