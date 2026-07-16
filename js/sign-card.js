@@ -7,6 +7,7 @@ KEY CHANGES from v1.37:
    - CHANGED: Added listenerFired flag to distinguish "listener never fired" from "waiting for other flight"
    - PRESERVED: ALL other functionality from v1.37 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
+USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
 */
 
@@ -1031,5 +1032,6 @@ KEY CHANGES from v1.37:
    - CHANGED: Added listenerFired flag to distinguish "listener never fired" from "waiting for other flight"
    - PRESERVED: ALL other functionality from v1.37 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
+USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
 */
