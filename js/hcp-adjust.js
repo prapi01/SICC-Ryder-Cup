@@ -1,15 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.59
-KEY CHANGES from v2.58:
-   - FIXED: Zero-rise logic in calculateAllAdjustments()
-   - CHANGED: needsZeroRise = (lowestRaw !== 0) instead of (lowestRaw < 0)
-   - CHANGED: zeroRiseAmount = -lowestRaw (always, not conditional)
-   - REASON: Zero-rise should happen when lowest is NOT zero (including positive values)
-   - REASON: When lowest = 1, subtract 1 from all handicaps to make lowest = 0
-   - REASON: When lowest = -2, add 2 to all handicaps to make lowest = 0
-   - PRESERVED: ALL other functionality from v2.58 unchanged
-   - PRESERVED: Raw column UI for when zero-rise is applied
+VERSION: 2.60
+KEY CHANGES from v2.59:
+   - ADDED: getData() function to expose current handicap data for auto-save
+   - REASON: hcp-adjust.html needs to retrieve calculated data to save to history record
+   - REASON: Data already exists in currentTableData, just needed to be exposed
+   - PRESERVED: ALL other functionality from v2.59 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -1397,6 +1393,48 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
+    // v2.60: getData() - Returns current handicap data for auto-save
+    // ============================================================
+    
+    function getData() {
+        console.log('[HCP-ADJUST] getData called');
+        console.log('[HCP-ADJUST] currentTableData:', currentTableData ? 'exists' : 'null');
+        console.log('[HCP-ADJUST] anchorPlayer:', anchorPlayer ? anchorPlayer.name : 'null');
+        
+        if (!currentTableData) {
+            console.warn('[HCP-ADJUST] No data available');
+            return null;
+        }
+        
+        if (!anchorPlayer) {
+            console.warn('[HCP-ADJUST] No anchor selected');
+            return null;
+        }
+        
+        var result = {
+            anchor: anchorPlayer.name,
+            players: currentTableData.players.map(function(p) {
+                return {
+                    name: p.name,
+                    label: p.label || p.name.substring(0, 3).toUpperCase(),
+                    startingHcp: p.startingHcp !== undefined ? p.startingHcp : p.currentHcp,
+                    anchorAdj: p.anchorAdj,
+                    perfAdj: p.perfAdj,
+                    finalHcp: currentTableData.needsZeroRise ? p.newAnchor : p.newHcp,
+                    anchorRaw: p.anchorRaw || 0,
+                    perfRaw: p.perfRaw || 0
+                };
+            }),
+            needsZeroRise: currentTableData.needsZeroRise || false,
+            zeroRiseAmount: currentTableData.zeroRiseAmount || 0,
+            newAnchor: currentTableData.newAnchorName || anchorPlayer.name
+        };
+        
+        console.log('[HCP-ADJUST] getData returning', result.players.length, 'players');
+        return result;
+    }
+    
+    // ============================================================
     // Legacy init function - v2.55
     // ============================================================
     
@@ -1584,7 +1622,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.59";
+    window.HANDICAP_ADJUST_VERSION = "2.60";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1600,7 +1638,8 @@ var HandicapAdjustment = (function() {
         calculateAllAdjustments: calculateAllAdjustments,
         calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw,
         updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,
-        MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR
+        MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR,
+        getData: getData
     };
     
 })();
@@ -1610,16 +1649,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.59
-KEY CHANGES from v2.58:
-   - FIXED: Zero-rise logic in calculateAllAdjustments()
-   - CHANGED: needsZeroRise = (lowestRaw !== 0) instead of (lowestRaw < 0)
-   - CHANGED: zeroRiseAmount = -lowestRaw (always, not conditional)
-   - REASON: Zero-rise should happen when lowest is NOT zero (including positive values)
-   - REASON: When lowest = 1, subtract 1 from all handicaps to make lowest = 0
-   - REASON: When lowest = -2, add 2 to all handicaps to make lowest = 0
-   - PRESERVED: ALL other functionality from v2.58 unchanged
-   - PRESERVED: Raw column UI for when zero-rise is applied
+VERSION: 2.60
+KEY CHANGES from v2.59:
+   - ADDED: getData() function to expose current handicap data for auto-save
+   - REASON: hcp-adjust.html needs to retrieve calculated data to save to history record
+   - REASON: Data already exists in currentTableData, just needed to be exposed
+   - PRESERVED: ALL other functionality from v2.59 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
