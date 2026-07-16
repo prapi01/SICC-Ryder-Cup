@@ -1,11 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.61
-KEY CHANGES from v2.60:
-   - ADDED: anchorPlayer = anchor; in initForViewer() to set anchorPlayer for auto-save
-   - REASON: getData() was returning null because anchorPlayer was never set in initForViewer()
-   - REASON: Without anchorPlayer, auto-save to history record was skipped
-   - PRESERVED: ALL other functionality from v2.60 unchanged
+VERSION: 2.62
+KEY CHANGES from v2.61:
+   - ADDED: anchorNameParam parameter to initForViewer() to use stored anchor from game record
+   - CHANGED: anchor selection now uses stored anchor from gameData instead of recalculating
+   - REASON: Anchor is set during game setup and stored in scheduledGames.anchor
+   - REASON: Recalculating anchor as allPlayers[0] is incorrect when multiple zero handicaps exist
+   - PRESERVED: ALL other functionality from v2.61 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -1289,10 +1290,12 @@ var HandicapAdjustment = (function() {
     // ============================================================
     // v2.50: initForViewer - standalone detection fixed
     // v2.61: ADDED anchorPlayer = anchor to enable auto-save
+    // v2.62: ADDED anchorNameParam to use stored anchor from game record
     // ============================================================
     
-    function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
+    function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam, anchorNameParam) {
         console.log('[HCP-ADJUST] initForViewer - viewer mode');
+        console.log('[HCP-ADJUST] anchorNameParam:', anchorNameParam);
         
         var isStandalone = window.location.pathname.indexOf('/hcp-adjust') !== -1;
         console.log('[HCP-ADJUST] isStandalone:', isStandalone, 'pathname:', window.location.pathname);
@@ -1322,10 +1325,25 @@ var HandicapAdjustment = (function() {
             return;
         }
         
-        allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        // Find the stored anchor from the game record
+        var anchor = null;
+        if (anchorNameParam) {
+            anchor = allPlayers.find(function(p) { return p.name === anchorNameParam; });
+            if (anchor) {
+                console.log('[HCP-ADJUST] Using stored anchor from game record:', anchor.name);
+            } else {
+                console.warn('[HCP-ADJUST] Stored anchor "' + anchorNameParam + '" not found in players list');
+            }
+        }
         
-        var anchor = allPlayers[0];
-        anchorPlayer = anchor;  // ← v2.61: FIXED - set anchorPlayer for auto-save
+        // Fallback: use lowest handicap if stored anchor not found
+        if (!anchor) {
+            allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+            anchor = allPlayers[0];
+            console.log('[HCP-ADJUST] Using fallback anchor (lowest handicap):', anchor.name);
+        }
+        
+        anchorPlayer = anchor;
         var calculationResult = calculateAllAdjustments(anchor);
         currentTableData = calculationResult;
         
@@ -1624,7 +1642,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.61";
+    window.HANDICAP_ADJUST_VERSION = "2.62";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1651,12 +1669,13 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.61
-KEY CHANGES from v2.60:
-   - ADDED: anchorPlayer = anchor; in initForViewer() to set anchorPlayer for auto-save
-   - REASON: getData() was returning null because anchorPlayer was never set in initForViewer()
-   - REASON: Without anchorPlayer, auto-save to history record was skipped
-   - PRESERVED: ALL other functionality from v2.60 unchanged
+VERSION: 2.62
+KEY CHANGES from v2.61:
+   - ADDED: anchorNameParam parameter to initForViewer() to use stored anchor from game record
+   - CHANGED: anchor selection now uses stored anchor from gameData instead of recalculating
+   - REASON: Anchor is set during game setup and stored in scheduledGames.anchor
+   - REASON: Recalculating anchor as allPlayers[0] is incorrect when multiple zero handicaps exist
+   - PRESERVED: ALL other functionality from v2.61 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
