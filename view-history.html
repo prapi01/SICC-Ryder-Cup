@@ -1,13 +1,15 @@
 <!--
 FILE: view-history.html
-VERSION: 8.45
-KEY CHANGES from v8.44:
-   - UPDATED: hcp-adjust.js from no version to v2.60 (getData() function added)
-   - REASON: v2.60 exposes getData() for auto-save to history record
-   - PRESERVED: All v8.44 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.44 unchanged
+VERSION: 8.46
+KEY CHANGES from v8.45:
+   - REPLACED: All individual .js script tags with load-game.js universal loader
+   - REASON: Single source of truth for version management
+   - REASON: Eliminates risk of missing version updates across HTML files
+   - REASON: One file (versions.json) controls all .js file versions
+   - PRESERVED: All v8.45 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.45 unchanged
    - PRESERVED: Label Resolution Card unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
+DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
 STATUS: Ready for integration
 -->
 
@@ -20,12 +22,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js"></script>
-    <script src="js/session.js"></script>
-    <script src="js/settings.js"></script>
-    <script src="js/firebase-retry.js"></script>
-    <script src="js/modal.js"></script>
-    <script src="js/celebration-photo.js"></script>
+    
+    <!-- v8.46: Universal script loader - loads ALL game .js files from versions.json -->
+    <script src="js/load-game.js?v=8.46"></script>
     
     <style>
         * {
@@ -485,7 +484,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.45</div>
+<div class="version-tag">v8.46</div>
 
 <script>
 // ============================================================
@@ -498,10 +497,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.45: Updated hcp-adjust.js to v2.60
+// VERSION CACHE-BUSTING - v8.46: Universal script loader
 // ============================================================
-var APP_VERSION = "8.45";
-var CACHE_KEY = "view_history_version_v845";
+var APP_VERSION = "8.46";
+var CACHE_KEY = "view_history_version_v846";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -519,8 +518,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.45";
-console.log("[VIEW-HISTORY] Initializing v8.45 - Updated hcp-adjust.js to v2.60");
+window.VIEW_HISTORY_VERSION = "8.46";
+console.log("[VIEW-HISTORY] Initializing v8.46 - Universal script loader");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -538,6 +537,7 @@ function parseCompletedAt(completedAt) {
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
+// (loaded by load-game.js)
 // ============================================================
 var db = firebase.firestore();
 
@@ -1616,13 +1616,15 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.45
-KEY CHANGES from v8.44:
-   - UPDATED: hcp-adjust.js from no version to v2.60 (getData() function added)
-   - REASON: v2.60 exposes getData() for auto-save to history record
-   - PRESERVED: All v8.44 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.44 unchanged
+VERSION: 8.46
+KEY CHANGES from v8.45:
+   - REPLACED: All individual .js script tags with load-game.js universal loader
+   - REASON: Single source of truth for version management
+   - REASON: Eliminates risk of missing version updates across HTML files
+   - REASON: One file (versions.json) controls all .js file versions
+   - PRESERVED: All v8.45 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.45 unchanged
    - PRESERVED: Label Resolution Card unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
+DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
 STATUS: Ready for integration
 -->
