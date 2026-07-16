@@ -1,11 +1,11 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Universal script loader for game-related HTML files
-   - Loads all .js files from versions.json with cache-busting
-   - Used by: real-game.html, view-game.html, post-game.html, view-history.html
-   - Single source of truth for version management
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: versions.json now loaded with fetch() instead of <script> tag
+   - REASON: JSON files cannot be loaded with <script> tags (MIME type mismatch)
+   - CHANGED: Uses fetch() for versions.json loading
+   - PRESERVED: All loading logic unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
@@ -13,9 +13,9 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.00";
+window.LOAD_GAME_VERSION = "1.01";
 
-console.log("[LOAD-GAME] Initializing v1.00");
+console.log("[LOAD-GAME] Initializing v1.01");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -61,77 +61,83 @@ function loadScriptsSequentially(scripts, index, callback) {
 function loadAllGameScripts(callback) {
     console.log('[LOAD-GAME] Loading all game scripts...');
     
-    // First, load the versions manifest
-    var versionScript = document.createElement('script');
-    versionScript.src = 'js/versions.json';
-    versionScript.onload = function() {
-        console.log('[LOAD-GAME] versions.json loaded');
-        
-        if (typeof window.VERSIONS === 'undefined') {
-            console.error('[LOAD-GAME] versions.json not loaded correctly');
-            if (callback) callback(new Error('versions.json not loaded'));
-            return;
-        }
-        
-        var versions = window.VERSIONS;
-        var scriptList = [];
-        
-        // Define the list of scripts to load (in dependency order)
-        var scriptNames = [
-            'firebase-config.js',
-            'settings.js',
-            'modal.js',
-            'waiting-screen.js',
-            'session.js',
-            'game-order.js',
-            'game-data.js',
-            'game-match.js',
-            'game-team.js',
-            'game-stroke.js',
-            'game-scorecard.js',
-            'game-ui.js',
-            'game-loader.js',
-            'history-record.js',
-            'sign-card.js',
-            'hcp-adjust.js',
-            'celebration-photo.js',
-            'ticker.js',
-            'wrv.js',
-            'real-game-state.js',
-            'real-game-utils.js',
-            'real-game-cascade.js',
-            'real-game-save.js',
-            'real-game-ui.js',
-            'real-game-nav.js',
-            'real-game-init.js',
-            'real-game-main.js'
-        ];
-        
-        // Build script list with versions
-        for (var i = 0; i < scriptNames.length; i++) {
-            var name = scriptNames[i];
-            var version = versions[name] || '1.00';
-            scriptList.push({
-                name: name,
-                src: 'js/' + name + '?v=' + version
-            });
-        }
-        
-        console.log('[LOAD-GAME] Loading', scriptList.length, 'scripts');
-        
-        loadScriptsSequentially(scriptList, 0, function(err) {
-            if (err) {
-                console.warn('[LOAD-GAME] Some scripts failed to load:', err.message);
+    // v1.01: Use fetch() to load versions.json (JSON cannot be loaded with <script>)
+    fetch('js/versions.json')
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
             }
-            console.log('[LOAD-GAME] All scripts loaded');
-            if (callback) callback(null);
+            return response.json();
+        })
+        .then(function(versions) {
+            window.VERSIONS = versions;
+            console.log('[LOAD-GAME] versions.json loaded');
+            
+            var scriptList = [];
+            
+            // Define the list of scripts to load (in dependency order)
+            var scriptNames = [
+                // Core (no dependencies)
+                'firebase-config.js',
+                'settings.js',
+                'modal.js',
+                'waiting-screen.js',
+                'session.js',
+                
+                // Game engine
+                'game-order.js',
+                'game-data.js',
+                'game-match.js',
+                'game-team.js',
+                'game-stroke.js',
+                'game-scorecard.js',
+                'game-ui.js',
+                'game-loader.js',
+                
+                // Core game modules
+                'history-record.js',
+                'sign-card.js',
+                'hcp-adjust.js',
+                'celebration-photo.js',
+                'ticker.js',
+                'wrv.js',
+                
+                // Real game modules
+                'real-game-state.js',
+                'real-game-utils.js',
+                'real-game-cascade.js',
+                'real-game-save.js',
+                'real-game-ui.js',
+                'real-game-nav.js',
+                'real-game-init.js',
+                'real-game-main.js'
+            ];
+            
+            // Build script list with versions
+            for (var i = 0; i < scriptNames.length; i++) {
+                var name = scriptNames[i];
+                var version = versions[name] || '1.00';
+                scriptList.push({
+                    name: name,
+                    src: 'js/' + name + '?v=' + version
+                });
+            }
+            
+            console.log('[LOAD-GAME] Loading', scriptList.length, 'scripts');
+            
+            // Load scripts sequentially
+            loadScriptsSequentially(scriptList, 0, function(err) {
+                if (err) {
+                    console.warn('[LOAD-GAME] Some scripts failed to load:', err.message);
+                }
+                console.log('[LOAD-GAME] All scripts loaded');
+                if (callback) callback(null);
+            });
+        })
+        .catch(function(err) {
+            console.error('[LOAD-GAME] Failed to load versions.json:', err.message);
+            if (callback) callback(err);
         });
-    };
-    versionScript.onerror = function() {
-        console.error('[LOAD-GAME] Failed to load versions.json');
-        if (callback) callback(new Error('Failed to load versions.json'));
-    };
-    document.head.appendChild(versionScript);
 }
 
 // ============================================================
@@ -155,12 +161,12 @@ window.loadScriptsSequentially = loadScriptsSequentially;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Universal script loader for game-related HTML files
-   - Loads all .js files from versions.json with cache-busting
-   - Used by: real-game.html, view-game.html, post-game.html, view-history.html
-   - Single source of truth for version management
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: versions.json now loaded with fetch() instead of <script> tag
+   - REASON: JSON files cannot be loaded with <script> tags (MIME type mismatch)
+   - CHANGED: Uses fetch() for versions.json loading
+   - PRESERVED: All loading logic unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
