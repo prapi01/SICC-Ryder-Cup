@@ -3,8 +3,8 @@ FILE: js/load-game.js
 VERSION: 1.01
 KEY CHANGES from v1.00:
    - FIXED: versions.json now loaded with fetch() instead of <script> tag
-   - REASON: JSON files cannot be loaded with <script> tags (MIME type mismatch)
-   - CHANGED: Uses fetch() for versions.json loading
+   - ADDED: Cache-busting for versions.json (VERSIONS_JSON_VERSION)
+   - ADDED: Error fallback - shows visible message if versions.json fails
    - PRESERVED: All loading logic unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
@@ -14,6 +14,11 @@ STATUS: Ready for integration
 // Version Exposure for Console Debugging
 // ============================================================
 window.LOAD_GAME_VERSION = "1.01";
+
+// ============================================================
+// Version of versions.json - bump this when versions.json changes
+// ============================================================
+var VERSIONS_JSON_VERSION = "1.00";
 
 console.log("[LOAD-GAME] Initializing v1.01");
 
@@ -56,13 +61,27 @@ function loadScriptsSequentially(scripts, index, callback) {
 }
 
 // ============================================================
+// Helper: Show error message on page
+// ============================================================
+function showLoadError(message) {
+    var debugDiv = document.getElementById('debug');
+    if (debugDiv) {
+        debugDiv.innerHTML = '❌ ' + message;
+        debugDiv.style.color = '#ff6b6b';
+        debugDiv.style.padding = '20px';
+        debugDiv.style.textAlign = 'center';
+    }
+}
+
+// ============================================================
 // Main: Load all game scripts
 // ============================================================
 function loadAllGameScripts(callback) {
     console.log('[LOAD-GAME] Loading all game scripts...');
+    console.log('[LOAD-GAME] versions.json version:', VERSIONS_JSON_VERSION);
     
-    // v1.01: Use fetch() to load versions.json (JSON cannot be loaded with <script>)
-    fetch('js/versions.json')
+    // v1.01: Use fetch() with cache-busting
+    fetch('js/versions.json?v=' + VERSIONS_JSON_VERSION)
         .then(function(response) {
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
@@ -71,7 +90,7 @@ function loadAllGameScripts(callback) {
         })
         .then(function(versions) {
             window.VERSIONS = versions;
-            console.log('[LOAD-GAME] versions.json loaded');
+            console.log('[LOAD-GAME] versions.json loaded (v' + VERSIONS_JSON_VERSION + ')');
             
             var scriptList = [];
             
@@ -136,6 +155,7 @@ function loadAllGameScripts(callback) {
         })
         .catch(function(err) {
             console.error('[LOAD-GAME] Failed to load versions.json:', err.message);
+            showLoadError('Failed to load versions.json. Please refresh.');
             if (callback) callback(err);
         });
 }
@@ -158,6 +178,7 @@ if (document.readyState === 'loading') {
 window.loadAllGameScripts = loadAllGameScripts;
 window.loadScript = loadScript;
 window.loadScriptsSequentially = loadScriptsSequentially;
+window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
@@ -166,6 +187,8 @@ KEY CHANGES from v1.00:
    - FIXED: versions.json now loaded with fetch() instead of <script> tag
    - REASON: JSON files cannot be loaded with <script> tags (MIME type mismatch)
    - CHANGED: Uses fetch() for versions.json loading
+   - ADDED: Cache-busting for versions.json (VERSIONS_JSON_VERSION)
+   - ADDED: Error fallback - shows visible message if versions.json fails
    - PRESERVED: All loading logic unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
