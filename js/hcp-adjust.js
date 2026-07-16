@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.60
-KEY CHANGES from v2.59:
-   - ADDED: getData() function to expose current handicap data for auto-save
-   - REASON: hcp-adjust.html needs to retrieve calculated data to save to history record
-   - REASON: Data already exists in currentTableData, just needed to be exposed
-   - PRESERVED: ALL other functionality from v2.59 unchanged
+VERSION: 2.61
+KEY CHANGES from v2.60:
+   - ADDED: anchorPlayer = anchor; in initForViewer() to set anchorPlayer for auto-save
+   - REASON: getData() was returning null because anchorPlayer was never set in initForViewer()
+   - REASON: Without anchorPlayer, auto-save to history record was skipped
+   - PRESERVED: ALL other functionality from v2.60 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
@@ -1288,6 +1288,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // v2.50: initForViewer - standalone detection fixed
+    // v2.61: ADDED anchorPlayer = anchor to enable auto-save
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
@@ -1324,6 +1325,7 @@ var HandicapAdjustment = (function() {
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
         var anchor = allPlayers[0];
+        anchorPlayer = anchor;  // ← v2.61: FIXED - set anchorPlayer for auto-save
         var calculationResult = calculateAllAdjustments(anchor);
         currentTableData = calculationResult;
         
@@ -1622,7 +1624,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.60";
+    window.HANDICAP_ADJUST_VERSION = "2.61";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1649,12 +1651,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.60
-KEY CHANGES from v2.59:
-   - ADDED: getData() function to expose current handicap data for auto-save
-   - REASON: hcp-adjust.html needs to retrieve calculated data to save to history record
-   - REASON: Data already exists in currentTableData, just needed to be exposed
-   - PRESERVED: ALL other functionality from v2.59 unchanged
+VERSION: 2.61
+KEY CHANGES from v2.60:
+   - ADDED: anchorPlayer = anchor; in initForViewer() to set anchorPlayer for auto-save
+   - REASON: getData() was returning null because anchorPlayer was never set in initForViewer()
+   - REASON: Without anchorPlayer, auto-save to history record was skipped
+   - PRESERVED: ALL other functionality from v2.60 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
 STATUS: Ready for integration
 */
