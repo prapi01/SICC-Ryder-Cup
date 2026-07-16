@@ -1,11 +1,13 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: versions.json now loaded with fetch() instead of <script> tag
-   - ADDED: Cache-busting for versions.json (VERSIONS_JSON_VERSION)
-   - ADDED: Error fallback - shows visible message if versions.json fails
-   - PRESERVED: All loading logic unchanged
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: Page-specific script lists (real-game, view-game, view-history, post-game)
+   - REASON: VIEW was loading real-game-*.js scripts (real-game-init.js) causing editableFlight=1
+   - REASON: Proper fix - each page loads ONLY the scripts it needs
+   - CHANGED: loadAllGameScripts() now detects page and loads appropriate script list
+   - PRESERVED: All loading logic from v1.01 unchanged
+   - PRESERVED: fetch() for versions.json, cache-busting, error handling
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
@@ -13,14 +15,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.01";
+window.LOAD_GAME_VERSION = "1.02";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
 var VERSIONS_JSON_VERSION = "1.00";
 
-console.log("[LOAD-GAME] Initializing v1.01");
+console.log("[LOAD-GAME] Initializing v1.02");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -74,6 +76,102 @@ function showLoadError(message) {
 }
 
 // ============================================================
+// v1.02: Page-specific script lists
+// ============================================================
+
+function getPageScripts() {
+    var page = window.location.pathname.split('/').pop() || '';
+    
+    // ============================================================
+    // Core scripts (loaded on ALL pages)
+    // ============================================================
+    var coreScripts = [
+        'firebase-config.js',
+        'settings.js',
+        'modal.js',
+        'waiting-screen.js',
+        'session.js'
+    ];
+    
+    // ============================================================
+    // Game engine scripts (loaded on ALL game pages)
+    // ============================================================
+    var gameEngineScripts = [
+        'game-order.js',
+        'game-data.js',
+        'game-match.js',
+        'game-team.js',
+        'game-stroke.js',
+        'game-scorecard.js',
+        'game-ui.js',
+        'game-loader.js'
+    ];
+    
+    // ============================================================
+    // Core game modules (loaded on ALL game pages)
+    // ============================================================
+    var coreGameScripts = [
+        'history-record.js',
+        'sign-card.js',
+        'hcp-adjust.js',
+        'celebration-photo.js',
+        'ticker.js',
+        'wrv.js'
+    ];
+    
+    // ============================================================
+    // REAL-GAME only scripts
+    // ============================================================
+    var realGameScripts = [
+        'real-game-state.js',
+        'real-game-utils.js',
+        'real-game-cascade.js',
+        'real-game-save.js',
+        'real-game-ui.js',
+        'real-game-nav.js',
+        'real-game-init.js',
+        'real-game-main.js'
+    ];
+    
+    // ============================================================
+    // VIEW-HISTORY only scripts
+    // ============================================================
+    var viewHistoryScripts = [
+        'firebase-retry.js'
+    ];
+    
+    // ============================================================
+    // Determine which scripts to load based on page
+    // ============================================================
+    var scripts = [];
+    
+    // Base: core + game engine + core game modules
+    scripts = scripts.concat(coreScripts);
+    scripts = scripts.concat(gameEngineScripts);
+    scripts = scripts.concat(coreGameScripts);
+    
+    if (page === 'real-game.html') {
+        console.log('[LOAD-GAME] Detected REAL-GAME page');
+        scripts = scripts.concat(realGameScripts);
+    } else if (page === 'view-game.html') {
+        console.log('[LOAD-GAME] Detected VIEW-GAME page');
+        // No real-game-*.js scripts - VIEW only needs display modules
+    } else if (page === 'view-history.html') {
+        console.log('[LOAD-GAME] Detected VIEW-HISTORY page');
+        scripts = scripts.concat(viewHistoryScripts);
+    } else if (page === 'post-game.html') {
+        console.log('[LOAD-GAME] Detected POST-GAME page');
+        // Post-game only needs core + sign-card
+    } else {
+        console.log('[LOAD-GAME] Detected UNKNOWN page:', page, '- loading all scripts');
+        scripts = scripts.concat(realGameScripts);
+        scripts = scripts.concat(viewHistoryScripts);
+    }
+    
+    return scripts;
+}
+
+// ============================================================
 // Main: Load all game scripts
 // ============================================================
 function loadAllGameScripts(callback) {
@@ -92,45 +190,10 @@ function loadAllGameScripts(callback) {
             window.VERSIONS = versions;
             console.log('[LOAD-GAME] versions.json loaded (v' + VERSIONS_JSON_VERSION + ')');
             
-            var scriptList = [];
+            // v1.02: Get page-specific script names
+            var scriptNames = getPageScripts();
             
-            // Define the list of scripts to load (in dependency order)
-            var scriptNames = [
-                // Core (no dependencies)
-                'firebase-config.js',
-                'settings.js',
-                'modal.js',
-                'waiting-screen.js',
-                'session.js',
-                
-                // Game engine
-                'game-order.js',
-                'game-data.js',
-                'game-match.js',
-                'game-team.js',
-                'game-stroke.js',
-                'game-scorecard.js',
-                'game-ui.js',
-                'game-loader.js',
-                
-                // Core game modules
-                'history-record.js',
-                'sign-card.js',
-                'hcp-adjust.js',
-                'celebration-photo.js',
-                'ticker.js',
-                'wrv.js',
-                
-                // Real game modules
-                'real-game-state.js',
-                'real-game-utils.js',
-                'real-game-cascade.js',
-                'real-game-save.js',
-                'real-game-ui.js',
-                'real-game-nav.js',
-                'real-game-init.js',
-                'real-game-main.js'
-            ];
+            var scriptList = [];
             
             // Build script list with versions
             for (var i = 0; i < scriptNames.length; i++) {
@@ -142,7 +205,7 @@ function loadAllGameScripts(callback) {
                 });
             }
             
-            console.log('[LOAD-GAME] Loading', scriptList.length, 'scripts');
+            console.log('[LOAD-GAME] Loading', scriptList.length, 'scripts for', window.location.pathname.split('/').pop());
             
             // Load scripts sequentially
             loadScriptsSequentially(scriptList, 0, function(err) {
@@ -182,14 +245,14 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: versions.json now loaded with fetch() instead of <script> tag
-   - REASON: JSON files cannot be loaded with <script> tags (MIME type mismatch)
-   - CHANGED: Uses fetch() for versions.json loading
-   - ADDED: Cache-busting for versions.json (VERSIONS_JSON_VERSION)
-   - ADDED: Error fallback - shows visible message if versions.json fails
-   - PRESERVED: All loading logic unchanged
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: Page-specific script lists (real-game, view-game, view-history, post-game)
+   - REASON: VIEW was loading real-game-*.js scripts (real-game-init.js) causing editableFlight=1
+   - REASON: Proper fix - each page loads ONLY the scripts it needs
+   - CHANGED: loadAllGameScripts() now detects page and loads appropriate script list
+   - PRESERVED: All loading logic from v1.01 unchanged
+   - PRESERVED: fetch() for versions.json, cache-busting, error handling
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
