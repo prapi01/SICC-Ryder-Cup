@@ -1,13 +1,13 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Page-specific script lists (real-game, view-game, view-history, post-game)
-   - REASON: VIEW was loading real-game-*.js scripts (real-game-init.js) causing editableFlight=1
-   - REASON: Proper fix - each page loads ONLY the scripts it needs
-   - CHANGED: loadAllGameScripts() now detects page and loads appropriate script list
-   - PRESERVED: All loading logic from v1.01 unchanged
-   - PRESERVED: fetch() for versions.json, cache-busting, error handling
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - REMOVED: "load everything" fallback for unknown pages
+   - ADDED: Error logging when page is not recognized
+   - CHANGED: Unknown pages now load CORE SCRIPTS ONLY (no game modules)
+   - FIXED: Page detection now handles paths without .html extension
+   - REASON: Fallback was causing VIEW to load real-game-init.js
+   - REASON: Fallback masked the root cause (path detection mismatch)
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
@@ -15,14 +15,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.02";
+window.LOAD_GAME_VERSION = "1.03";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
 var VERSIONS_JSON_VERSION = "1.00";
 
-console.log("[LOAD-GAME] Initializing v1.02");
+console.log("[LOAD-GAME] Initializing v1.03");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -76,11 +76,17 @@ function showLoadError(message) {
 }
 
 // ============================================================
-// v1.02: Page-specific script lists
+// v1.03: Page-specific script lists - NO FALLBACK
 // ============================================================
 
 function getPageScripts() {
-    var page = window.location.pathname.split('/').pop() || '';
+    var pathname = window.location.pathname;
+    var page = pathname.split('/').pop() || '';
+    
+    // Remove .html extension if present
+    var pageName = page.replace(/\.html$/, '');
+    
+    console.log('[LOAD-GAME] Detected page:', pageName, '(full path:', pathname + ')');
     
     // ============================================================
     // Core scripts (loaded on ALL pages)
@@ -94,7 +100,7 @@ function getPageScripts() {
     ];
     
     // ============================================================
-    // Game engine scripts (loaded on ALL game pages)
+    // Game engine scripts (loaded on game pages)
     // ============================================================
     var gameEngineScripts = [
         'game-order.js',
@@ -108,7 +114,7 @@ function getPageScripts() {
     ];
     
     // ============================================================
-    // Core game modules (loaded on ALL game pages)
+    // Core game modules (loaded on game pages)
     // ============================================================
     var coreGameScripts = [
         'history-record.js',
@@ -145,27 +151,38 @@ function getPageScripts() {
     // ============================================================
     var scripts = [];
     
-    // Base: core + game engine + core game modules
+    // Always load core
     scripts = scripts.concat(coreScripts);
-    scripts = scripts.concat(gameEngineScripts);
-    scripts = scripts.concat(coreGameScripts);
     
-    if (page === 'real-game.html') {
-        console.log('[LOAD-GAME] Detected REAL-GAME page');
+    // ============================================================
+    // v1.03: NO FALLBACK - Unknown pages load CORE ONLY
+    // ============================================================
+    if (pageName === 'real-game' || pageName === 'real-game') {
+        console.log('[LOAD-GAME] ✅ REAL-GAME page detected');
+        scripts = scripts.concat(gameEngineScripts);
+        scripts = scripts.concat(coreGameScripts);
         scripts = scripts.concat(realGameScripts);
-    } else if (page === 'view-game.html') {
-        console.log('[LOAD-GAME] Detected VIEW-GAME page');
-        // No real-game-*.js scripts - VIEW only needs display modules
-    } else if (page === 'view-history.html') {
-        console.log('[LOAD-GAME] Detected VIEW-HISTORY page');
+    } else if (pageName === 'view-game' || pageName === 'view-game') {
+        console.log('[LOAD-GAME] ✅ VIEW-GAME page detected');
+        scripts = scripts.concat(gameEngineScripts);
+        scripts = scripts.concat(coreGameScripts);
+        // NO real-game-*.js - VIEW only needs display modules
+    } else if (pageName === 'view-history' || pageName === 'view-history') {
+        console.log('[LOAD-GAME] ✅ VIEW-HISTORY page detected');
+        scripts = scripts.concat(gameEngineScripts);
+        scripts = scripts.concat(coreGameScripts);
         scripts = scripts.concat(viewHistoryScripts);
-    } else if (page === 'post-game.html') {
-        console.log('[LOAD-GAME] Detected POST-GAME page');
+    } else if (pageName === 'post-game' || pageName === 'post-game') {
+        console.log('[LOAD-GAME] ✅ POST-GAME page detected');
+        scripts = scripts.concat(coreGameScripts);
         // Post-game only needs core + sign-card
     } else {
-        console.log('[LOAD-GAME] Detected UNKNOWN page:', page, '- loading all scripts');
-        scripts = scripts.concat(realGameScripts);
-        scripts = scripts.concat(viewHistoryScripts);
+        // v1.03: NO FALLBACK - Log error and load CORE ONLY
+        console.error('[LOAD-GAME] ❌ UNKNOWN PAGE DETECTED:', pageName);
+        console.error('[LOAD-GAME] ⚠️ Full pathname:', pathname);
+        console.error('[LOAD-GAME] ⚠️ Loading CORE SCRIPTS ONLY (no game modules)');
+        console.error('[LOAD-GAME] ⚠️ This may cause the page to not function correctly');
+        // Load ONLY core scripts - no game modules
     }
     
     return scripts;
@@ -190,7 +207,7 @@ function loadAllGameScripts(callback) {
             window.VERSIONS = versions;
             console.log('[LOAD-GAME] versions.json loaded (v' + VERSIONS_JSON_VERSION + ')');
             
-            // v1.02: Get page-specific script names
+            // v1.03: Get page-specific script names (NO FALLBACK)
             var scriptNames = getPageScripts();
             
             var scriptList = [];
@@ -205,7 +222,7 @@ function loadAllGameScripts(callback) {
                 });
             }
             
-            console.log('[LOAD-GAME] Loading', scriptList.length, 'scripts for', window.location.pathname.split('/').pop());
+            console.log('[LOAD-GAME] Loading', scriptList.length, 'scripts for page:', window.location.pathname.split('/').pop());
             
             // Load scripts sequentially
             loadScriptsSequentially(scriptList, 0, function(err) {
@@ -245,14 +262,14 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Page-specific script lists (real-game, view-game, view-history, post-game)
-   - REASON: VIEW was loading real-game-*.js scripts (real-game-init.js) causing editableFlight=1
-   - REASON: Proper fix - each page loads ONLY the scripts it needs
-   - CHANGED: loadAllGameScripts() now detects page and loads appropriate script list
-   - PRESERVED: All loading logic from v1.01 unchanged
-   - PRESERVED: fetch() for versions.json, cache-busting, error handling
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - REMOVED: "load everything" fallback for unknown pages
+   - ADDED: Error logging when page is not recognized
+   - CHANGED: Unknown pages now load CORE SCRIPTS ONLY (no game modules)
+   - FIXED: Page detection now handles paths without .html extension
+   - REASON: Fallback was causing VIEW to load real-game-init.js
+   - REASON: Fallback masked the root cause (path detection mismatch)
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
