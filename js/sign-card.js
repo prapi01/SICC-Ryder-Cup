@@ -1,18 +1,24 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.39
-KEY CHANGES from v1.38:
-   - REMOVED: History record write from listener (was causing skip on second firing)
-   - ADDED: History record write in submitSignature() after F2 write succeeds (async, user never waits)
-   - REASON: Listener fires multiple times → history write only happened on first firing
-   - REASON: Moving to submitSignature() ensures write happens ONCE when F2 confirms
-   - PRESERVED: ALL other functionality from v1.38 unchanged
+VERSION: 1.40
+KEY CHANGES from v1.39:
+   - ADDED: historyRecordWritten flag to ensure history record write happens ONCE
+   - MOVED: History record write from .then() callback to listener (reliable execution)
+   - REASON: .then() callback was unreliable when page navigated away before promise resolved
+   - REASON: Listener fires immediately from local cache and is always reliable
+   - REASON: Flag prevents duplicate writes on multiple listener firings
+   - PRESERVED: ALL other functionality from v1.39 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
 */
 
 var SignCard = (function() {
+    
+    // ============================================================
+    // v1.40: Flag to ensure history record is written only ONCE
+    // ============================================================
+    var historyRecordWritten = false;
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -762,7 +768,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.39: FIXED - History write moved from listener to submitSignature
+    // v1.40: FIXED - History write moved from .then() callback to listener with flag
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -834,31 +840,6 @@ var SignCard = (function() {
                         .then(function() {
                             console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
                             
-                            // v1.39: If F2 write succeeded, trigger history record write (async, user never waits)
-                            if (flight === 2) {
-                                console.log('[SignCard] F2: Triggering background history record write...');
-                                // Get fresh gameData for the record
-                                docRef.get().then(function(doc) {
-                                    if (doc.exists) {
-                                        var gameData = doc.data();
-                                        // v1.39: Fire and forget - user never waits
-                                        setTimeout(function() {
-                                            triggerHistoryRecordWrite(gameId, cache, gameData);
-                                        }, 100);
-                                    } else {
-                                        // Fallback: use cache data
-                                        setTimeout(function() {
-                                            triggerHistoryRecordWrite(gameId, cache, null);
-                                        }, 100);
-                                    }
-                                }).catch(function() {
-                                    // Fallback: use cache data
-                                    setTimeout(function() {
-                                        triggerHistoryRecordWrite(gameId, cache, null);
-                                    }, 100);
-                                });
-                            }
-                            
                             var confirmTimeout = 3000;
                             
                             if (listenerUnsubscribe) {
@@ -898,7 +879,25 @@ var SignCard = (function() {
                                     
                                     console.log('[SignCard] Both signed (confirmed)!');
                                     
-                                    // v1.39: History write removed from listener - now handled in F2 write success above
+                                    // v1.40: Trigger history record write ONCE, before modal shows
+                                    // Using flag to prevent duplicate writes on multiple listener firings
+                                    if (!historyRecordWritten) {
+                                        historyRecordWritten = true;
+                                        console.log('[SignCard] History record write triggered from listener (first time)');
+                                        // Get fresh gameData for the record
+                                        docRef.get().then(function(doc) {
+                                            if (doc.exists) {
+                                                var gameData = doc.data();
+                                                triggerHistoryRecordWrite(gameId, cache, gameData);
+                                            } else {
+                                                triggerHistoryRecordWrite(gameId, cache, null);
+                                            }
+                                        }).catch(function() {
+                                            triggerHistoryRecordWrite(gameId, cache, null);
+                                        });
+                                    } else {
+                                        console.log('[SignCard] History record already written, skipping duplicate');
+                                    }
                                     
                                     if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
                                         RealGameNav.showGameCompleteModal(gameId);
@@ -1030,17 +1029,18 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.39";
+window.SIGN_CARD_VERSION = "1.40";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.39
-KEY CHANGES from v1.38:
-   - REMOVED: History record write from listener (was causing skip on second firing)
-   - ADDED: History record write in submitSignature() after F2 write succeeds (async, user never waits)
-   - REASON: Listener fires multiple times → history write only happened on first firing
-   - REASON: Moving to submitSignature() ensures write happens ONCE when F2 confirms
-   - PRESERVED: ALL other functionality from v1.38 unchanged
+VERSION: 1.40
+KEY CHANGES from v1.39:
+   - ADDED: historyRecordWritten flag to ensure history record write happens ONCE
+   - MOVED: History record write from .then() callback to listener (reliable execution)
+   - REASON: .then() callback was unreliable when page navigated away before promise resolved
+   - REASON: Listener fires immediately from local cache and is always reliable
+   - REASON: Flag prevents duplicate writes on multiple listener firings
+   - PRESERVED: ALL other functionality from v1.39 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
