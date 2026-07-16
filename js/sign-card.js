@@ -1,12 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.37
-KEY CHANGES from v1.36:
-   - FIXED: Removed 'confirmed' flag check from listener callback
-   - REASON: confirmed flag was blocking F1 and VIEW from detecting both signatures
-   - CHANGED: Listener now triggers celebration whenever both signatures are detected
-   - CHANGED: Added duplicate prevention check (modal exists) to prevent double celebration
-   - PRESERVED: ALL other functionality from v1.36 unchanged
+VERSION: 1.38
+KEY CHANGES from v1.37:
+   - FIXED: Retry loop no longer triggers after successful write
+   - REASON: Timer was retrying even when write succeeded (waiting for other flight)
+   - CHANGED: Added listenerFired flag to distinguish "listener never fired" from "waiting for other flight"
+   - PRESERVED: ALL other functionality from v1.37 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
@@ -761,7 +760,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.37: FIXED - Removed confirmed flag check from listener
+    // v1.38: FIXED - Retry loop stops after successful write
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -816,6 +815,7 @@ var SignCard = (function() {
                 var maxRetries = 5;
                 var attemptCount = 0;
                 var confirmed = false;
+                var listenerFired = false;      // v1.38: Track if listener ever fired
                 var writeTimeout = null;
                 var listenerUnsubscribe = null;
                 
@@ -838,9 +838,11 @@ var SignCard = (function() {
                                 listenerUnsubscribe();
                             }
                             
-                            // v1.37: Listener now triggers on BOTH signatures without confirmed flag blocking
+                            // v1.38: Listener sets listenerFired = true to tell timeout "I exist"
                             listenerUnsubscribe = docRef.onSnapshot(function(snapshot) {
                                 if (!snapshot.exists) return;
+                                
+                                listenerFired = true;   // v1.38: Signal that listener fired
                                 
                                 var data = snapshot.data();
                                 var signatures = data.signatures || {};
@@ -848,7 +850,6 @@ var SignCard = (function() {
                                 var f2SignedCheck = signatures.f2?.signed === true;
                                 
                                 // v1.37: Check BOTH signatures - removed confirmed flag check
-                                // The confirmed flag was blocking F1 and VIEW from detecting both signatures
                                 if (f1SignedCheck && f2SignedCheck) {
                                     // Prevent duplicate celebrations
                                     if (document.getElementById('celebrationModal') || document.getElementById('gameCompleteModal')) {
@@ -902,8 +903,10 @@ var SignCard = (function() {
                             });
                             
                             writeTimeout = setTimeout(function() {
-                                if (!confirmed) {
-                                    console.warn('[SignCard] ⚠️ Confirmation timeout for flight', flight, '(attempt', attemptCount + ')');
+                                // v1.38: Only retry if listener NEVER fired
+                                // If listener fired, write succeeded and we're just waiting for other flight
+                                if (!confirmed && !listenerFired) {
+                                    console.warn('[SignCard] ⚠️ Listener never fired for flight', flight, '(attempt', attemptCount + ')');
                                     
                                     if (listenerUnsubscribe) {
                                         listenerUnsubscribe();
@@ -920,6 +923,9 @@ var SignCard = (function() {
                                         console.error('[SignCard] ❌ All', maxRetries, 'retries failed for flight', flight);
                                         reject(new Error('Failed to confirm signature after ' + maxRetries + ' retries'));
                                     }
+                                } else if (!confirmed && listenerFired) {
+                                    // v1.38: Listener fired but only one flight signed - normal waiting state
+                                    console.log('[SignCard] Waiting for other flight... (listener fired, confirmed=false)');
                                 }
                             }, confirmTimeout);
                         })
@@ -1014,17 +1020,16 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.37";
+window.SIGN_CARD_VERSION = "1.38";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.37
-KEY CHANGES from v1.36:
-   - FIXED: Removed 'confirmed' flag check from listener callback
-   - REASON: confirmed flag was blocking F1 and VIEW from detecting both signatures
-   - CHANGED: Listener now triggers celebration whenever both signatures are detected
-   - CHANGED: Added duplicate prevention check (modal exists) to prevent double celebration
-   - PRESERVED: ALL other functionality from v1.36 unchanged
+VERSION: 1.38
+KEY CHANGES from v1.37:
+   - FIXED: Retry loop no longer triggers after successful write
+   - REASON: Timer was retrying even when write succeeded (waiting for other flight)
+   - CHANGED: Added listenerFired flag to distinguish "listener never fired" from "waiting for other flight"
+   - PRESERVED: ALL other functionality from v1.37 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
