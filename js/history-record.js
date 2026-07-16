@@ -1,16 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.10
-KEY CHANGES from v3.09:
-   - REMOVED: celebration.imageUrl: null from both CREATE and UPDATE (no longer written)
-   - REMOVED: adjustedHandicaps: null from CREATE (field omitted entirely)
-   - REASON: Setting imageUrl: null created conflicting data with dot notation writes
-   - REASON: adjustedHandicaps: null caused validation to report missing data
-   - REASON: Photo code (celebration-photo.js) will populate imageUrl later via nested object
-   - REASON: Handicap data will be written by updateWithHandicap() when available
-   - PRESERVED: ALL other functionality from v3.09 unchanged
-   - PRESERVED: getPhotoPathForHistory() unchanged
-   - PRESERVED: Status determination logic unchanged
+VERSION: 3.11
+KEY CHANGES from v3.10:
+   - CHANGED: updateWithHandicap() now uses WRV.write() with merge: true instead of WRV.update()
+   - REASON: WRV.update() fails on documents not in WRV's local cache
+   - REASON: WRV.write() with merge: true works on any document, cached or not
+   - REASON: Ensures handicap data is reliably saved to existing history records
+   - PRESERVED: ALL other functionality from v3.10 unchanged
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
@@ -350,6 +346,7 @@ var HistoryRecord = (function() {
     // ============================================================
     // v3.05: Update with handicap adjustment (mark as completed)
     // Now preserves "*multiple*" value for newAnchor
+    // v3.11: Uses WRV.write() with merge: true instead of WRV.update()
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -421,16 +418,33 @@ var HistoryRecord = (function() {
             "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        // Use WRV for reliable Firestore update
-        wru(COLLECTION, archiveId, updatePayload, function(err) {
-            if (err) {
-                console.error("Error updating archive record:", err);
-                if (callback) callback(err);
-            } else {
-                console.log("Archive record completed with handicap:", archiveId);
-                if (callback) callback(null);
-            }
-        });
+        // v3.11: Use WRV.write() with merge: true instead of WRV.update()
+        // WRV.update() fails on documents not in WRV's local cache
+        // WRV.write() with merge: true works on any document, cached or not
+        if (typeof WRV !== 'undefined' && WRV.write) {
+            WRV.write(COLLECTION, archiveId, updatePayload, function(err, result) {
+                if (err) {
+                    console.error("Error updating archive record:", err);
+                    if (callback) callback(err);
+                } else {
+                    console.log("Archive record completed with handicap:", archiveId);
+                    if (callback) callback(null);
+                }
+            }, true);  // merge: true
+        } else {
+            // Fallback: direct Firestore update
+            console.warn('[HistoryRecord] WRV not available, using direct update');
+            var db = getDb();
+            db.collection(COLLECTION).doc(archiveId).update(updatePayload)
+                .then(function() {
+                    console.log("Archive record completed with handicap:", archiveId);
+                    if (callback) callback(null);
+                })
+                .catch(function(err) {
+                    console.error("Error updating archive record:", err);
+                    if (callback) callback(err);
+                });
+        }
     }
     
     // ============================================================
@@ -596,17 +610,13 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.10
-KEY CHANGES from v3.09:
-   - REMOVED: celebration.imageUrl: null from both CREATE and UPDATE (no longer written)
-   - REMOVED: adjustedHandicaps: null from CREATE (field omitted entirely)
-   - REASON: Setting imageUrl: null created conflicting data with dot notation writes
-   - REASON: adjustedHandicaps: null caused validation to report missing data
-   - REASON: Photo code (celebration-photo.js) will populate imageUrl later via nested object
-   - REASON: Handicap data will be written by updateWithHandicap() when available
-   - PRESERVED: ALL other functionality from v3.09 unchanged
-   - PRESERVED: getPhotoPathForHistory() unchanged
-   - PRESERVED: Status determination logic unchanged
+VERSION: 3.11
+KEY CHANGES from v3.10:
+   - CHANGED: updateWithHandicap() now uses WRV.write() with merge: true instead of WRV.update()
+   - REASON: WRV.update() fails on documents not in WRV's local cache
+   - REASON: WRV.write() with merge: true works on any document, cached or not
+   - REASON: Ensures handicap data is reliably saved to existing history records
+   - PRESERVED: ALL other functionality from v3.10 unchanged
 DEPENDS ON: Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
