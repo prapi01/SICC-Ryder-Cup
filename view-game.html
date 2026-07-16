@@ -1,13 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 8.14
-KEY CHANGES from v8.13:
-   - CHANGED: VIEW now uses shared Firebase Storage ETag key ('celebration_photo_etag_firebase')
-   - REMOVED: view-specific ETag key ('view_photo_etag_' + gameId)
-   - REASON: F1 and VIEW must compare the SAME ETag for sync
-   - REASON: F1 stores Firebase Storage ETag after upload, VIEW uses it for comparison
-   - PRESERVED: ALL other functionality from v8.13 unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
+VERSION: 8.15
+KEY CHANGES from v8.14:
+   - UPDATED: sign-card.js from v1.28 to v1.38 (retry loop fix)
+   - REASON: v1.38 fixes retry loop that was triggering after successful write
+   - PRESERVED: ALL other functionality from v8.14 unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js (v1.38), js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
 
@@ -21,10 +19,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=8.14"></script>
-    <script src="js/session.js?v=8.14"></script>
-    <script src="js/settings.js?v=8.14"></script>
-    <script src="js/celebration-photo.js?v=8.14"></script>
+    <script src="js/firebase-config.js?v=8.15"></script>
+    <script src="js/session.js?v=8.15"></script>
+    <script src="js/settings.js?v=8.15"></script>
+    <script src="js/celebration-photo.js?v=8.15"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -33,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.16"></script>
-    <script src="js/ticker.js?v=8.14"></script>
-    <script src="js/history-record.js?v=8.14"></script>
-    <script src="js/sign-card.js?v=1.28"></script>
-    <script src="js/hcp-adjust.js?v=8.14"></script>
-    <script src="js/modal.js?v=8.14"></script>
+    <script src="js/ticker.js?v=8.15"></script>
+    <script src="js/history-record.js?v=8.15"></script>
+    <script src="js/sign-card.js?v=1.38"></script>
+    <script src="js/hcp-adjust.js?v=8.15"></script>
+    <script src="js/modal.js?v=8.15"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -158,14 +156,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.14</div>
+<div class="version-tag">v8.15</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.14: Shared Firebase Storage ETag
+// VERSION CACHE-BUSTING - v8.15: Updated sign-card.js to v1.38
 // ============================================================
-var APP_VERSION = "8.14";
-var CACHE_KEY = "view_game_version_v814";
+var APP_VERSION = "8.15";
+var CACHE_KEY = "view_game_version_v815";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -183,8 +181,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "8.14";
-console.log("[VIEW-GAME] Initializing v8.14 - Shared Firebase Storage ETag");
+window.VIEW_GAME_VERSION = "8.15";
+console.log("[VIEW-GAME] Initializing v8.15 - Updated sign-card.js to v1.38");
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -1502,7 +1500,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v8.14: Initialization - Photo check via listener on score updates
+// v8.15: Initialization - Updated sign-card.js to v1.38
 // ============================================================
 
 async function init() {
@@ -1690,7 +1688,7 @@ async function init() {
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
     
-    console.log('[VIEW-GAME] v8.14 initialized - Shared Firebase Storage ETag');
+    console.log('[VIEW-GAME] v8.15 initialized - Updated sign-card.js to v1.38');
 }
 
 // v8.01: settings.js already initialized at top of script
@@ -1702,13 +1700,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 8.14
-KEY CHANGES from v8.13:
-   - CHANGED: VIEW now uses shared Firebase Storage ETag key ('celebration_photo_etag_firebase')
-   - REMOVED: view-specific ETag key ('view_photo_etag_' + gameId)
-   - REASON: F1 and VIEW must compare the SAME ETag for sync
-   - REASON: F1 stores Firebase Storage ETag after upload, VIEW uses it for comparison
-   - PRESERVED: ALL other functionality from v8.13 unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, ...
+VERSION: 8.15
+KEY CHANGES from v8.14:
+   - UPDATED: sign-card.js from v1.28 to v1.38 (retry loop fix)
+   - REASON: v1.38 fixes retry loop that was triggering after successful write
+   - PRESERVED: ALL other functionality from v8.14 unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/settings.js, js/celebration-photo.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js (v1.38), js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
