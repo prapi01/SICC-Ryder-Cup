@@ -1,14 +1,12 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - ADDED: Auto-save of calculated handicaps to history record using WRV
-   - REASON: Handicap data was calculated but never saved to Firestore
-   - REASON: adjustedHandicaps remained null in history record
-   - CHANGED: After HandicapAdjustment.initForViewer(), call HistoryRecord.updateWithHandicap()
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.35
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - UPDATED: hcp-adjust.js from v2.50 to v2.60 (getData() function added)
+   - REASON: v2.60 exposes getData() for auto-save to history record
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.36
    - PRESERVED: No user intervention required - auto-save in background
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.60), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -24,10 +22,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.36"></script>
-    <script src="js/session.js?v=1.36"></script>
-    <script src="js/settings.js?v=1.36"></script>
-    <script src="js/modal.js?v=1.36"></script>
+    <script src="js/firebase-config.js?v=1.37"></script>
+    <script src="js/session.js?v=1.37"></script>
+    <script src="js/settings.js?v=1.37"></script>
+    <script src="js/modal.js?v=1.37"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.08"></script>
@@ -41,7 +39,7 @@ STATUS: Ready for integration
     <!-- v1.23: WRV support -->
     <script src="js/wrv.js?v=1.00"></script>
     
-    <script src="js/hcp-adjust.js?v=2.50"></script>
+    <script src="js/hcp-adjust.js?v=2.60"></script>
     <script src="js/sign-card.js?v=1.21"></script>
     
     <style>
@@ -281,7 +279,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.36</div>
+<div class="version-tag">v1.37</div>
 
 <script>
 // ============================================================
@@ -294,10 +292,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.36: Auto-save handicaps
+// VERSION CACHE-BUSTING - v1.37: Updated hcp-adjust.js to v2.60
 // ============================================================
-var APP_VERSION = "1.36";
-var CACHE_KEY = "hcp_adjust_version_v136";
+var APP_VERSION = "1.37";
+var CACHE_KEY = "hcp_adjust_version_v137";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -314,8 +312,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.36";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.36 - Auto-save handicaps");
+window.HCP_ADJUST_PAGE_VERSION = "1.37";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.37 - Updated hcp-adjust.js to v2.60");
 
 // ============================================================
 // v1.35: Restore cache from sessionStorage
@@ -651,14 +649,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - ADDED: Auto-save of calculated handicaps to history record using WRV
-   - REASON: Handicap data was calculated but never saved to Firestore
-   - REASON: adjustedHandicaps remained null in history record
-   - CHANGED: After HandicapAdjustment.initForViewer(), call HistoryRecord.updateWithHandicap()
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.35
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - UPDATED: hcp-adjust.js from v2.50 to v2.60 (getData() function added)
+   - REASON: v2.60 exposes getData() for auto-save to history record
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.36
    - PRESERVED: No user intervention required - auto-save in background
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.60), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
 STATUS: Ready for integration
 -->
