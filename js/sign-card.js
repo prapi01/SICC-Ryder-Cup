@@ -1,13 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.40
-KEY CHANGES from v1.39:
-   - ADDED: historyRecordWritten flag to ensure history record write happens ONCE
-   - MOVED: History record write from .then() callback to listener (reliable execution)
-   - REASON: .then() callback was unreliable when page navigated away before promise resolved
-   - REASON: Listener fires immediately from local cache and is always reliable
-   - REASON: Flag prevents duplicate writes on multiple listener firings
-   - PRESERVED: ALL other functionality from v1.39 unchanged
+VERSION: 1.41
+KEY CHANGES from v1.40:
+   - REMOVED: History record write from listener (was being skipped due to modal check)
+   - RESTORED: History record write to .then() callback (v1.38 approach that worked)
+   - REMOVED: Modal existence check from listener (was preventing history write)
+   - KEPT: historyRecordWritten flag to prevent duplicate writes
+   - REASON: v1.40 broke history record creation by moving it to listener with modal check
+   - REASON: Restoring to v1.38 approach ensures history record is written reliably
+   - PRESERVED: ALL other functionality from v1.40 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
@@ -16,7 +17,7 @@ STATUS: Ready for integration
 var SignCard = (function() {
     
     // ============================================================
-    // v1.40: Flag to ensure history record is written only ONCE
+    // v1.41: Flag to ensure history record is written only ONCE
     // ============================================================
     var historyRecordWritten = false;
     
@@ -768,7 +769,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.40: FIXED - History write moved from .then() callback to listener with flag
+    // v1.41: FIXED - History write restored to .then() callback (v1.38 approach)
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -840,6 +841,24 @@ var SignCard = (function() {
                         .then(function() {
                             console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
                             
+                            // v1.41: Trigger history record write IMMEDIATELY (v1.38 approach)
+                            // This is the reliable location - it works when page doesn't navigate away
+                            if (flight === 2 && !historyRecordWritten) {
+                                historyRecordWritten = true;
+                                console.log('[SignCard] F2: Triggering background history record write...');
+                                // Get fresh gameData for the record
+                                docRef.get().then(function(doc) {
+                                    if (doc.exists) {
+                                        var gameData = doc.data();
+                                        triggerHistoryRecordWrite(gameId, cache, gameData);
+                                    } else {
+                                        triggerHistoryRecordWrite(gameId, cache, null);
+                                    }
+                                }).catch(function() {
+                                    triggerHistoryRecordWrite(gameId, cache, null);
+                                });
+                            }
+                            
                             var confirmTimeout = 3000;
                             
                             if (listenerUnsubscribe) {
@@ -859,12 +878,6 @@ var SignCard = (function() {
                                 
                                 // v1.37: Check BOTH signatures - removed confirmed flag check
                                 if (f1SignedCheck && f2SignedCheck) {
-                                    // Prevent duplicate celebrations
-                                    if (document.getElementById('celebrationModal') || document.getElementById('gameCompleteModal')) {
-                                        console.log('[SignCard] Both signed but celebration already showing');
-                                        return;
-                                    }
-                                    
                                     confirmed = true;
                                     console.log('[SignCard] ✅ BOTH signatures confirmed via listener!');
                                     
@@ -879,25 +892,8 @@ var SignCard = (function() {
                                     
                                     console.log('[SignCard] Both signed (confirmed)!');
                                     
-                                    // v1.40: Trigger history record write ONCE, before modal shows
-                                    // Using flag to prevent duplicate writes on multiple listener firings
-                                    if (!historyRecordWritten) {
-                                        historyRecordWritten = true;
-                                        console.log('[SignCard] History record write triggered from listener (first time)');
-                                        // Get fresh gameData for the record
-                                        docRef.get().then(function(doc) {
-                                            if (doc.exists) {
-                                                var gameData = doc.data();
-                                                triggerHistoryRecordWrite(gameId, cache, gameData);
-                                            } else {
-                                                triggerHistoryRecordWrite(gameId, cache, null);
-                                            }
-                                        }).catch(function() {
-                                            triggerHistoryRecordWrite(gameId, cache, null);
-                                        });
-                                    } else {
-                                        console.log('[SignCard] History record already written, skipping duplicate');
-                                    }
+                                    // v1.41: History write already triggered in .then() callback above
+                                    // No need to trigger here - modal check removed
                                     
                                     if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
                                         RealGameNav.showGameCompleteModal(gameId);
@@ -1029,18 +1025,19 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.40";
+window.SIGN_CARD_VERSION = "1.41";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.40
-KEY CHANGES from v1.39:
-   - ADDED: historyRecordWritten flag to ensure history record write happens ONCE
-   - MOVED: History record write from .then() callback to listener (reliable execution)
-   - REASON: .then() callback was unreliable when page navigated away before promise resolved
-   - REASON: Listener fires immediately from local cache and is always reliable
-   - REASON: Flag prevents duplicate writes on multiple listener firings
-   - PRESERVED: ALL other functionality from v1.39 unchanged
+VERSION: 1.41
+KEY CHANGES from v1.40:
+   - REMOVED: History record write from listener (was being skipped due to modal check)
+   - RESTORED: History record write to .then() callback (v1.38 approach that worked)
+   - REMOVED: Modal existence check from listener (was preventing history write)
+   - KEPT: historyRecordWritten flag to prevent duplicate writes
+   - REASON: v1.40 broke history record creation by moving it to listener with modal check
+   - REASON: Restoring to v1.38 approach ensures history record is written reliably
+   - PRESERVED: ALL other functionality from v1.40 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
