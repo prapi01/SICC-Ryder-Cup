@@ -1,14 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.44
-KEY CHANGES from v8.43:
-   - FIXED: renderGameList() now uses nested signatures structure from history records
-   - FIXED: loadGameListAndModules() now passes signatures from history data
-   - CHANGED: Added nested signatures handling for history records
-   - PRESERVED: All v8.43 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.43 unchanged
+VERSION: 8.45
+KEY CHANGES from v8.44:
+   - UPDATED: hcp-adjust.js from no version to v2.60 (getData() function added)
+   - REASON: v2.60 exposes getData() for auto-save to history record
+   - PRESERVED: All v8.44 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.44 unchanged
    - PRESERVED: Label Resolution Card unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
 
@@ -486,7 +485,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.44</div>
+<div class="version-tag">v8.45</div>
 
 <script>
 // ============================================================
@@ -499,10 +498,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.44: Nested signatures for history
+// VERSION CACHE-BUSTING - v8.45: Updated hcp-adjust.js to v2.60
 // ============================================================
-var APP_VERSION = "8.44";
-var CACHE_KEY = "view_history_version_v844";
+var APP_VERSION = "8.45";
+var CACHE_KEY = "view_history_version_v845";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -520,8 +519,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.44";
-console.log("[VIEW-HISTORY] Initializing v8.44 - Nested signatures for history");
+window.VIEW_HISTORY_VERSION = "8.45";
+console.log("[VIEW-HISTORY] Initializing v8.45 - Updated hcp-adjust.js to v2.60");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -625,7 +624,7 @@ function loadCelebrationImageDirect(game, containerId) {
 function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
     if (typeof HandicapAdjustment === 'undefined') {
         var script = document.createElement('script');
-        script.src = 'js/hcp-adjust.js';
+        script.src = 'js/hcp-adjust.js?v=2.60';
         script.onload = function() {
             HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
         };
@@ -1617,14 +1616,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.44
-KEY CHANGES from v8.43:
-   - FIXED: renderGameList() now uses nested signatures structure from history records
-   - FIXED: loadGameListAndModules() now passes signatures from history data
-   - CHANGED: Added nested signatures handling for history records
-   - PRESERVED: All v8.43 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.43 unchanged
+VERSION: 8.45
+KEY CHANGES from v8.44:
+   - UPDATED: hcp-adjust.js from no version to v2.60 (getData() function added)
+   - REASON: v2.60 exposes getData() for auto-save to history record
+   - PRESERVED: All v8.44 functionality unchanged
+   - PRESERVED: All UI styling and layout from v8.44 unchanged
    - PRESERVED: Label Resolution Card unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
