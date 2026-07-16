@@ -1,12 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - FIXED: submitSignature() now uses atomic update (no read-modify-write)
-   - REASON: F2's signature write was failing on mobile networks
-   - REASON: read-modify-write requires two network operations and can fail
-   - CHANGED: Direct update with dot notation for nested fields
-   - PRESERVED: ALL other functionality from v1.35 unchanged
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - FIXED: Removed 'confirmed' flag check from listener callback
+   - REASON: confirmed flag was blocking F1 and VIEW from detecting both signatures
+   - CHANGED: Listener now triggers celebration whenever both signatures are detected
+   - CHANGED: Added duplicate prevention check (modal exists) to prevent double celebration
+   - PRESERVED: ALL other functionality from v1.36 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
@@ -761,7 +761,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.36: FIXED - Direct atomic update with retry
+    // v1.37: FIXED - Removed confirmed flag check from listener
     // ============================================================
     
     function submitSignature(gameId, flight, captainName, collection) {
@@ -838,6 +838,7 @@ var SignCard = (function() {
                                 listenerUnsubscribe();
                             }
                             
+                            // v1.37: Listener now triggers on BOTH signatures without confirmed flag blocking
                             listenerUnsubscribe = docRef.onSnapshot(function(snapshot) {
                                 if (!snapshot.exists) return;
                                 
@@ -846,50 +847,55 @@ var SignCard = (function() {
                                 var f1SignedCheck = signatures.f1?.signed === true;
                                 var f2SignedCheck = signatures.f2?.signed === true;
                                 
-                                // v1.36: Check BOTH signatures
+                                // v1.37: Check BOTH signatures - removed confirmed flag check
+                                // The confirmed flag was blocking F1 and VIEW from detecting both signatures
                                 if (f1SignedCheck && f2SignedCheck) {
-                                    if (!confirmed) {
-                                        confirmed = true;
-                                        console.log('[SignCard] ✅ BOTH signatures confirmed via listener!');
-                                        
-                                        if (listenerUnsubscribe) {
-                                            listenerUnsubscribe();
-                                            listenerUnsubscribe = null;
-                                        }
-                                        if (writeTimeout) {
-                                            clearTimeout(writeTimeout);
-                                            writeTimeout = null;
-                                        }
-                                        
-                                        console.log('[SignCard] Both signed (confirmed)!');
-                                        
-                                        if (flight === 2) {
-                                            console.log('[SignCard] F2: History record write triggered from cache');
-                                            var gameData = cache ? cache._gameData : null;
-                                            if (!gameData) {
-                                                docRef.get().then(function(doc) {
-                                                    if (doc.exists) {
-                                                        gameData = doc.data();
-                                                    }
-                                                    triggerHistoryRecordWrite(gameId, cache, gameData);
-                                                }).catch(function() {
-                                                    triggerHistoryRecordWrite(gameId, cache, null);
-                                                });
-                                            } else {
-                                                triggerHistoryRecordWrite(gameId, cache, gameData);
-                                            }
-                                        } else {
-                                            console.log('[SignCard] F1 - not writing history record (F2 handles this)');
-                                        }
-                                        
-                                        if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
-                                            RealGameNav.showGameCompleteModal(gameId);
-                                        } else {
-                                            showGameCompleteModalDirect(gameId);
-                                        }
-                                        
-                                        resolve(true);
+                                    // Prevent duplicate celebrations
+                                    if (document.getElementById('celebrationModal') || document.getElementById('gameCompleteModal')) {
+                                        console.log('[SignCard] Both signed but celebration already showing');
+                                        return;
                                     }
+                                    
+                                    confirmed = true;
+                                    console.log('[SignCard] ✅ BOTH signatures confirmed via listener!');
+                                    
+                                    if (listenerUnsubscribe) {
+                                        listenerUnsubscribe();
+                                        listenerUnsubscribe = null;
+                                    }
+                                    if (writeTimeout) {
+                                        clearTimeout(writeTimeout);
+                                        writeTimeout = null;
+                                    }
+                                    
+                                    console.log('[SignCard] Both signed (confirmed)!');
+                                    
+                                    if (flight === 2) {
+                                        console.log('[SignCard] F2: History record write triggered from cache');
+                                        var gameData = cache ? cache._gameData : null;
+                                        if (!gameData) {
+                                            docRef.get().then(function(doc) {
+                                                if (doc.exists) {
+                                                    gameData = doc.data();
+                                                }
+                                                triggerHistoryRecordWrite(gameId, cache, gameData);
+                                            }).catch(function() {
+                                                triggerHistoryRecordWrite(gameId, cache, null);
+                                            });
+                                        } else {
+                                            triggerHistoryRecordWrite(gameId, cache, gameData);
+                                        }
+                                    } else {
+                                        console.log('[SignCard] F1 - not writing history record (F2 handles this)');
+                                    }
+                                    
+                                    if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
+                                        RealGameNav.showGameCompleteModal(gameId);
+                                    } else {
+                                        showGameCompleteModalDirect(gameId);
+                                    }
+                                    
+                                    resolve(true);
                                 }
                             }, function(err) {
                                 console.warn('[SignCard] Listener error:', err.message);
@@ -1008,17 +1014,17 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.36";
+window.SIGN_CARD_VERSION = "1.37";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - FIXED: submitSignature() now uses atomic update (no read-modify-write)
-   - REASON: F2's signature write was failing on mobile networks
-   - REASON: read-modify-write requires two network operations and can fail
-   - CHANGED: Direct update with dot notation for nested fields
-   - PRESERVED: ALL other functionality from v1.35 unchanged
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - FIXED: Removed 'confirmed' flag check from listener callback
+   - REASON: confirmed flag was blocking F1 and VIEW from detecting both signatures
+   - CHANGED: Listener now triggers celebration whenever both signatures are detected
+   - CHANGED: Added duplicate prevention check (modal exists) to prevent double celebration
+   - PRESERVED: ALL other functionality from v1.36 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 STATUS: Ready for integration
 */
