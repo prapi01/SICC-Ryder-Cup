@@ -1,12 +1,13 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.37
-KEY CHANGES from v1.36:
-   - UPDATED: hcp-adjust.js from v2.50 to v2.60 (getData() function added)
-   - REASON: v2.60 exposes getData() for auto-save to history record
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.36
+VERSION: 1.38
+KEY CHANGES from v1.37:
+   - CHANGED: Pass cache.anchor to HandicapAdjustment.initForViewer() as 9th parameter
+   - REASON: Anchor is stored in game record during setup, must be passed to hcp-adjust
+   - REASON: Without this, hcp-adjust recalculates anchor incorrectly when multiple zero handicaps exist
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.37
    - PRESERVED: No user intervention required - auto-save in background
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.60), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.62), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -22,10 +23,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.37"></script>
-    <script src="js/session.js?v=1.37"></script>
-    <script src="js/settings.js?v=1.37"></script>
-    <script src="js/modal.js?v=1.37"></script>
+    <script src="js/firebase-config.js?v=1.38"></script>
+    <script src="js/session.js?v=1.38"></script>
+    <script src="js/settings.js?v=1.38"></script>
+    <script src="js/modal.js?v=1.38"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.08"></script>
@@ -39,7 +40,7 @@ STATUS: Ready for integration
     <!-- v1.23: WRV support -->
     <script src="js/wrv.js?v=1.00"></script>
     
-    <script src="js/hcp-adjust.js?v=2.60"></script>
+    <script src="js/hcp-adjust.js?v=2.62"></script>
     <script src="js/sign-card.js?v=1.21"></script>
     
     <style>
@@ -279,7 +280,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.37</div>
+<div class="version-tag">v1.38</div>
 
 <script>
 // ============================================================
@@ -292,10 +293,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.37: Updated hcp-adjust.js to v2.60
+// VERSION CACHE-BUSTING - v1.38: Pass cache.anchor to initForViewer()
 // ============================================================
-var APP_VERSION = "1.37";
-var CACHE_KEY = "hcp_adjust_version_v137";
+var APP_VERSION = "1.38";
+var CACHE_KEY = "hcp_adjust_version_v138";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -312,8 +313,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.37";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.37 - Updated hcp-adjust.js to v2.60");
+window.HCP_ADJUST_PAGE_VERSION = "1.38";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.38 - Pass cache.anchor to initForViewer()");
 
 // ============================================================
 // v1.35: Restore cache from sessionStorage
@@ -356,7 +357,7 @@ function restoreCelebrationData() {
 }
 
 // ============================================================
-// Main Logic - UNCHANGED from v1.23 except auto-save added
+// Main Logic - UNCHANGED from v1.37 except cache.anchor passed to initForViewer
 // ============================================================
 
 var gameId = null;
@@ -546,8 +547,10 @@ function loadHcpData() {
         }
         
         console.log("[HCP-ADJUST-PAGE] Cache loaded, players:", cache.players ? cache.players.length : 0);
+        console.log("[HCP-ADJUST-PAGE] Stored anchor:", cache.anchor || 'null');
         
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
+            // v1.38: Pass cache.anchor as 9th parameter to use stored anchor from game record
             HandicapAdjustment.initForViewer(
                 gameId,
                 cache.players || [],
@@ -556,9 +559,10 @@ function loadHcpData() {
                 cache.course?.si || [],
                 cache.course?.par || [],
                 cache.startingHole || 1,
-                cache.results || null
+                cache.results || null,
+                cache.anchor || null
             );
-            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called");
+            console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called with anchor:", cache.anchor || 'null');
             
             // v1.36: Auto-save calculated handicaps to history record
             var archiveId = gameId + '_H';
@@ -649,12 +653,13 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.37
-KEY CHANGES from v1.36:
-   - UPDATED: hcp-adjust.js from v2.50 to v2.60 (getData() function added)
-   - REASON: v2.60 exposes getData() for auto-save to history record
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.36
+VERSION: 1.38
+KEY CHANGES from v1.37:
+   - CHANGED: Pass cache.anchor to HandicapAdjustment.initForViewer() as 9th parameter
+   - REASON: Anchor is stored in game record during setup, must be passed to hcp-adjust
+   - REASON: Without this, hcp-adjust recalculates anchor incorrectly when multiple zero handicaps exist
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.37
    - PRESERVED: No user intervention required - auto-save in background
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.60), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.62), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js
 STATUS: Ready for integration
 -->
