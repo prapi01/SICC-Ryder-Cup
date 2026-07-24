@@ -1,22 +1,21 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: renderValidateResults() now calls calculation functions directly with startingHole
-   - REMOVED: Dependency on recalculated.teamGame.flight1 (summary data, not per-hole data)
-   - REASON: v1.30 broke all calculations because UI was using summary data instead of per-hole data
-   - v1.18 tried to use recalculated data but the structure didn't match what renderTRTable() expects
-   - v1.19 restores v1.29 behavior with proper startingHole support for all three games
-   - PRESERVED: All existing functionality from v1.17
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Raw HCP values now calculated from anchorRaw + perfRaw instead of rawNew
+   - REASON: rawNew is NOT stored in the record (it's a derived value)
+   - REASON: Stored data has anchorRaw and perfRaw which sum to rawNew
+   - REASON: This fixes the "all Raw Cur show —" bug in VALIDATE tab
+   - PRESERVED: ALL other functionality from v1.19 unchanged
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.19";
+window.UTIL_VALIDATE_UI_VERSION = "1.20";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.19 - Fixed renderValidateResults to pass startingHole");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.20 - Fixed Raw HCP calculation");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -421,7 +420,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.17: RENDER: Handicap Adjustment Card (Fixed New column zero-rise)
+    // v1.20: RENDER: Handicap Adjustment Card (Fixed Raw HCP)
     // ============================================================
     
     function renderHandicapAdjustmentCard(validationResult, containerId) {
@@ -634,9 +633,10 @@ var UtilValidateUI = (function() {
             var perfRawCur = stored ? stored.perfRaw : undefined;
             var perfRawExp = recalc ? recalc.perfRaw : 0;
             
-            // v1.16: Raw HCP values (pre-zero-rise)
-            var rawCur = stored ? stored.rawNew : undefined;
-            var rawExp = recalc ? recalc.rawNew : undefined;
+            // v1.20: Raw HCP values - calculate from existing fields (anchorRaw + perfRaw)
+            // rawNew is NOT stored in the record, so we calculate it from available data
+            var rawCur = stored ? (stored.anchorRaw + stored.perfRaw) : undefined;
+            var rawExp = recalc ? (recalc.anchorRaw + recalc.perfRaw) : undefined;
             
             // v1.17: Get final handicap - use newAnchor as fallback (zero-rised)
             var finalCur = stored ? stored.finalHcp : '—';
@@ -1265,7 +1265,7 @@ var UtilValidateUI = (function() {
         renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
-        // v1.17: Render Handicap Adjustment card with fixed New column zero-rise
+        // v1.20: Render Handicap Adjustment card with fixed Raw HCP calculation
         var hcpCardContainer = document.getElementById('validateHandicapCard');
         if (hcpCardContainer) {
             renderHandicapAdjustmentCard(validation, 'validateHandicapCard');
@@ -1888,18 +1888,17 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.19 - Fixed renderValidateResults to pass startingHole');
+console.log('[UTIL-VALIDATE-UI] v1.20 - Fixed Raw HCP calculation');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: renderValidateResults() now calls calculation functions directly with startingHole
-   - REMOVED: Dependency on recalculated.teamGame.flight1 (summary data, not per-hole data)
-   - REASON: v1.30 broke all calculations because UI was using summary data instead of per-hole data
-   - v1.18 tried to use recalculated data but the structure didn't match what renderTRTable() expects
-   - v1.19 restores v1.29 behavior with proper startingHole support for all three games
-   - PRESERVED: All existing functionality from v1.17
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Raw HCP values now calculated from anchorRaw + perfRaw instead of rawNew
+   - REASON: rawNew is NOT stored in the record (it's a derived value)
+   - REASON: Stored data has anchorRaw and perfRaw which sum to rawNew
+   - REASON: This fixes the "all Raw Cur show —" bug in VALIDATE tab
+   - PRESERVED: ALL other functionality from v1.19 unchanged
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
