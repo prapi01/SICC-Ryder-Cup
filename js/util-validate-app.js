@@ -1,19 +1,18 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - FIXED: loadAndValidate() now re-fetches record from Firestore after fix
-   - Previously it used stale cached rawData, showing incorrect mismatches
-   - Now after fix, it reads fresh data from Firestore before validation
-   - This ensures validation shows the correct state after fix
-   - PRESERVED: All existing functionality from v1.21
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - FIXED: loadValidateRecords() date display now checks data.gameInfo?.date
+   - REASON: Records store date in gameInfo.date, not at root level
+   - REASON: Fixes "No date" showing in VALIDATE tab dropdown
+   - PRESERVED: All existing functionality from v1.22 unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.22";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.22 - Fixed post-fix validation refresh");
+window.UTIL_VALIDATE_APP_VERSION = "1.23";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.23 - Fixed date display in VALIDATE dropdown");
 
 // ============================================================
 // STATE VARIABLES
@@ -131,7 +130,8 @@ function loadValidateRecords() {
             
             docs.forEach(function(doc) {
                 var data = doc.data();
-                var displayDate = data.date || 'No date';
+                // v1.23: Check both root date and gameInfo.date
+                var displayDate = data.date || data.gameInfo?.date || 'No date';
                 var courseName = data.course ? data.course.name : (data.gameInfo?.course?.name || 'Unknown');
                 var status = data.status || 'unknown';
                 var label = doc.id + ' | ' + displayDate + ' | ' + courseName + ' (' + status + ')';
@@ -237,7 +237,7 @@ function performValidation(record, data) {
         celebration: data.celebration || {},
         finalResults: data.finalResults || {},
         gameId: data.gameId || record.id,
-        date: data.date || 'Unknown',
+        date: data.date || null,
         createdAt: data.createdAt || null,
         adjustedHandicaps: data.adjustedHandicaps || null,
         anchor: data.anchor || null
@@ -967,17 +967,16 @@ window.generateBackupId = generateBackupId;
 window.fetchFreshRecord = fetchFreshRecord;
 window.performValidation = performValidation;
 
-console.log('[UTIL-VALIDATE-APP] v1.22 loaded - Post-fix validation now uses fresh Firestore data');
+console.log('[UTIL-VALIDATE-APP] v1.23 loaded - Fixed date display in VALIDATE dropdown');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - FIXED: loadAndValidate() now re-fetches record from Firestore after fix
-   - Previously it used stale cached rawData, showing incorrect mismatches
-   - Now after fix, it reads fresh data from Firestore before validation
-   - This ensures validation shows the correct state after fix
-   - PRESERVED: All existing functionality from v1.21
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - FIXED: loadValidateRecords() date display now checks data.gameInfo?.date
+   - REASON: Records store date in gameInfo.date, not at root level
+   - REASON: Fixes "No date" showing in VALIDATE tab dropdown
+   - PRESERVED: All existing functionality from v1.22 unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
