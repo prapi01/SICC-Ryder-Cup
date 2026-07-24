@@ -1,14 +1,14 @@
 <!--
 FILE: view-history.html
-VERSION: 8.47
-KEY CHANGES from v8.46:
-   - FIXED: Firebase initialization timing issue - moved db initialization inside loadGameListAndModules()
-   - REASON: firebase.firestore() was called before Firebase was initialized, causing "No Firebase App '[DEFAULT]'" error
-   - ADDED: Firebase readiness check with retry in loadGameListAndModules()
-   - REASON: Ensures Firebase is ready before calling firebase.firestore()
-   - PRESERVED: ALL other functionality from v8.46 unchanged
+VERSION: 8.48
+KEY CHANGES from v8.45:
+   - REVERTED: Removed load-game.js universal loader, restored individual script tags
+   - REASON: load-game.js asynchronous loading caused timing issues (Firebase, SessionManager)
+   - REASON: Individual script tags load synchronously in the correct order
+   - PRESERVED: ALL other functionality from v8.45 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
-DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
+   - PRESERVED: Label Resolution Card unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
 
@@ -21,9 +21,12 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    
-    <!-- v8.46: Universal script loader - loads ALL game .js files from versions.json -->
-    <script src="js/load-game.js?v=8.46"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/firebase-retry.js"></script>
+    <script src="js/modal.js"></script>
+    <script src="js/celebration-photo.js"></script>
     
     <style>
         * {
@@ -483,7 +486,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.47</div>
+<div class="version-tag">v8.48</div>
 
 <script>
 // ============================================================
@@ -496,10 +499,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.47: Fixed Firebase initialization timing
+// VERSION CACHE-BUSTING - v8.48: Reverted to individual script loading
 // ============================================================
-var APP_VERSION = "8.47";
-var CACHE_KEY = "view_history_version_v847";
+var APP_VERSION = "8.48";
+var CACHE_KEY = "view_history_version_v848";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -517,8 +520,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.47";
-console.log("[VIEW-HISTORY] Initializing v8.47 - Fixed Firebase initialization timing");
+window.VIEW_HISTORY_VERSION = "8.48";
+console.log("[VIEW-HISTORY] Initializing v8.48 - Reverted to individual script loading");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -535,10 +538,9 @@ function parseCompletedAt(completedAt) {
 }
 
 // ============================================================
-// v8.47: db initialized lazily inside loadGameListAndModules()
-// to ensure Firebase is ready before use
+// Firebase already initialized in firebase-config.js
 // ============================================================
-var db = null;
+var db = firebase.firestore();
 
 // ============================================================
 // Global state
@@ -1453,21 +1455,7 @@ function renderGameList(games) {
     loadLabelHistory();
 }
 
-// ============================================================
-// v8.47: loadGameListAndModules - Fixed Firebase initialization timing
-// ============================================================
-
 function loadGameListAndModules() {
-    // v8.47: Ensure Firebase is initialized before using it
-    if (typeof firebase === 'undefined' || !firebase.apps || firebase.apps.length === 0) {
-        console.warn("[VIEW-HISTORY] Firebase not initialized yet, retrying...");
-        setTimeout(loadGameListAndModules, 500);
-        return;
-    }
-    
-    // Initialize db now that Firebase is ready
-    db = firebase.firestore();
-    
     var container = document.getElementById('gameListContainer');
     container.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
@@ -1629,14 +1617,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.47
-KEY CHANGES from v8.46:
-   - FIXED: Firebase initialization timing issue - moved db initialization inside loadGameListAndModules()
-   - REASON: firebase.firestore() was called before Firebase was initialized, causing "No Firebase App '[DEFAULT]'" error
-   - ADDED: Firebase readiness check with retry in loadGameListAndModules()
-   - REASON: Ensures Firebase is ready before calling firebase.firestore()
-   - PRESERVED: ALL other functionality from v8.46 unchanged
+VERSION: 8.48
+KEY CHANGES from v8.45:
+   - REVERTED: Removed load-game.js universal loader, restored individual script tags
+   - REASON: load-game.js asynchronous loading caused timing issues (Firebase, SessionManager)
+   - REASON: Individual script tags load synchronously in the correct order
+   - PRESERVED: ALL other functionality from v8.45 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
-DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
+   - PRESERVED: Label Resolution Card unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
