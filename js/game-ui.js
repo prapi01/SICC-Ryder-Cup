@@ -1,18 +1,19 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.09
-KEY CHANGES from v5.08:
-   - FIXED: Cross-flight match bubbles now show grey AS until BOTH flights have scores
-   - CHANGED: getBubbleClassShared() now checks both flights for cross-flight matches
-   - FIXED: Intra-flight and cross-flight now have consistent "no data" behavior (grey AS)
-   - PRESERVED: All other functionality from v5.08
+VERSION: 5.10
+KEY CHANGES from v5.09:
+   - CHANGED: renderBottomMenu() now uses standard back-link design instead of styled button
+   - REASON: Consistent with app-wide standard (grey text with green divider line)
+   - FIXED: Replaced <button> with <div class="back-link"> matching courses.html, player-management.html, view-history.html
+   - REASON: Both real-game.html and view-game.html use this function
+   - PRESERVED: All other functionality from v5.09 unchanged
 DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
 
 var GameUI = (function() {
     
-    console.log("[GAME-UI] Initializing v5.09 - Fixed cross-flight AS bubble color");
+    console.log("[GAME-UI] Initializing v5.10 - Standard back-link in renderBottomMenu");
     
     // ============================================================
     // Constants
@@ -1130,7 +1131,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Bottom Menu Button Rendering
+    // v5.10: Bottom Menu Button Rendering - STANDARD BACK-LINK
     // ============================================================
     
     function renderBottomMenu(containerId, onMenuCallback) {
@@ -1143,12 +1144,13 @@ var GameUI = (function() {
         
         container.innerHTML = '';
         
-        var btn = document.createElement('button');
-        btn.id = 'menuBtn';
-        btn.textContent = '← Back to Main Menu';
-        btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;';
+        var link = document.createElement('div');
+        link.id = 'menuLink';
+        link.className = 'back-link';
+        link.textContent = '← Back to Main Menu';
+        link.style.cssText = 'border-top: 1px solid #2a5a2a; text-align: center; margin-top: 16px; padding: 12px 0; color: #666; cursor: pointer; font-size: 0.75rem; transition: color 0.15s ease; letter-spacing: 0.2px; width: 100%;';
         
-        btn.onclick = function() {
+        link.onclick = function() {
             if (eventCallbacks.onMenu && typeof eventCallbacks.onMenu === 'function') {
                 eventCallbacks.onMenu();
             } else if (onMenuCallback && typeof onMenuCallback === 'function') {
@@ -1156,7 +1158,7 @@ var GameUI = (function() {
             }
         };
         
-        container.appendChild(btn);
+        container.appendChild(link);
     }
     
     // ============================================================
@@ -1399,12 +1401,13 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.09
-KEY CHANGES from v5.08:
-   - FIXED: Cross-flight match bubbles now show grey AS until BOTH flights have scores
-   - CHANGED: getBubbleClassShared() now checks both flights for cross-flight matches
-   - FIXED: Intra-flight and cross-flight now have consistent "no data" behavior (grey AS)
-   - PRESERVED: All other functionality from v5.08
+VERSION: 5.10
+KEY CHANGES from v5.09:
+   - CHANGED: renderBottomMenu() now uses standard back-link design instead of styled button
+   - REASON: Consistent with app-wide standard (grey text with green divider line)
+   - FIXED: Replaced <button> with <div class="back-link"> matching courses.html, player-management.html, view-history.html
+   - REASON: Both real-game.html and view-game.html use this function
+   - PRESERVED: All other functionality from v5.09 unchanged
 DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
