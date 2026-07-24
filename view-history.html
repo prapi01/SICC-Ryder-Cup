@@ -1,13 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.49
-KEY CHANGES from v8.48:
-   - FIXED: Sort order now uses game.date instead of completedAt
-   - REASON: completedAt is inconsistent (undefined, string, Timestamp), causing games to appear in wrong order
-   - FIXED: Both sort instances in renderGameList() and loadGameListAndModules() now sort by game.date
-   - PRESERVED: ALL other functionality from v8.48 unchanged
+VERSION: 8.50
+KEY CHANGES from v8.49:
+   - CHANGED: Back button replaced with standard back-link design for consistency
+   - REASON: view-history was using a styled button instead of the standard grey text with green divider line
+   - FIXED: Removed .back-btn CSS, added .back-link CSS matching courses.html and player-management.html
+   - FIXED: Replaced <button> with <div> and updated onclick binding
+   - PRESERVED: ALL other functionality from v8.49 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
-   - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
@@ -301,24 +301,20 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        .back-btn {
-            width: 100%;
-            max-width: 380px;
-            padding: 14px 20px;
-            border-radius: 40px;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
+        /* v8.50: Standard back-link design (matches courses.html and player-management.html) */
+        .back-link {
+            border-top: 1px solid #2a5a2a;
             text-align: center;
-            border: 1px solid #4caf50;
-            background: #1a1a1a;
-            color: #4caf50;
-            margin: 0 auto;
+            margin-top: 16px;
+            padding: 12px 0;
+            color: #666;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: color 0.15s ease;
+            letter-spacing: 0.2px;
+            width: 100%;
         }
-        
-        .back-btn:active {
-            transform: scale(0.98);
-        }
+        .back-link:hover { color: #888; }
         
         .detail-back-btn {
             width: 100%;
@@ -474,9 +470,8 @@ STATUS: Ready for integration
     </div>
     <!-- v8.41: Label Resolution Card - will be populated if there are changes -->
     <div id="labelResolutionContainer"></div>
-    <div class="back-buttons">
-        <button class="back-btn" id="backToMenuBtn">← Back to Main Menu</button>
-    </div>
+    <!-- v8.50: Standard back-link design -->
+    <div class="back-link" id="backToMenuLink">← Back to Main Menu</div>
 </div>
 
 <!-- GAME DETAIL VIEW (Scorecard - styles come from GameUI) -->
@@ -486,7 +481,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.49</div>
+<div class="version-tag">v8.50</div>
 
 <script>
 // ============================================================
@@ -499,10 +494,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.49: Fixed sort to use game.date
+// VERSION CACHE-BUSTING - v8.50: Standard back-link design
 // ============================================================
-var APP_VERSION = "8.49";
-var CACHE_KEY = "view_history_version_v849";
+var APP_VERSION = "8.50";
+var CACHE_KEY = "view_history_version_v850";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -520,8 +515,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.49";
-console.log("[VIEW-HISTORY] Initializing v8.49 - Fixed sort to use game.date");
+window.VIEW_HISTORY_VERSION = "8.50";
+console.log("[VIEW-HISTORY] Initializing v8.50 - Standard back-link design");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1605,7 +1600,8 @@ async function init() {
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "📋 " + myDeviceShortName;
     
-    document.getElementById('backToMenuBtn').onclick = exitToMainMenu;
+    // v8.50: Standard back-link uses click event
+    document.getElementById('backToMenuLink').addEventListener('click', exitToMainMenu);
     document.getElementById('backToListBtn').onclick = backToGameList;
     
     loadGameListAndModules();
@@ -1619,14 +1615,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.49
-KEY CHANGES from v8.48:
-   - FIXED: Sort order now uses game.date instead of completedAt
-   - REASON: completedAt is inconsistent (undefined, string, Timestamp), causing games to appear in wrong order
-   - FIXED: Both sort instances in renderGameList() and loadGameListAndModules() now sort by game.date
-   - PRESERVED: ALL other functionality from v8.48 unchanged
+VERSION: 8.50
+KEY CHANGES from v8.49:
+   - CHANGED: Back button replaced with standard back-link design for consistency
+   - REASON: view-history was using a styled button instead of the standard grey text with green divider line
+   - FIXED: Removed .back-btn CSS, added .back-link CSS matching courses.html and player-management.html
+   - FIXED: Replaced <button> with <div> and updated onclick binding
+   - PRESERVED: ALL other functionality from v8.49 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
-   - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
