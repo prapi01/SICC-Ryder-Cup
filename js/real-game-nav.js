@@ -1,22 +1,24 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - ADDED: celebrationData saved to sessionStorage in showGameCompleteModal()
-   - REASON: post-game.html requires celebrationData to display results
-   - REASON: User clicks "SEE RESULTS" → post-game.html reads from sessionStorage
-   - REASON: Prevents "No celebration data found" error
-   - PRESERVED: ALL other functionality from v1.16 unchanged
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: showGameCompleteModal() now reads position 17 (final played hole) from cache directly
+   - FIXED: showCelebrationAndHandicap() now reads position 17 (final played hole) from cache directly
+   - REMOVED: GameLoader.getTRForHole() calls (mapped natural holes incorrectly for shotgun starts)
+   - REASON: getTRForHole(18) maps natural hole 18 to play position 8 (when starting at 10)
+   - REASON: Final score is ALWAYS at position 17 (last played position)
+   - REASON: This fixes the celebration screen showing 11.5:7.5 instead of 12:7
+   - PRESERVED: ALL other functionality from v1.17 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.17";
+window.REAL_GAME_NAV_VERSION = "1.18";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.17 - Added celebrationData save");
+    console.log("[REAL-GAME-NAV] Initializing v1.18 - Fixed final score reading (position 17)");
     
     // ============================================================
     // Private Helpers
@@ -399,8 +401,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // v1.17: showGameCompleteModal - ADDED celebrationData save
-    // Used by real-game-init.js when both signatures detected
+    // v1.18: showGameCompleteModal - FIXED: Read position 17 directly
     // ============================================================
     
     function showGameCompleteModal(gameId) {
@@ -418,35 +419,51 @@ var RealGameNav = (function() {
         sessionStorage.setItem('currentGameId', gameId || getGameId());
         
         // ============================================================
-        // v1.17: SAVE celebrationData to sessionStorage
-        // This is needed for post-game.html when user clicks "SEE RESULTS"
+        // v1.18 FIX: Read position 17 (final played hole) directly from cache
+        // Position 17 is ALWAYS the final position (0-17 = 18 holes)
+        // This fixes the bug where getTRForHole(18) mapped natural hole 18
+        // to position 8 (when starting at 10) instead of position 17
         // ============================================================
         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-        if (cache) {
-            try {
-                // Get TR for hole 18 (final scores)
-                var tr = typeof GameLoader !== 'undefined' ? GameLoader.getTRForHole(18) : { teamA: 9.5, teamB: 9.5 };
-                var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
-                var allPlayers = cache.players || [];
-                var winningPlayers = {
-                    teamA: allPlayers.filter(function(p) { return p.team === 'A'; }),
-                    teamB: allPlayers.filter(function(p) { return p.team === 'B'; })
-                };
-                var celebrationData = {
-                    winner: winner,
-                    teamAScore: tr.teamA,
-                    teamBScore: tr.teamB,
-                    winningPlayers: winningPlayers,
-                    gameId: gameId || getGameId()
-                };
-                sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-                console.log('[NAV] celebrationData saved to sessionStorage');
-            } catch(e) {
-                console.warn('[NAV] Failed to save celebrationData:', e.message);
-            }
+        var teamAScore = 9.5;
+        var teamBScore = 9.5;
+        var winner = 'Tie';
+        var allPlayers = [];
+        
+        if (cache && cache.results && cache.results.tr) {
+            // Read final position (17) directly - this is ALWAYS the last played hole
+            teamAScore = cache.results.tr.teamA?.[17] !== undefined ? cache.results.tr.teamA[17] : 9.5;
+            teamBScore = cache.results.tr.teamB?.[17] !== undefined ? cache.results.tr.teamB[17] : 9.5;
+            allPlayers = cache.players || [];
+            console.log('[NAV] Final scores from position 17:', teamAScore, ':', teamBScore);
         } else {
-            console.warn('[NAV] No cache available - celebrationData not saved');
+            console.warn('[NAV] Cache or results.tr not available - using default scores');
         }
+        
+        // Determine winner
+        if (teamAScore > teamBScore) {
+            winner = 'A';
+        } else if (teamBScore > teamAScore) {
+            winner = 'B';
+        } else {
+            winner = 'Tie';
+        }
+        
+        var winningPlayers = {
+            teamA: allPlayers.filter(function(p) { return p.team === 'A'; }),
+            teamB: allPlayers.filter(function(p) { return p.team === 'B'; })
+        };
+        
+        // Save celebrationData to sessionStorage with CORRECT scores
+        var celebrationData = {
+            winner: winner,
+            teamAScore: teamAScore,
+            teamBScore: teamBScore,
+            winningPlayers: winningPlayers,
+            gameId: gameId || getGameId()
+        };
+        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+        console.log('[NAV] celebrationData saved to sessionStorage with correct scores:', teamAScore, ':', teamBScore);
         
         var targetGameId = gameId || getGameId();
         
@@ -498,7 +515,11 @@ var RealGameNav = (function() {
         var courseName = getCourseName();
         var startingHole = getStartingHole();
         var teamGameFormat = getTeamGameFormat();
-        var tr = typeof GameLoader !== 'undefined' ? GameLoader.getTRForHole(currentHole) : { teamA: 9.5, teamB: 9.5 };
+        
+        // v1.18: Read final position (17) directly
+        var teamAScore = cache.results?.tr?.teamA?.[17] !== undefined ? cache.results.tr.teamA[17] : 9.5;
+        var teamBScore = cache.results?.tr?.teamB?.[17] !== undefined ? cache.results.tr.teamB[17] : 9.5;
+        
         var allMatchResults = {};
         
         if (typeof GameMatch !== 'undefined' && GameMatch.calculateCrossFlight) {
@@ -526,7 +547,7 @@ var RealGameNav = (function() {
                     gameId,
                     gameDataForHistory,
                     cache.results,
-                    { teamA: tr.teamA, teamB: tr.teamB },
+                    { teamA: teamAScore, teamB: teamBScore },
                     cache.signatures || { f1: { signed: false }, f2: { signed: false } },
                     cache.f1DataString,
                     cache.f2DataString,
@@ -549,7 +570,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap - v1.09: Fixed onClose callback
+    // v1.18: showCelebrationAndHandicap - FIXED: Read position 17 directly
     // ============================================================
     
     function showCelebrationAndHandicap() {
@@ -558,17 +579,28 @@ var RealGameNav = (function() {
         
         console.log("[NAV] showCelebrationAndHandicap called");
         
-        var currentHole = getCurrentHole();
         var gameId = getGameId();
         var allPlayers = getAllPlayers();
-        var tr = typeof GameLoader !== 'undefined' ? GameLoader.getTRForHole(currentHole) : { teamA: 9.5, teamB: 9.5 };
+        
+        // v1.18: Read final position (17) directly from cache
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        var teamAScore = 9.5;
+        var teamBScore = 9.5;
+        
+        if (cache && cache.results && cache.results.tr) {
+            teamAScore = cache.results.tr.teamA?.[17] !== undefined ? cache.results.tr.teamA[17] : 9.5;
+            teamBScore = cache.results.tr.teamB?.[17] !== undefined ? cache.results.tr.teamB[17] : 9.5;
+            console.log('[NAV] Celebration final scores from position 17:', teamAScore, ':', teamBScore);
+        } else {
+            console.warn('[NAV] Cache or results.tr not available - using default scores');
+        }
         
         var winner = "Tie";
         if (typeof SignCard !== 'undefined' && SignCard.getWinner) {
-            winner = SignCard.getWinner(tr.teamA, tr.teamB);
-        } else if (tr.teamA > tr.teamB) {
+            winner = SignCard.getWinner(teamAScore, teamBScore);
+        } else if (teamAScore > teamBScore) {
             winner = "A";
-        } else if (tr.teamB > tr.teamA) {
+        } else if (teamBScore > teamAScore) {
             winner = "B";
         }
         
@@ -590,8 +622,8 @@ var RealGameNav = (function() {
             // v1.09: onClose callback does NOT navigate - user must click "HANDICAP ADJUSTMENT"
             SignCard.showCelebrationScreen(
                 winner,
-                tr.teamA,
-                tr.teamB,
+                teamAScore,
+                teamBScore,
                 winningPlayers,
                 gameId,
                 function() {
@@ -648,13 +680,15 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - ADDED: celebrationData saved to sessionStorage in showGameCompleteModal()
-   - REASON: post-game.html requires celebrationData to display results
-   - REASON: User clicks "SEE RESULTS" → post-game.html reads from sessionStorage
-   - REASON: Prevents "No celebration data found" error
-   - PRESERVED: ALL other functionality from v1.16 unchanged
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: showGameCompleteModal() now reads position 17 (final played hole) from cache directly
+   - FIXED: showCelebrationAndHandicap() now reads position 17 (final played hole) from cache directly
+   - REMOVED: GameLoader.getTRForHole() calls (mapped natural holes incorrectly for shotgun starts)
+   - REASON: getTRForHole(18) maps natural hole 18 to play position 8 (when starting at 10)
+   - REASON: Final score is ALWAYS at position 17 (last played position)
+   - REASON: This fixes the celebration screen showing 11.5:7.5 instead of 12:7
+   - PRESERVED: ALL other functionality from v1.17 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal, GameLoader
 STATUS: Ready for integration
 */
