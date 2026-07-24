@@ -1,16 +1,17 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - ADDED: Photo URL read from gameData.celebration.imageUrl (already in Firestore from F1 upload)
-   - ADDED: Handicap calculation at F2 signing time using HandicapAdjustment.calculateAllAdjustmentsFromRaw()
-   - CHANGED: imageUrl no longer null - uses actual URL from gameData or localStorage
-   - REMOVED: celebration.updatedAt timestamp (unused, no longer needed)
-   - REASON: ONE complete payload write at F2 signing time - eliminates second write race condition
-   - REASON: Photo URL already exists in Firestore from F1 upload - just read and include it
-   - REASON: Handicap calculated once at F2 signing time using same logic as hcp-adjust
-   - PRESERVED: ALL other functionality from v1.41 unchanged
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - ADDED: getPhotoUrlFromStorage() - reads photo URL directly from Firebase Storage
+   - CHANGED: buildHistoryPayload() now accepts imageUrl parameter (instead of reading from gameData)
+   - CHANGED: triggerHistoryRecordWrite() now waits for photo URL before writing payload
+   - ADDED: Retry logic (20 attempts, 500ms interval) to wait for photo upload completion
+   - ADDED: Payload status logging (photo + handicap availability)
+   - REASON: Firebase Storage is the single source of truth for the photo
+   - REASON: Photo upload may complete after F2 signing, so we must wait for it
+   - REASON: Handicap data is already calculated correctly in buildHistoryPayload()
+   - PRESERVED: ALL other functionality from v1.42 unchanged
+DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
 */
@@ -647,9 +648,30 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.42: Build complete history record payload with photo URL and handicap
+    // v1.43: Get photo URL directly from Firebase Storage
+    // This is the single source of truth for the photo
     // ============================================================
-    function buildHistoryPayload(gameId, cache, gameData) {
+    function getPhotoUrlFromStorage(gameId, callback) {
+        var storage = firebase.storage();
+        var archiveId = gameId + '_H';
+        var destRef = storage.ref('celebration/' + archiveId + '.jpg');
+        
+        destRef.getDownloadURL()
+            .then(function(url) {
+                console.log('[SignCard] ✅ Photo URL from Storage');
+                callback(null, url);
+            })
+            .catch(function(err) {
+                console.warn('[SignCard] ⚠️ Photo not found in Storage:', err.message);
+                callback(null, null);
+            });
+    }
+    
+    // ============================================================
+    // v1.43: Build complete history record payload with photo URL and handicap
+    // Modified to accept imageUrl parameter (read from Storage, not gameData)
+    // ============================================================
+    function buildHistoryPayload(gameId, cache, gameData, imageUrl) {
         // Use the cache data (already refreshed from Firestore)
         var players = cache.players || [];
         var course = cache.course || {};
@@ -688,29 +710,11 @@ var SignCard = (function() {
             f2: { signed: f2Signed }
         };
         
-        // v1.42: Get photo URL from gameData (already in Firestore from F1 upload)
-        var imageUrl = null;
-        if (gameData && gameData.celebration && gameData.celebration.imageUrl) {
-            imageUrl = gameData.celebration.imageUrl;
-            console.log('[SignCard] Using photo URL from gameData');
-        } else {
-            // Fallback: check localStorage
-            try {
-                var storedUrl = localStorage.getItem('celebration_photo_url_' + gameId);
-                if (storedUrl) {
-                    imageUrl = storedUrl;
-                    console.log('[SignCard] Using photo URL from localStorage');
-                }
-            } catch(e) {
-                console.warn('[SignCard] Failed to read photo URL from localStorage:', e.message);
-            }
-        }
-        
-        // No timestamp fields - WRV v1.13 hardcodes timestamp skip
+        // v1.43: Use imageUrl from parameter (read from Storage)
         var celebrationData = {
             imageRef: photoPath,
-            imageUrl: imageUrl,
-            status: 'pending'
+            imageUrl: imageUrl || null,
+            status: imageUrl ? 'completed' : 'pending'
         };
         
         var archiveId = gameId + '_H';
@@ -795,7 +799,7 @@ var SignCard = (function() {
             f1DataString: f1DataString,
             f2DataString: f2DataString,
             results: results,
-            adjustedHandicaps: adjustedHandicaps,  // v1.42: Calculated at F2 signing time
+            adjustedHandicaps: adjustedHandicaps,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             archiveId: archiveId,
             celebration: celebrationData
@@ -803,39 +807,60 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.31: Trigger history record write in background (WRV)
-    // User never waits - this runs async
+    // v1.43: Trigger history record write in background (WRV)
+    // Now waits for photo URL to be available in Firebase Storage
     // ============================================================
     function triggerHistoryRecordWrite(gameId, cache, gameData) {
         console.log('[SignCard] 🔄 Triggering background history record write...');
         
         var archiveId = gameId + '_H';
-        var payload = buildHistoryPayload(gameId, cache, gameData);
+        var maxAttempts = 20;  // 20 * 500ms = 10 seconds max
+        var attempt = 0;
         
-        // WRV write in background - user never waits
-        if (typeof WRV !== 'undefined' && WRV.write) {
-            WRV.write('historyGames', archiveId, payload, function(err, result) {
-                if (err) {
-                    console.warn('[SignCard] ⚠️ Background history record write failed:', err.message);
-                    // WRV will retry automatically
+        function attemptWrite() {
+            attempt++;
+            getPhotoUrlFromStorage(gameId, function(err, imageUrl) {
+                var payload = buildHistoryPayload(gameId, cache, gameData, imageUrl);
+                
+                var hasPhoto = imageUrl !== null && imageUrl !== undefined;
+                var hasHandicap = payload.adjustedHandicaps !== null && payload.adjustedHandicaps !== undefined;
+                
+                console.log('[SignCard] Payload status: photo=' + (hasPhoto ? 'YES' : 'NO') + ', handicap=' + (hasHandicap ? 'YES' : 'NO'));
+                
+                if (!hasPhoto && attempt < maxAttempts) {
+                    console.log('[SignCard] ⏳ Photo not in Storage yet, retry', attempt, 'in 500ms...');
+                    setTimeout(attemptWrite, 500);
+                    return;
+                }
+                
+                if (!hasPhoto) {
+                    console.warn('[SignCard] ⚠️ No photo in Storage after', maxAttempts, 'attempts');
+                }
+                
+                // Write the payload (with or without photo URL)
+                if (typeof WRV !== 'undefined' && WRV.write) {
+                    WRV.write('historyGames', archiveId, payload, function(err, result) {
+                        if (err) {
+                            console.warn('[SignCard] ⚠️ History record write failed:', err.message);
+                        } else {
+                            console.log('[SignCard] ✅ History record written' + (hasPhoto ? ' with photo' : '') + (hasHandicap ? ' with handicap' : ''));
+                        }
+                    });
                 } else {
-                    console.log('[SignCard] ✅ Background history record write completed');
+                    console.warn('[SignCard] WRV not available, using direct write (background)');
+                    var db = getDb();
+                    db.collection('historyGames').doc(archiveId).set(payload)
+                        .then(function() {
+                            console.log('[SignCard] ✅ History record written (direct)' + (hasPhoto ? ' with photo' : '') + (hasHandicap ? ' with handicap' : ''));
+                        })
+                        .catch(function(err) {
+                            console.warn('[SignCard] ⚠️ History record write failed (direct):', err.message);
+                        });
                 }
             });
-        } else {
-            console.warn('[SignCard] WRV not available, using direct write (background)');
-            var db = getDb();
-            db.collection('historyGames').doc(archiveId).set(payload)
-                .then(function() {
-                    console.log('[SignCard] ✅ History record written (direct)');
-                })
-                .catch(function(err) {
-                    console.warn('[SignCard] ⚠️ History record write failed (direct):', err.message);
-                });
         }
         
-        // Immediately return - user doesn't wait
-        console.log('[SignCard] Background write triggered, continuing...');
+        attemptWrite();
     }
     
     // ============================================================
@@ -1095,21 +1120,22 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.42";
+window.SIGN_CARD_VERSION = "1.43";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - ADDED: Photo URL read from gameData.celebration.imageUrl (already in Firestore from F1 upload)
-   - ADDED: Handicap calculation at F2 signing time using HandicapAdjustment.calculateAllAdjustmentsFromRaw()
-   - CHANGED: imageUrl no longer null - uses actual URL from gameData or localStorage
-   - REMOVED: celebration.updatedAt timestamp (unused, no longer needed)
-   - REASON: ONE complete payload write at F2 signing time - eliminates second write race condition
-   - REASON: Photo URL already exists in Firestore from F1 upload - just read and include it
-   - REASON: Handicap calculated once at F2 signing time using same logic as hcp-adjust
-   - PRESERVED: ALL other functionality from v1.41 unchanged
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - ADDED: getPhotoUrlFromStorage() - reads photo URL directly from Firebase Storage
+   - CHANGED: buildHistoryPayload() now accepts imageUrl parameter (instead of reading from gameData)
+   - CHANGED: triggerHistoryRecordWrite() now waits for photo URL before writing payload
+   - ADDED: Retry logic (20 attempts, 500ms interval) to wait for photo upload completion
+   - ADDED: Payload status logging (photo + handicap availability)
+   - REASON: Firebase Storage is the single source of truth for the photo
+   - REASON: Photo upload may complete after F2 signing, so we must wait for it
+   - REASON: Handicap data is already calculated correctly in buildHistoryPayload()
+   - PRESERVED: ALL other functionality from v1.42 unchanged
+DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
 */
