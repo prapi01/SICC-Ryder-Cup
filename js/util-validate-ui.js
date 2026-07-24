@@ -1,21 +1,20 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: Raw HCP values now calculated from startingHcp + anchorAdj + perfAdj
-   - REASON: Raw column should show integer value (startingHcp + anchorAdj + perfAdj), NOT anchorRaw + perfRaw
-   - REASON: anchorRaw + perfRaw are raw performance values (decimal/bracketed), not the Raw handicap value
-   - REASON: This matches the handicap adjustment definition in hcp-adjust.js
-   - PRESERVED: ALL other functionality from v1.20 unchanged
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - FIXED: Total mismatches count now shows green (#4caf50) when 0, red (#ff6b6b) when > 0
+   - REASON: "0 mismatches" was showing in red, which is confusing and incorrect
+   - REASON: 0 should be green (success), not red (error)
+   - PRESERVED: ALL other functionality from v1.22 unchanged
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.21";
+window.UTIL_VALIDATE_UI_VERSION = "1.23";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.21 - Fixed Raw HCP calculation (startingHcp + anchorAdj + perfAdj)");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.23 - Fixed total mismatches color");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -54,6 +53,35 @@ var UtilValidateUI = (function() {
             return '<span style="color:#ffaa44;">Pending (Multiple)</span>';
         }
         return '<span style="color:#ffaa44;">' + escapeHtml(value) + '</span>';
+    }
+    
+    // ============================================================
+    // v1.22: HELPER - Get recalculated value with field name mapping
+    // ============================================================
+    
+    function getRecalcValue(recalc, field) {
+        if (!recalc) return undefined;
+        
+        // Direct match
+        if (recalc[field] !== undefined) {
+            return recalc[field];
+        }
+        
+        // Field name mapping for stored vs recalculated
+        switch (field) {
+            case 'anchorAdj':
+                return recalc.anchorAdj !== undefined ? recalc.anchorAdj : undefined;
+            case 'perfAdj':
+                return recalc.perfAdj !== undefined ? recalc.perfAdj : undefined;
+            case 'finalHcp':
+                // Try in order: finalHcp → newHcp → newAnchor
+                if (recalc.finalHcp !== undefined) return recalc.finalHcp;
+                if (recalc.newHcp !== undefined) return recalc.newHcp;
+                if (recalc.newAnchor !== undefined) return recalc.newAnchor;
+                return undefined;
+            default:
+                return recalc[field];
+        }
     }
     
     // ============================================================
@@ -598,14 +626,14 @@ var UtilValidateUI = (function() {
                 html += '</tr>';
             }
             
-            // Check field mismatches
+            // v1.22: FIXED - Check field mismatches using getRecalcValue() for proper field mapping
             var playerHasMismatch = false;
             var fields = ['anchorAdj', 'perfAdj', 'finalHcp'];
             var fieldStatus = {};
             for (var f = 0; f < fields.length; f++) {
                 var field = fields[f];
                 var storedVal = stored ? stored[field] : undefined;
-                var recalcVal = recalc ? recalc[field] : undefined;
+                var recalcVal = getRecalcValue(recalc, field);
                 var isEqual;
                 if (typeof storedVal === 'number' && typeof recalcVal === 'number') {
                     isEqual = Math.abs(storedVal - recalcVal) < 0.01;
@@ -678,6 +706,7 @@ var UtilValidateUI = (function() {
             html += '<td style="padding:4px 3px; text-align:center; color:' + finalColor + '; font-weight:600;">' + escapeHtml(String(finalCur)) + '</td>';
             html += '<td style="padding:4px 3px; text-align:center; color:' + (finalMatch ? '#4caf50' : '#ffaa44') + '; font-weight:' + (finalMatch ? '400' : '700') + ';">' + escapeHtml(String(finalExp)) + '</td>';
             
+            // v1.22: Status icon now correctly reflects actual match status
             var statusIcon = playerHasMismatch ? '❌' : '✅';
             html += '<td style="padding:4px 3px; text-align:center;">' + statusIcon + '</td>';
             html += '</tr>';
@@ -869,7 +898,9 @@ var UtilValidateUI = (function() {
         // Total row
         html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; margin-top:2px; font-size:0.75rem; border-top:1px solid #2a2a2a;">';
         html += '<span style="color:#fff; font-weight:600;">Total</span>';
-        html += '<span style="color:#ff6b6b; font-weight:700;">' + totalMismatches + ' mismatches</span>';
+        // v1.23: FIXED - 0 mismatches shows green, > 0 shows red
+        var totalColor = totalMismatches === 0 ? '#4caf50' : '#ff6b6b';
+        html += '<span style="color:' + totalColor + '; font-weight:700;">' + totalMismatches + ' mismatches</span>';
         html += '</div>';
         html += '</div>';
         
@@ -1888,17 +1919,16 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.21 - Fixed Raw HCP calculation (startingHcp + anchorAdj + perfAdj)');
+console.log('[UTIL-VALIDATE-UI] v1.23 - Fixed total mismatches color');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: Raw HCP values now calculated from startingHcp + anchorAdj + perfAdj
-   - REASON: Raw column should show integer value (startingHcp + anchorAdj + perfAdj), NOT anchorRaw + perfRaw
-   - REASON: anchorRaw + perfRaw are raw performance values (decimal/bracketed), not the Raw handicap value
-   - REASON: This matches the handicap adjustment definition in hcp-adjust.js
-   - PRESERVED: ALL other functionality from v1.20 unchanged
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - FIXED: Total mismatches count now shows green (#4caf50) when 0, red (#ff6b6b) when > 0
+   - REASON: "0 mismatches" was showing in red, which is confusing and incorrect
+   - REASON: 0 should be green (success), not red (error)
+   - PRESERVED: ALL other functionality from v1.22 unchanged
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
