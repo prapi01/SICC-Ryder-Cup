@@ -1,12 +1,13 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: Changed highlight logic from "any match event" to "only clinch events"
-   - Replaced hasAnyMatchEvent() with isClinchHole()
-   - Now uses clinchedAt data to determine if a match was clinched on a specific hole
-   - Only highlights player scores when they clinched a match on that hole
-   - All existing functionality preserved from v1.17
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: renderScorecard() now captures clinchedAt from the 17th parameter
+   - REASON: view-history.html passes clinchedAt as the 17th parameter, but it was being ignored
+   - REASON: GameLoader.getLocalCache() is not available in view-history.html
+   - FIXED: clinchedAt is now captured from arguments[17] in the new convention branch
+   - PRESERVED: Fallback to GameLoader.getLocalCache() for backward compatibility
+   - PRESERVED: ALL other functionality from v1.18 unchanged
 DEPENDS ON: GameData (for getLastHole), GameOrder (optional), GameMatch (for getClinchHole)
 STATUS: Ready for integration
 */
@@ -14,7 +15,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.18";
+window.GAME_SCORECARD_VERSION = "1.19";
 
 var GameScorecard = (function() {
     
@@ -132,7 +133,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.18: Clinch-only highlighting
+    // Scorecard Rendering - v1.19: Captures clinchedAt parameter
     // ============================================================
     
     function renderScorecard(containerId, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15) {
@@ -162,13 +163,18 @@ var GameScorecard = (function() {
             t2Display = param15;
             strkDisplay = arguments[16];
             
-            // v1.18: Get clinchedAt from cache
-            if (typeof GameLoader !== 'undefined') {
+            // v1.19: Capture clinchedAt from the 17th parameter (passed by view-history.html)
+            // Use passed value first, then fallback to GameLoader for compatibility
+            var passedClinchedAt = arguments[17];
+            if (passedClinchedAt && typeof passedClinchedAt === 'object' && Object.keys(passedClinchedAt).length > 0) {
+                clinchedAt = passedClinchedAt;
+                console.log('[GAME-SCORECARD] Using clinchedAt from parameter (', Object.keys(clinchedAt).length, 'entries)');
+            } else if (typeof GameLoader !== 'undefined') {
+                // Fallback: get clinchedAt from cache (for real-game.html and view-game.html)
                 var cache = GameLoader.getLocalCache();
                 if (cache && cache.clinchedAt) {
                     clinchedAt = cache.clinchedAt;
                 }
-                // Also try results.clinchedAt
                 if (cache && cache.results && cache.results.clinchedAt) {
                     clinchedAt = cache.results.clinchedAt;
                 }
@@ -653,7 +659,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.18"; }
+        getVersion: function() { return "1.19"; }
     };
     
 })();
@@ -665,13 +671,14 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: Changed highlight logic from "any match event" to "only clinch events"
-   - Replaced hasAnyMatchEvent() with isClinchHole()
-   - Now uses clinchedAt data to determine if a match was clinched on a specific hole
-   - Only highlights player scores when they clinched a match on that hole
-   - All existing functionality preserved from v1.17
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: renderScorecard() now captures clinchedAt from the 17th parameter
+   - REASON: view-history.html passes clinchedAt as the 17th parameter, but it was being ignored
+   - REASON: GameLoader.getLocalCache() is not available in view-history.html
+   - FIXED: clinchedAt is now captured from arguments[17] in the new convention branch
+   - PRESERVED: Fallback to GameLoader.getLocalCache() for backward compatibility
+   - PRESERVED: ALL other functionality from v1.18 unchanged
 DEPENDS ON: GameData (for getLastHole), GameOrder (optional), GameMatch (for getClinchHole)
 STATUS: Ready for integration
 */
