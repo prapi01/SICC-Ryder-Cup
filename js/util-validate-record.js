@@ -1,25 +1,23 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: deepEqualRounded() - deep equality with floating point tolerance (0.01)
-   - ADDED: deepEqualClinched() - focused comparison of clinch data (winner, loser, clinchedAtHole)
-   - CHANGED: Player Totals comparison now uses deepEqualRounded() instead of deepEqual()
-   - CHANGED: ClinchedAt comparison now uses deepEqualClinched() instead of deepEqual()
-   - REASON: deepEqual() is too strict for floating point numbers (e.g., 0.5 vs 0.5000001)
-   - REASON: Player totals contain sums that may have floating point precision differences
-   - REASON: ClinchedAt validation should focus on the actual clinch data, not deep equality
-   - PRESERVED: ALL other functionality from v1.30 unchanged
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - FIXED: calculateMatchGamePerHole() now stores clinchOpponents as an array instead of a single string
+   - FIXED: buildCompleteResultsFromRawData() now iterates over clinchOpponents array
+   - REASON: A player can clinch multiple matches at the same hole (e.g., YHM vs JG and YHM vs OCB at H3)
+   - REASON: Single string was being overwritten, causing only the last clinch at each hole to be recorded
+   - REASON: This fixes the 14 vs 12 clinches mismatch in VALIDATE tab
+   - PRESERVED: ALL other functionality from v1.31 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.31";
+window.UTIL_VALIDATE_VERSION = "1.32";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.31 - Fixed deep equality comparisons (Player Totals, ClinchedAt)");
+    console.log("[UTIL-VALIDATE] Initializing v1.32 - Fixed clinch storage to handle multiple clinches per player per hole");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -411,7 +409,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // MATCH GAME CALCULATION (with clinch detection) - v1.29: Fixed shotgun start
+    // MATCH GAME CALCULATION (with clinch detection) - v1.32: Fixed clinch storage (array)
     // ============================================================
     
     function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar, startingHole) {
@@ -534,17 +532,24 @@ var UtilValidate = (function() {
                 
                 var isASAtH18 = (pos === 17 && leadA === 0 && leadB === 0);
                 
+                // v1.32: Store clinch opponents as an array to handle multiple clinches per player per hole
                 if (isClinchHole) {
                     holePoints[match.playerA.name] += pointsA;
                     if (clinchWinner === match.playerA.name) {
-                        holeClinchInfo[match.playerA.name].clinched = true;
-                        holeClinchInfo[match.playerA.name].clinchOpponent = match.playerB.name;
-                        holeClinchInfo[match.playerA.name].clinchHole = hole;
+                        if (!holeClinchInfo[match.playerA.name].clinched) {
+                            holeClinchInfo[match.playerA.name].clinched = true;
+                            holeClinchInfo[match.playerA.name].clinchOpponents = [];
+                            holeClinchInfo[match.playerA.name].clinchHole = hole;
+                        }
+                        holeClinchInfo[match.playerA.name].clinchOpponents.push(match.playerB.name);
                     }
                     if (clinchWinner === match.playerB.name) {
-                        holeClinchInfo[match.playerB.name].clinched = true;
-                        holeClinchInfo[match.playerB.name].clinchOpponent = match.playerA.name;
-                        holeClinchInfo[match.playerB.name].clinchHole = hole;
+                        if (!holeClinchInfo[match.playerB.name].clinched) {
+                            holeClinchInfo[match.playerB.name].clinched = true;
+                            holeClinchInfo[match.playerB.name].clinchOpponents = [];
+                            holeClinchInfo[match.playerB.name].clinchHole = hole;
+                        }
+                        holeClinchInfo[match.playerB.name].clinchOpponents.push(match.playerA.name);
                     }
                     holePoints[match.playerB.name] += pointsB;
                 } else if (isASAtH18) {
@@ -593,7 +598,7 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // BUILD COMPLETE RESULTS FROM RAW DATA - v1.30: Pass startingHole to team/stroke
+    // BUILD COMPLETE RESULTS FROM RAW DATA - v1.32: Iterate over clinchOpponents array
     // ============================================================
     
     function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole) {
@@ -672,21 +677,25 @@ var UtilValidate = (function() {
             }
         }
         
+        // v1.32: Iterate over clinchOpponents array to build clinchedAt
         var clinchedAt = {};
         for (var h = 0; h < matchResults.length; h++) {
             var holeData = matchResults[h];
             var clinchInfo = holeData.clinchInfo;
             for (var playerName in clinchInfo) {
                 if (clinchInfo[playerName] && clinchInfo[playerName].clinched) {
-                    var opponent = clinchInfo[playerName].clinchOpponent;
+                    var opponents = clinchInfo[playerName].clinchOpponents || [];
                     var clinchHole = clinchInfo[playerName].clinchHole;
-                    clinchedAt[playerName + "_vs_" + opponent] = {
-                        clinchedAtHole: clinchHole,
-                        winner: playerName,
-                        loser: opponent,
-                        leadAtClinch: null,
-                        remainingHolesAtClinch: 18 - clinchHole
-                    };
+                    for (var o = 0; o < opponents.length; o++) {
+                        var opponent = opponents[o];
+                        clinchedAt[playerName + "_vs_" + opponent] = {
+                            clinchedAtHole: clinchHole,
+                            winner: playerName,
+                            loser: opponent,
+                            leadAtClinch: null,
+                            remainingHolesAtClinch: 18 - clinchHole
+                        };
+                    }
                 }
             }
         }
@@ -2118,16 +2127,14 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: deepEqualRounded() - deep equality with floating point tolerance (0.01)
-   - ADDED: deepEqualClinched() - focused comparison of clinch data (winner, loser, clinchedAtHole)
-   - CHANGED: Player Totals comparison now uses deepEqualRounded() instead of deepEqual()
-   - CHANGED: ClinchedAt comparison now uses deepEqualClinched() instead of deepEqual()
-   - REASON: deepEqual() is too strict for floating point numbers (e.g., 0.5 vs 0.5000001)
-   - REASON: Player totals contain sums that may have floating point precision differences
-   - REASON: ClinchedAt validation should focus on the actual clinch data, not deep equality
-   - PRESERVED: ALL other functionality from v1.30 unchanged
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - FIXED: calculateMatchGamePerHole() now stores clinchOpponents as an array instead of a single string
+   - FIXED: buildCompleteResultsFromRawData() now iterates over clinchOpponents array
+   - REASON: A player can clinch multiple matches at the same hole (e.g., YHM vs JG and YHM vs OCB at H3)
+   - REASON: Single string was being overwritten, causing only the last clinch at each hole to be recorded
+   - REASON: This fixes the 14 vs 12 clinches mismatch in VALIDATE tab
+   - PRESERVED: ALL other functionality from v1.31 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
