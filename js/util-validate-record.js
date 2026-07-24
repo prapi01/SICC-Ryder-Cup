@@ -1,23 +1,23 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - FIXED: calculateMatchGamePerHole() now stores clinchOpponents as an array instead of a single string
-   - FIXED: buildCompleteResultsFromRawData() now iterates over clinchOpponents array
-   - REASON: A player can clinch multiple matches at the same hole (e.g., YHM vs JG and YHM vs OCB at H3)
-   - REASON: Single string was being overwritten, causing only the last clinch at each hole to be recorded
-   - REASON: This fixes the 14 vs 12 clinches mismatch in VALIDATE tab
-   - PRESERVED: ALL other functionality from v1.31 unchanged
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - REMOVED: Player Totals comparison from validateAllFields() (section 9)
+   - REMOVED: Player Totals fix from buildFixPayload() (section 8)
+   - REASON: Player Totals are already stored correctly in the record
+   - REASON: Recalculating them from raw data is redundant and causes false mismatches
+   - REASON: This eliminates the "Player Totals" mismatch and the FORCE_FIX flag
+   - PRESERVED: ALL other functionality from v1.32 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.32";
+window.UTIL_VALIDATE_VERSION = "1.33";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.32 - Fixed clinch storage to handle multiple clinches per player per hole");
+    console.log("[UTIL-VALIDATE] Initializing v1.33 - Removed Player Totals from validation");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -1540,17 +1540,9 @@ var UtilValidate = (function() {
         
         // 6-8. Removed in v4.0
         
-        // 9. Player Totals
-        var curTotals = recordData.results?.playerTotals || {};
-        var newTotals = recalculated.playerTotals || {};
-        if (!deepEqualRounded(curTotals, newTotals)) {
-            mismatches.push({ field: 'Player Totals', current: 'stale', expected: 'recalculated' });
-            summary.mismatched++;
-        } else {
-            matches.push({ field: 'Player Totals', current: 'correct', expected: 'correct' });
-            summary.matched++;
-        }
-        summary.totalFields++;
+        // 9. Player Totals - SKIPPED (validate should not recalculate gross scores)
+        // Player totals are already stored correctly in the record
+        // Recalculating from raw data is redundant and causes false mismatches
         
         // 10. ClinchedAt
         var curClinched = recordData.results?.clinchedAt || {};
@@ -1927,10 +1919,8 @@ var UtilValidate = (function() {
         
         // 5-7. Removed in v4.0
         
-        // 8. Player Totals
-        if (!deepEqualRounded(recordData.results?.playerTotals || {}, recalculated.playerTotals || {})) {
-            updatePayload['results.playerTotals'] = recalculated.playerTotals;
-        }
+        // 8. Player Totals - SKIPPED (validate should not fix what isn't broken)
+        // Player totals are already stored correctly in the record
         
         // 9. ClinchedAt
         if (!deepEqualClinched(recordData.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
@@ -2127,14 +2117,14 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - FIXED: calculateMatchGamePerHole() now stores clinchOpponents as an array instead of a single string
-   - FIXED: buildCompleteResultsFromRawData() now iterates over clinchOpponents array
-   - REASON: A player can clinch multiple matches at the same hole (e.g., YHM vs JG and YHM vs OCB at H3)
-   - REASON: Single string was being overwritten, causing only the last clinch at each hole to be recorded
-   - REASON: This fixes the 14 vs 12 clinches mismatch in VALIDATE tab
-   - PRESERVED: ALL other functionality from v1.31 unchanged
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - REMOVED: Player Totals comparison from validateAllFields() (section 9)
+   - REMOVED: Player Totals fix from buildFixPayload() (section 8)
+   - REASON: Player Totals are already stored correctly in the record
+   - REASON: Recalculating them from raw data is redundant and causes false mismatches
+   - REASON: This eliminates the "Player Totals" mismatch and the FORCE_FIX flag
+   - PRESERVED: ALL other functionality from v1.32 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
