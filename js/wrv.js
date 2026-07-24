@@ -1,19 +1,20 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - Version bump only - no functional changes
-   - v1.11 introduced infinite retries (working correctly)
-   - v1.12 maintains all functionality from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - CHANGED: docRef.set(data, { merge: true }) → docRef.set(data) - OVERWRITE, no merge
+   - ADDED: Hardcoded timestamp skip in deepEqualWithSkip() - ignores ALL timestamps
+   - REMOVED: timestamp comparison logic for Firestore Timestamp objects
+   - REASON: F2 data is the single source of truth - OVERWRITE always
+   - REASON: Timestamps are never used and should never cause verification failure
    - PRESERVED: Infinite retries with exponential backoff
-   - PRESERVED: skipVerify functionality
+   - PRESERVED: skipVerify functionality (backward compatible but no longer needed)
    - PRESERVED: recover() functionality
-   - REASON: Version consistency across codebase
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.12";
+window.WRV_VERSION = "1.13";
 
 var WRV = (function() {
     
@@ -28,6 +29,8 @@ var WRV = (function() {
     // ============================================================
     // v1.10: Fields to skip during verification
     // These are server-timestamp fields that will never match
+    // NOTE: v1.13 - Hardcoded timestamp skip makes this redundant
+    // Kept for backward compatibility only
     // ============================================================
     
     var DEFAULT_SKIP_VERIFY = [
@@ -68,6 +71,7 @@ var WRV = (function() {
     // ============================================================
     // Deep comparison of two objects with skip fields
     // Keys are SORTED before comparison (Firestore doesn't preserve order)
+    // v1.13: HARDCODED timestamp skip - ALWAYS ignore ALL timestamps
     // ============================================================
     
     function deepEqualWithSkip(a, b, skipKeys) {
@@ -76,23 +80,31 @@ var WRV = (function() {
         if (a === null || b === null) return a === b;
         if (typeof a === 'undefined' || typeof b === 'undefined') return a === b;
         
-        // Handle Date objects
+        // ============================================================
+        // v1.13: HARDCODED TIMESTAMP SKIP
+        // ALWAYS ignore ANY timestamp-related values during verification
+        // Server timestamp sentinels AND Firestore Timestamp objects
+        // ============================================================
+        
+        // If either value is a server timestamp sentinel, skip comparison entirely
+        if (isServerTimestamp(a) || isServerTimestamp(b)) {
+            return true;
+        }
+        
+        // If either value is a Firestore Timestamp object (has toDate method), skip comparison entirely
+        if (a && typeof a.toDate === 'function') {
+            return true;
+        }
+        if (b && typeof b.toDate === 'function') {
+            return true;
+        }
+        
+        // Handle Date objects (keep for completeness, but rarely used)
         if (a instanceof Date && b instanceof Date) {
             return a.getTime() === b.getTime();
         }
         if (a instanceof Date) return false;
         if (b instanceof Date) return false;
-        
-        // Handle Firestore Timestamp (has toDate method)
-        if (a && typeof a.toDate === 'function') {
-            if (b && typeof b.toDate === 'function') {
-                return a.toDate().getTime() === b.toDate().getTime();
-            }
-            return false;
-        }
-        if (b && typeof b.toDate === 'function') {
-            return false;
-        }
         
         if (typeof a !== 'object' || typeof b !== 'object') return a === b;
         
@@ -157,6 +169,7 @@ var WRV = (function() {
     // ============================================================
     // Verify payload fields with skip list
     // v1.10: Skips timestamp fields during comparison
+    // v1.13: Hardcoded timestamp skip in deepEqualWithSkip() makes skipKeys optional
     // ============================================================
     
     function verifyData(original, written, skipVerify) {
@@ -191,6 +204,7 @@ var WRV = (function() {
     // ============================================================
     // WRV.write() - Write payload, verify payload fields only
     // v1.11: INFINITE RETRIES - never gives up
+    // v1.13: OVERWRITE - no merge (F2 data is the single source of truth)
     // ============================================================
     
     function writeWithWRV(collection, docId, data, callback, options) {
@@ -203,7 +217,9 @@ var WRV = (function() {
             attempt++;
             console.log('[WRV] Attempt', attempt, 'for', collection + '/' + docId);
             
-            docRef.set(data, { merge: true })
+            // v1.13: OVERWRITE - no merge
+            // F2 data is the single source of truth - always overwrite
+            docRef.set(data)
                 .then(function() {
                     return docRef.get();
                 })
@@ -457,15 +473,16 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - Version bump only - no functional changes
-   - v1.11 introduced infinite retries (working correctly)
-   - v1.12 maintains all functionality from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - CHANGED: docRef.set(data, { merge: true }) → docRef.set(data) - OVERWRITE, no merge
+   - ADDED: Hardcoded timestamp skip in deepEqualWithSkip() - ignores ALL timestamps
+   - REMOVED: timestamp comparison logic for Firestore Timestamp objects
+   - REASON: F2 data is the single source of truth - OVERWRITE always
+   - REASON: Timestamps are never used and should never cause verification failure
    - PRESERVED: Infinite retries with exponential backoff
-   - PRESERVED: skipVerify functionality
+   - PRESERVED: skipVerify functionality (backward compatible but no longer needed)
    - PRESERVED: recover() functionality
-   - REASON: Version consistency across codebase
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
