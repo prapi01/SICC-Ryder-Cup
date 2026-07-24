@@ -1,14 +1,15 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.41
-KEY CHANGES from v1.40:
-   - REMOVED: History record write from listener (was being skipped due to modal check)
-   - RESTORED: History record write to .then() callback (v1.38 approach that worked)
-   - REMOVED: Modal existence check from listener (was preventing history write)
-   - KEPT: historyRecordWritten flag to prevent duplicate writes
-   - REASON: v1.40 broke history record creation by moving it to listener with modal check
-   - REASON: Restoring to v1.38 approach ensures history record is written reliably
-   - PRESERVED: ALL other functionality from v1.40 unchanged
+VERSION: 1.42
+KEY CHANGES from v1.41:
+   - ADDED: Photo URL read from gameData.celebration.imageUrl (already in Firestore from F1 upload)
+   - ADDED: Handicap calculation at F2 signing time using HandicapAdjustment.calculateAllAdjustmentsFromRaw()
+   - CHANGED: imageUrl no longer null - uses actual URL from gameData or localStorage
+   - REMOVED: celebration.updatedAt timestamp (unused, no longer needed)
+   - REASON: ONE complete payload write at F2 signing time - eliminates second write race condition
+   - REASON: Photo URL already exists in Firestore from F1 upload - just read and include it
+   - REASON: Handicap calculated once at F2 signing time using same logic as hcp-adjust
+   - PRESERVED: ALL other functionality from v1.41 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
@@ -646,7 +647,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.31: Build complete history record payload
+    // v1.42: Build complete history record payload with photo URL and handicap
     // ============================================================
     function buildHistoryPayload(gameId, cache, gameData) {
         // Use the cache data (already refreshed from Firestore)
@@ -687,15 +688,84 @@ var SignCard = (function() {
             f2: { signed: f2Signed }
         };
         
-        // Celebration data
+        // v1.42: Get photo URL from gameData (already in Firestore from F1 upload)
+        var imageUrl = null;
+        if (gameData && gameData.celebration && gameData.celebration.imageUrl) {
+            imageUrl = gameData.celebration.imageUrl;
+            console.log('[SignCard] Using photo URL from gameData');
+        } else {
+            // Fallback: check localStorage
+            try {
+                var storedUrl = localStorage.getItem('celebration_photo_url_' + gameId);
+                if (storedUrl) {
+                    imageUrl = storedUrl;
+                    console.log('[SignCard] Using photo URL from localStorage');
+                }
+            } catch(e) {
+                console.warn('[SignCard] Failed to read photo URL from localStorage:', e.message);
+            }
+        }
+        
+        // No timestamp fields - WRV v1.13 hardcodes timestamp skip
         var celebrationData = {
             imageRef: photoPath,
-            imageUrl: null,  // Frontend will call getDownloadURL()
-            status: 'pending',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            imageUrl: imageUrl,
+            status: 'pending'
         };
         
         var archiveId = gameId + '_H';
+        
+        // ============================================================
+        // v1.42: Calculate handicap adjustment at F2 signing time
+        // ============================================================
+        var adjustedHandicaps = null;
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
+            try {
+                // Find the anchor from gameData
+                var anchorName = gameData?.anchor || null;
+                var anchorPlayer = players.find(function(p) { return p.name === anchorName; });
+                if (!anchorPlayer && players.length > 0) {
+                    // Fallback to lowest handicap
+                    var sorted = players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
+                    anchorPlayer = sorted[0];
+                }
+                
+                if (anchorPlayer) {
+                    var hcpResult = HandicapAdjustment.calculateAllAdjustmentsFromRaw(
+                        anchorPlayer,
+                        players,
+                        f1DataString,
+                        f2DataString,
+                        course.si || [],
+                        course.par || []
+                    );
+                    
+                    if (hcpResult && hcpResult.players) {
+                        adjustedHandicaps = {
+                            anchor: anchorPlayer.name,
+                            players: hcpResult.players.map(function(p) {
+                                return {
+                                    name: p.name,
+                                    label: p.label,
+                                    startingHcp: p.startingHcp || p.currentHcp,
+                                    anchorAdj: p.anchorAdj || 0,
+                                    perfAdj: p.perfAdj || 0,
+                                    finalHcp: hcpResult.needsZeroRise ? p.newAnchor : p.newHcp,
+                                    anchorRaw: p.anchorRaw || 0,
+                                    perfRaw: p.perfRaw || 0
+                                };
+                            }),
+                            needsZeroRise: hcpResult.needsZeroRise || false,
+                            zeroRiseAmount: hcpResult.zeroRiseAmount || 0,
+                            newAnchor: hcpResult.newAnchorName || anchorPlayer.name
+                        };
+                        console.log('[SignCard] Handicap calculation added to payload');
+                    }
+                }
+            } catch(e) {
+                console.warn('[SignCard] Handicap calculation failed:', e.message);
+            }
+        }
         
         return {
             originalGameId: gameId,
@@ -725,7 +795,7 @@ var SignCard = (function() {
             f1DataString: f1DataString,
             f2DataString: f2DataString,
             results: results,
-            adjustedHandicaps: null,  // Will be calculated and filled by hcp-adjust
+            adjustedHandicaps: adjustedHandicaps,  // v1.42: Calculated at F2 signing time
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             archiveId: archiveId,
             celebration: celebrationData
@@ -1025,19 +1095,20 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.41";
+window.SIGN_CARD_VERSION = "1.42";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.41
-KEY CHANGES from v1.40:
-   - REMOVED: History record write from listener (was being skipped due to modal check)
-   - RESTORED: History record write to .then() callback (v1.38 approach that worked)
-   - REMOVED: Modal existence check from listener (was preventing history write)
-   - KEPT: historyRecordWritten flag to prevent duplicate writes
-   - REASON: v1.40 broke history record creation by moving it to listener with modal check
-   - REASON: Restoring to v1.38 approach ensures history record is written reliably
-   - PRESERVED: ALL other functionality from v1.40 unchanged
+VERSION: 1.42
+KEY CHANGES from v1.41:
+   - ADDED: Photo URL read from gameData.celebration.imageUrl (already in Firestore from F1 upload)
+   - ADDED: Handicap calculation at F2 signing time using HandicapAdjustment.calculateAllAdjustmentsFromRaw()
+   - CHANGED: imageUrl no longer null - uses actual URL from gameData or localStorage
+   - REMOVED: celebration.updatedAt timestamp (unused, no longer needed)
+   - REASON: ONE complete payload write at F2 signing time - eliminates second write race condition
+   - REASON: Photo URL already exists in Firestore from F1 upload - just read and include it
+   - REASON: Handicap calculated once at F2 signing time using same logic as hcp-adjust
+   - PRESERVED: ALL other functionality from v1.41 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
