@@ -1,11 +1,13 @@
 <!--
 FILE: player-management.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - CHANGED: usedLabels now read from playerInformation document (not separate collection)
-   - CHANGED: UsedLabels.isLabelUsed() now checks playerInformation.usedLabels
-   - PRESERVED: All v1.19 functionality unchanged
-   - PRESERVED: All UI styling and layout from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - MOVED: Label validation status message from label group to below HCP/Team row
+   - REASON: Status message was cluttering the label input area and making UI look messy
+   - FIXED: Status message now appears as a full-width line below the form actions
+   - FIXED: Updated validateLabelInput() to target the new status div location
+   - PRESERVED: All v1.20 functionality unchanged
+   - PRESERVED: All UI styling from v1.20 unchanged (except status message position)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/used-labels.js
 STATUS: Ready for integration
 -->
@@ -377,31 +379,39 @@ STATUS: Ready for integration
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        /* v1.19: Label validation error/warning styles */
-        .label-error {
+        /* v1.19: Label validation error/warning styles - v1.21: Moved to full width below form */
+        .label-status {
+            font-size: 0.6rem;
+            margin-top: 6px;
+            padding: 4px 0;
+            min-height: 20px;
+            letter-spacing: 0.3px;
+            text-align: center;
+            width: 100%;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+        .label-status.error {
             color: #ff6b6b;
-            font-size: 0.6rem;
-            margin-top: 2px;
-            min-height: 16px;
-            letter-spacing: 0.3px;
+            background: rgba(255, 107, 107, 0.08);
+            border: 1px solid rgba(255, 107, 107, 0.15);
         }
-        .label-warning {
+        .label-status.warning {
             color: #ffaa44;
-            font-size: 0.6rem;
-            margin-top: 2px;
-            min-height: 16px;
-            letter-spacing: 0.3px;
+            background: rgba(255, 170, 68, 0.08);
+            border: 1px solid rgba(255, 170, 68, 0.15);
         }
-        .label-valid {
+        .label-status.success {
             color: #4caf50;
-            font-size: 0.6rem;
-            margin-top: 2px;
-            min-height: 16px;
-            letter-spacing: 0.3px;
+            background: rgba(76, 175, 80, 0.08);
+            border: 1px solid rgba(76, 175, 80, 0.15);
         }
-        .form-group.label-group .label-status {
-            min-height: 16px;
+        .label-status.empty {
+            color: #444;
+            background: transparent;
+            border: 1px solid transparent;
         }
+        
         .form-group.label-group input.label-error-input {
             border-color: #ff6b6b;
         }
@@ -458,6 +468,11 @@ STATUS: Ready for integration
                 padding: 6px 12px;
                 font-size: 0.8rem;
             }
+            .label-status {
+                font-size: 0.55rem;
+                padding: 3px 0;
+                min-height: 18px;
+            }
         }
     </style>
 </head>
@@ -468,12 +483,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.21</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.20
+// VERSION: 1.21
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -482,8 +497,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.20";
-var CACHE_KEY = "player_management_v120";
+var APP_VERSION = "1.21";
+var CACHE_KEY = "player_management_v121";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -495,8 +510,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.20";
-console.log("[PLAYER-MGMT] Initializing v1.20 - usedLabels from playerInformation");
+window.PLAYER_MGMT_VERSION = "1.21";
+console.log("[PLAYER-MGMT] Initializing v1.21 - Moved label status below form");
 
 // ============================================================
 // Firebase
@@ -773,7 +788,7 @@ function onNameInput() {
 }
 
 // ============================================================
-// v1.19: Real-time label validation
+// v1.21: Real-time label validation - updated to target new status div
 // ============================================================
 function validateLabelInput() {
     var labelInput = document.getElementById('playerLabel');
@@ -795,7 +810,16 @@ function validateLabelInput() {
     
     // Update status display
     statusDiv.textContent = result.message;
-    statusDiv.className = 'label-status ' + result.type;
+    statusDiv.className = 'label-status';
+    if (result.type === 'error') {
+        statusDiv.classList.add('error');
+    } else if (result.type === 'warning') {
+        statusDiv.classList.add('warning');
+    } else if (result.type === 'success') {
+        statusDiv.classList.add('success');
+    } else {
+        statusDiv.classList.add('empty');
+    }
     
     // Update input border color
     labelInput.className = '';
@@ -820,7 +844,7 @@ function cancelForm() {
 }
 
 // ============================================================
-// Render
+// Render - v1.21: Moved label status to below form actions
 // ============================================================
 function render() {
     var container = document.getElementById('app');
@@ -851,11 +875,11 @@ function render() {
             </div>
         </div>
         
-        <!-- Add/Edit Form (SECOND) - 2-LINE LAYOUT -->
+        <!-- Add/Edit Form (SECOND) - 2-LINE LAYOUT with status below -->
         <div class="card">
             <div class="card-title">${editingIndex >= 0 ? 'Edit Player' : 'Add New Player'}</div>
             
-            <!-- LINE 1: Name + Label -->
+            <!-- LINE 1: Name + Label (status removed from here) -->
             <div class="form-line">
                 <div class="form-group name-group">
                     <label>Name</label>
@@ -864,7 +888,6 @@ function render() {
                 <div class="form-group label-group">
                     <label>Label</label>
                     <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="" oninput="onLabelInput()">
-                    <div id="labelStatus" class="label-status"></div>
                 </div>
             </div>
             
@@ -889,6 +912,9 @@ function render() {
                     <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
                 </div>
             </div>
+            
+            <!-- LINE 3: Label status message (full width, below everything) -->
+            <div id="labelStatus" class="label-status empty"></div>
         </div>
         
         <div class="back-link" onclick="goBackToSettings()">Back to Game Settings</div>
@@ -1187,12 +1213,14 @@ window.isLabelInUseByPlayer = isLabelInUseByPlayer;
 
 <!--
 FILE: player-management.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - CHANGED: usedLabels now read from playerInformation document (not separate collection)
-   - CHANGED: UsedLabels.isLabelUsed() now checks playerInformation.usedLabels
-   - PRESERVED: All v1.19 functionality unchanged
-   - PRESERVED: All UI styling and layout from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - MOVED: Label validation status message from label group to below HCP/Team row
+   - REASON: Status message was cluttering the label input area and making UI look messy
+   - FIXED: Status message now appears as a full-width line below the form actions
+   - FIXED: Updated validateLabelInput() to target the new status div location
+   - PRESERVED: All v1.20 functionality unchanged
+   - PRESERVED: All UI styling from v1.20 unchanged (except status message position)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/used-labels.js
 STATUS: Ready for integration
 -->
