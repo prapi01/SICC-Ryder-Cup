@@ -1,18 +1,19 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - FIXED: loadValidateRecords() date display now checks data.gameInfo?.date
-   - REASON: Records store date in gameInfo.date, not at root level
-   - REASON: Fixes "No date" showing in VALIDATE tab dropdown
-   - PRESERVED: All existing functionality from v1.22 unchanged
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: loadValidateRecords() sort now uses gameInfo.date (actual game date) instead of root date
+   - REASON: Records store the actual game date in gameInfo.date, not at root level
+   - REASON: Root date may be undefined, causing records to appear in Firestore order
+   - FIXED: Sort now uses data.gameInfo?.date with fallback to data.date then '1970-01-01'
+   - PRESERVED: All existing functionality from v1.23 unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.23";
-console.log("[UTIL-VALIDATE-APP] Initializing v1.23 - Fixed date display in VALIDATE dropdown");
+window.UTIL_VALIDATE_APP_VERSION = "1.24";
+console.log("[UTIL-VALIDATE-APP] Initializing v1.24 - Fixed sort to use gameInfo.date");
 
 // ============================================================
 // STATE VARIABLES
@@ -121,10 +122,13 @@ function loadValidateRecords() {
                 docs.push(doc);
             });
             
-            // Sort manually by date (with fallback for undefined)
+            // v1.24: FIXED SORT - Now sorts by gameInfo.date (actual game date) with fallback
+            // Records store the actual game date in gameInfo.date, not at root level
             docs.sort(function(a, b) {
-                var dateA = a.data().date || '1970-01-01';
-                var dateB = b.data().date || '1970-01-01';
+                var dataA = a.data();
+                var dataB = b.data();
+                var dateA = dataA.gameInfo?.date || dataA.date || '1970-01-01';
+                var dateB = dataB.gameInfo?.date || dataB.date || '1970-01-01';
                 return dateB.localeCompare(dateA);
             });
             
@@ -967,16 +971,17 @@ window.generateBackupId = generateBackupId;
 window.fetchFreshRecord = fetchFreshRecord;
 window.performValidation = performValidation;
 
-console.log('[UTIL-VALIDATE-APP] v1.23 loaded - Fixed date display in VALIDATE dropdown');
+console.log('[UTIL-VALIDATE-APP] v1.24 loaded - Fixed sort to use gameInfo.date');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - FIXED: loadValidateRecords() date display now checks data.gameInfo?.date
-   - REASON: Records store date in gameInfo.date, not at root level
-   - REASON: Fixes "No date" showing in VALIDATE tab dropdown
-   - PRESERVED: All existing functionality from v1.22 unchanged
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: loadValidateRecords() sort now uses gameInfo.date (actual game date) instead of root date
+   - REASON: Records store the actual game date in gameInfo.date, not at root level
+   - REASON: Root date may be undefined, causing records to appear in Firestore order
+   - FIXED: Sort now uses data.gameInfo?.date with fallback to data.date then '1970-01-01'
+   - PRESERVED: All existing functionality from v1.23 unchanged
 DEPENDS ON: util-core.js, util-validate-record.js, util-validate-ui.js, wrv.js
 STATUS: Ready for integration
 */
