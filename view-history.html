@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.48
-KEY CHANGES from v8.45:
-   - REVERTED: Removed load-game.js universal loader, restored individual script tags
-   - REASON: load-game.js asynchronous loading caused timing issues (Firebase, SessionManager)
-   - REASON: Individual script tags load synchronously in the correct order
-   - PRESERVED: ALL other functionality from v8.45 unchanged
+VERSION: 8.49
+KEY CHANGES from v8.48:
+   - FIXED: Sort order now uses game.date instead of completedAt
+   - REASON: completedAt is inconsistent (undefined, string, Timestamp), causing games to appear in wrong order
+   - FIXED: Both sort instances in renderGameList() and loadGameListAndModules() now sort by game.date
+   - PRESERVED: ALL other functionality from v8.48 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
    - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
@@ -486,7 +486,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.48</div>
+<div class="version-tag">v8.49</div>
 
 <script>
 // ============================================================
@@ -499,10 +499,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.48: Reverted to individual script loading
+// VERSION CACHE-BUSTING - v8.49: Fixed sort to use game.date
 // ============================================================
-var APP_VERSION = "8.48";
-var CACHE_KEY = "view_history_version_v848";
+var APP_VERSION = "8.49";
+var CACHE_KEY = "view_history_version_v849";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -520,8 +520,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.48";
-console.log("[VIEW-HISTORY] Initializing v8.48 - Reverted to individual script loading");
+window.VIEW_HISTORY_VERSION = "8.49";
+console.log("[VIEW-HISTORY] Initializing v8.49 - Fixed sort to use game.date");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1362,10 +1362,11 @@ function renderGameList(games) {
         return;
     }
     
-    // v8.31: FIXED SORT - handles both string and Firestore Timestamp
+    // v8.49: FIXED SORT - Now sorts by game.date (actual game date) instead of completedAt
+    // completedAt was inconsistent (undefined, string, Timestamp) causing wrong order
     games.sort(function(a, b) {
-        var dateA = parseCompletedAt(a.completedAt);
-        var dateB = parseCompletedAt(b.completedAt);
+        var dateA = new Date(a.date);
+        var dateB = new Date(b.date);
         return dateB - dateA; // Newest first
     });
     
@@ -1518,10 +1519,11 @@ function loadGameListAndModules() {
                 });
             });
             
-            // v8.31: Sort uses parseCompletedAt helper
+            // v8.49: FIXED SORT - Now sorts by game.date (actual game date) instead of completedAt
+            // completedAt was inconsistent (undefined, string, Timestamp) causing wrong order
             games.sort(function(a, b) {
-                var dateA = parseCompletedAt(a.completedAt);
-                var dateB = parseCompletedAt(b.completedAt);
+                var dateA = new Date(a.date);
+                var dateB = new Date(b.date);
                 return dateB - dateA; // Newest first
             });
             
@@ -1617,12 +1619,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.48
-KEY CHANGES from v8.45:
-   - REVERTED: Removed load-game.js universal loader, restored individual script tags
-   - REASON: load-game.js asynchronous loading caused timing issues (Firebase, SessionManager)
-   - REASON: Individual script tags load synchronously in the correct order
-   - PRESERVED: ALL other functionality from v8.45 unchanged
+VERSION: 8.49
+KEY CHANGES from v8.48:
+   - FIXED: Sort order now uses game.date instead of completedAt
+   - REASON: completedAt is inconsistent (undefined, string, Timestamp), causing games to appear in wrong order
+   - FIXED: Both sort instances in renderGameList() and loadGameListAndModules() now sort by game.date
+   - PRESERVED: ALL other functionality from v8.48 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
    - PRESERVED: Label Resolution Card unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
