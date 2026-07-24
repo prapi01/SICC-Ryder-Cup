@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.50
-KEY CHANGES from v8.49:
-   - CHANGED: Back button replaced with standard back-link design for consistency
-   - REASON: view-history was using a styled button instead of the standard grey text with green divider line
-   - FIXED: Removed .back-btn CSS, added .back-link CSS matching courses.html and player-management.html
-   - FIXED: Replaced <button> with <div> and updated onclick binding
-   - PRESERVED: ALL other functionality from v8.49 unchanged
+VERSION: 8.51
+KEY CHANGES from v8.50:
+   - CHANGED: Detail view "Back to Game List" button replaced with standard back-link design
+   - REASON: Detail view was using a styled button instead of the standard grey text with green divider line
+   - FIXED: Removed .detail-back-btn CSS, now uses .back-link (consistent with list view)
+   - FIXED: Replaced <button> with <div> and updated onclick binding in init()
+   - PRESERVED: ALL other functionality from v8.50 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
@@ -316,25 +316,6 @@ STATUS: Ready for integration
         }
         .back-link:hover { color: #888; }
         
-        .detail-back-btn {
-            width: 100%;
-            max-width: 380px;
-            padding: 14px 20px;
-            border-radius: 40px;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            text-align: center;
-            border: 1px solid #4caf50;
-            background: #1a1a1a;
-            color: #4caf50;
-            margin: 20px auto 0 auto;
-        }
-        
-        .detail-back-btn:active {
-            transform: scale(0.98);
-        }
-        
         .empty-message {
             text-align: center;
             padding: 60px 20px;
@@ -477,11 +458,12 @@ STATUS: Ready for integration
 <!-- GAME DETAIL VIEW (Scorecard - styles come from GameUI) -->
 <div class="container game-detail-view" id="gameDetailView">
     <div id="detailContent"></div>
-    <button class="detail-back-btn" id="backToListBtn">← Back to Game List</button>
+    <!-- v8.51: Standard back-link design for detail view -->
+    <div class="back-link" id="backToListLink">← Back to Game List</div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.50</div>
+<div class="version-tag">v8.51</div>
 
 <script>
 // ============================================================
@@ -494,10 +476,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.50: Standard back-link design
+// VERSION CACHE-BUSTING - v8.51: Detail view back-link standardized
 // ============================================================
-var APP_VERSION = "8.50";
-var CACHE_KEY = "view_history_version_v850";
+var APP_VERSION = "8.51";
+var CACHE_KEY = "view_history_version_v851";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -515,8 +497,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.50";
-console.log("[VIEW-HISTORY] Initializing v8.50 - Standard back-link design");
+window.VIEW_HISTORY_VERSION = "8.51";
+console.log("[VIEW-HISTORY] Initializing v8.51 - Detail view back-link standardized");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1600,9 +1582,10 @@ async function init() {
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "📋 " + myDeviceShortName;
     
-    // v8.50: Standard back-link uses click event
+    // v8.50: Standard back-link uses click event for main menu
     document.getElementById('backToMenuLink').addEventListener('click', exitToMainMenu);
-    document.getElementById('backToListBtn').onclick = backToGameList;
+    // v8.51: Standard back-link uses click event for back to game list
+    document.getElementById('backToListLink').addEventListener('click', backToGameList);
     
     loadGameListAndModules();
 }
@@ -1615,13 +1598,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.50
-KEY CHANGES from v8.49:
-   - CHANGED: Back button replaced with standard back-link design for consistency
-   - REASON: view-history was using a styled button instead of the standard grey text with green divider line
-   - FIXED: Removed .back-btn CSS, added .back-link CSS matching courses.html and player-management.html
-   - FIXED: Replaced <button> with <div> and updated onclick binding
-   - PRESERVED: ALL other functionality from v8.49 unchanged
+VERSION: 8.51
+KEY CHANGES from v8.50:
+   - CHANGED: Detail view "Back to Game List" button replaced with standard back-link design
+   - REASON: Detail view was using a styled button instead of the standard grey text with green divider line
+   - FIXED: Removed .detail-back-btn CSS, now uses .back-link (consistent with list view)
+   - FIXED: Replaced <button> with <div> and updated onclick binding in init()
+   - PRESERVED: ALL other functionality from v8.50 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
