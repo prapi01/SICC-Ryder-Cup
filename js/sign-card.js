@@ -1,16 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.43
-KEY CHANGES from v1.42:
-   - ADDED: getPhotoUrlFromStorage() - reads photo URL directly from Firebase Storage
-   - CHANGED: buildHistoryPayload() now accepts imageUrl parameter (instead of reading from gameData)
-   - CHANGED: triggerHistoryRecordWrite() now waits for photo URL before writing payload
-   - ADDED: Retry logic (20 attempts, 500ms interval) to wait for photo upload completion
-   - ADDED: Payload status logging (photo + handicap availability)
-   - REASON: Firebase Storage is the single source of truth for the photo
-   - REASON: Photo upload may complete after F2 signing, so we must wait for it
-   - REASON: Handicap data is already calculated correctly in buildHistoryPayload()
-   - PRESERVED: ALL other functionality from v1.42 unchanged
+VERSION: 1.44
+KEY CHANGES from v1.43:
+   - REMOVED: completedAt and createdAt server timestamps from buildHistoryPayload()
+   - REASON: WRV verification fails on timestamp fields (server timestamps vs Firestore Timestamp objects)
+   - REASON: Timestamps are not needed for data integrity and cause false verification failures
+   - REASON: WRV's skip list does not handle nested timestamp fields correctly
+   - PRESERVED: ALL other functionality from v1.43 unchanged
 DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
@@ -668,8 +664,8 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.43: Build complete history record payload with photo URL and handicap
-    // Modified to accept imageUrl parameter (read from Storage, not gameData)
+    // v1.44: Build complete history record payload with photo URL and handicap
+    // REMOVED: completedAt and createdAt server timestamps (cause WRV verification failure)
     // ============================================================
     function buildHistoryPayload(gameId, cache, gameData, imageUrl) {
         // Use the cache data (already refreshed from Firestore)
@@ -710,7 +706,7 @@ var SignCard = (function() {
             f2: { signed: f2Signed }
         };
         
-        // v1.43: Use imageUrl from parameter (read from Storage)
+        // v1.44: Use imageUrl from parameter (read from Storage)
         var celebrationData = {
             imageRef: photoPath,
             imageUrl: imageUrl || null,
@@ -773,7 +769,9 @@ var SignCard = (function() {
         
         return {
             originalGameId: gameId,
-            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            // v1.44: REMOVED completedAt and createdAt server timestamps
+            // These cause WRV verification failure (server timestamps vs Firestore Timestamp objects)
+            // WRV v1.13's skip list doesn't handle nested timestamp fields correctly
             status: "completed",
             version: 3,
             schema: "v3_strings",
@@ -800,7 +798,6 @@ var SignCard = (function() {
             f2DataString: f2DataString,
             results: results,
             adjustedHandicaps: adjustedHandicaps,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             archiveId: archiveId,
             celebration: celebrationData
         };
@@ -1120,21 +1117,17 @@ var SignCard = (function() {
 
 // Make available globally
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.43";
+window.SIGN_CARD_VERSION = "1.44";
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.43
-KEY CHANGES from v1.42:
-   - ADDED: getPhotoUrlFromStorage() - reads photo URL directly from Firebase Storage
-   - CHANGED: buildHistoryPayload() now accepts imageUrl parameter (instead of reading from gameData)
-   - CHANGED: triggerHistoryRecordWrite() now waits for photo URL before writing payload
-   - ADDED: Retry logic (20 attempts, 500ms interval) to wait for photo upload completion
-   - ADDED: Payload status logging (photo + handicap availability)
-   - REASON: Firebase Storage is the single source of truth for the photo
-   - REASON: Photo upload may complete after F2 signing, so we must wait for it
-   - REASON: Handicap data is already calculated correctly in buildHistoryPayload()
-   - PRESERVED: ALL other functionality from v1.42 unchanged
+VERSION: 1.44
+KEY CHANGES from v1.43:
+   - REMOVED: completedAt and createdAt server timestamps from buildHistoryPayload()
+   - REASON: WRV verification fails on timestamp fields (server timestamps vs Firestore Timestamp objects)
+   - REASON: Timestamps are not needed for data integrity and cause false verification failures
+   - REASON: WRV's skip list does not handle nested timestamp fields correctly
+   - PRESERVED: ALL other functionality from v1.43 unchanged
 DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/game-loader.js, WRV.js
 USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
 STATUS: Ready for integration
