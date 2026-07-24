@@ -1,1096 +1,428 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.44
-KEY CHANGES from v1.43:
-   - REMOVED: completedAt and createdAt server timestamps from buildHistoryPayload()
-   - REASON: WRV verification fails on timestamp fields (server timestamps vs Firestore Timestamp objects)
-   - REASON: Timestamps are not needed for data integrity and cause false verification failures
-   - REASON: WRV's skip list does not handle nested timestamp fields correctly
-   - PRESERVED: ALL other functionality from v1.43 unchanged
-DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/game-loader.js, WRV.js
-USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
+VERSION: 1.40
+KEY CHANGES from v1.39:
+   - FIXED: clinchedAt keys now normalized to use labels before saving to history
+   - REASON: Inconsistent clinchedAt keys (some use full names, some use labels)
+   - FIXED: Added normalizeClinchedAt() helper to convert full-name keys to label-based keys
+   - REASON: Ensures all history records use labels consistently for match keys
+   - PRESERVED: ALL other functionality from v1.39 unchanged
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/game-loader.js, js/modal.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
 */
 
+// ============================================================
+// Version Exposure for Console Debugging
+// ============================================================
+window.SIGN_CARD_VERSION = "1.40";
+console.log("[SIGN-CARD] Initializing v1.40 - Normalized clinchedAt labels");
+
+// ============================================================
+// v1.40: Helper: Normalize clinchedAt keys to use labels
+// ============================================================
+function normalizeClinchedAt(clinchedAt, players) {
+    if (!clinchedAt || typeof clinchedAt !== 'object') return clinchedAt;
+    if (Object.keys(clinchedAt).length === 0) return clinchedAt;
+    
+    // Build name → label mapping
+    var playerMap = {};
+    for (var i = 0; i < players.length; i++) {
+        playerMap[players[i].name] = players[i].label;
+    }
+    
+    var normalized = {};
+    for (var key in clinchedAt) {
+        var parts = key.split('_vs_');
+        if (parts.length === 2) {
+            var player1Name = parts[0];
+            var player2Name = parts[1];
+            var player1Label = playerMap[player1Name] || player1Name;
+            var player2Label = playerMap[player2Name] || player2Name;
+            var newKey = player1Label + '_vs_' + player2Label;
+            normalized[newKey] = clinchedAt[key];
+        } else {
+            // If key doesn't match expected format, keep as-is
+            normalized[key] = clinchedAt[key];
+        }
+    }
+    
+    return normalized;
+}
+
 var SignCard = (function() {
     
+    console.log("[SIGN-CARD] Initializing SignCard module");
+
     // ============================================================
-    // v1.41: Flag to ensure history record is written only ONCE
-    // ============================================================
-    var historyRecordWritten = false;
-    
-    // ============================================================
-    // Helper: Get Firestore instance
-    // ============================================================
-    function getDb() {
-        return firebase.firestore();
-    }
-    
-    // ============================================================
-    // v1.31: Refresh cache from Firestore before signing
-    // ============================================================
-    function refreshCacheBeforeSigning(gameId, callback) {
-        console.log('[SignCard] Refreshing cache from Firestore before signing...');
-        
-        if (typeof GameLoader !== 'undefined' && GameLoader.refreshCacheFromFirestore) {
-            GameLoader.refreshCacheFromFirestore(gameId, function(err, cache) {
-                if (err) {
-                    console.warn('[SignCard] Cache refresh failed, using existing:', err.message);
-                    if (callback) callback(null, GameLoader.getLocalCache());
-                } else {
-                    console.log('[SignCard] Cache refreshed successfully');
-                    if (callback) callback(null, cache);
-                }
-            });
-        } else {
-            console.warn('[SignCard] GameLoader.refreshCacheFromFirestore not available');
-            if (callback) callback(null, null);
-        }
-    }
-    
-    // ============================================================
-    // Helper: Get or create archive record for handicap adjustment
+    // Replay celebration from sessionStorage
     // ============================================================
     
-    function ensureArchiveRecord(gameId, callback) {
-        if (typeof HistoryRecord !== 'undefined' && HistoryRecord.getArchivedGameByOriginalId) {
-            HistoryRecord.getArchivedGameByOriginalId(gameId, function(err, result) {
-                if (!err && result && result.id) {
-                    callback(null, result.id);
-                } else {
-                    if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
-                        var db = getDb();
-                        db.collection('scheduledGames').doc(gameId).get()
-                            .then(function(doc) {
-                                if (doc.exists) {
-                                    var gameData = doc.data();
-                                    var results = gameData.results || {};
-                                    var finalScores = {
-                                        teamA: results.tr?.teamA?.[17] || 9.5,
-                                        teamB: results.tr?.teamB?.[17] || 9.5
-                                    };
-                                    var signatures = gameData.signatures || {};
-                                    
-                                    var flight1DataString = gameData.f1?.d || "";
-                                    var flight2DataString = gameData.f2?.d || "";
-                                    
-                                    var matchResults = {};
-                                    if (results.game1 && results.game1.matches) {
-                                        matchResults = results.game1.matches;
-                                    }
-                                    
-                                    HistoryRecord.createPendingRecord(
-                                        gameId, 
-                                        gameData, 
-                                        results, 
-                                        finalScores, 
-                                        signatures,
-                                        flight1DataString,
-                                        flight2DataString,
-                                        matchResults,
-                                        function(err, archiveId) {
-                                            if (err) callback(err, null);
-                                            else callback(null, archiveId);
-                                        }
-                                    );
-                                } else {
-                                    callback(new Error("Game not found"), null);
-                                }
-                            })
-                            .catch(function(err) {
-                                callback(err, null);
-                            });
-                    } else {
-                        callback(new Error("HistoryRecord not available"), null);
+    function replayCelebration() {
+        var celebrationDataStr = sessionStorage.getItem('celebrationData');
+        if (celebrationDataStr) {
+            try {
+                var celebrationData = JSON.parse(celebrationDataStr);
+                console.log("[SIGN-CARD] Replaying celebration from sessionStorage");
+                showCelebrationScreen(
+                    celebrationData.winner,
+                    celebrationData.teamAScore,
+                    celebrationData.teamBScore,
+                    celebrationData.winningPlayers,
+                    celebrationData.gameId,
+                    function() {
+                        console.log("[SIGN-CARD] Celebration replay closed");
                     }
-                }
-            });
-        } else {
-            callback(new Error("HistoryRecord not available"), null);
-        }
-    }
-    
-    // ============================================================
-    // v1.32: Celebration image - sessionStorage ONLY (no GitHub fallback)
-    // ============================================================
-    
-    var cachedImagePath = null;
-    var SESSION_STORAGE_KEY = 'celebrationPhoto';
-    
-    function getCelebrationImage(callback) {
-        // Check sessionStorage (instant, no network)
-        var photoDataUrl = sessionStorage.getItem(SESSION_STORAGE_KEY);
-        if (photoDataUrl) {
-            console.log('[SignCard] Photo found in sessionStorage - using directly');
-            cachedImagePath = photoDataUrl;
-            if (callback) callback(photoDataUrl);
-            return;
-        }
-        
-        // v1.32: No GitHub fallback - sessionStorage should ALWAYS have a photo
-        // (default photo is loaded at game start for all devices)
-        console.warn('[SignCard] No photo in sessionStorage - this should not happen');
-        console.warn('[SignCard] Default photo should have been loaded at game start');
-        if (callback) callback(null);
-    }
-    
-    // ============================================================
-    // Waiting Screen (legacy - kept for compatibility)
-    // ============================================================
-    
-    function showWaitingScreen(flightNumber, onComplete) {
-        var existingModal = document.getElementById('waitingModal');
-        if (existingModal) existingModal.remove();
-        
-        var modalHtml = `
-            <div class="modal-overlay" id="waitingModal" style="z-index: 3000;">
-                <div class="waiting-modal-container">
-                    <div class="waiting-title">⌛ CARD SIGNED</div>
-                    <div class="waiting-message">Waiting for Flight ${flightNumber === 1 ? 2 : 1}...</div>
-                    <div class="waiting-submessage">The match will complete when both cards are signed.</div>
-                    <div class="waiting-spinner"></div>
-                </div>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        window._waitingCallback = onComplete;
-        return document.getElementById('waitingModal');
-    }
-    
-    function hideWaitingScreen() {
-        var modal = document.getElementById('waitingModal');
-        if (modal) modal.remove();
-    }
-    
-    // ============================================================
-    // Confetti - 8 bursts, 2 seconds apart
-    // ============================================================
-    
-    function launchConfetti() {
-        var repeatCount = 0;
-        var maxRepeats = 8;
-        
-        function burst() {
-            for (var i = 0; i < 150; i++) {
-                var confetti = document.createElement('div');
-                confetti.className = 'confetti';
-                confetti.style.left = Math.random() * 100 + '%';
-                confetti.style.animationDelay = Math.random() * 3 + 's';
-                confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
-                confetti.style.backgroundColor = ['#4caf50', '#ffaa44', '#4caf50', '#ffffff'][Math.floor(Math.random() * 4)];
-                document.body.appendChild(confetti);
-                setTimeout(function(c) { if (c && c.remove) c.remove(); }, 4000);
-            }
-            
-            repeatCount++;
-            if (repeatCount < maxRepeats) {
-                setTimeout(burst, 2000);
+                );
+                return true;
+            } catch(e) {
+                console.error("[SIGN-CARD] Failed to parse celebration data:", e);
+                return false;
             }
         }
-        
-        burst();
+        return false;
     }
-    
-    function clearConfetti() {
-        var confetti = document.querySelectorAll('.confetti');
-        confetti.forEach(function(el) { el.remove(); });
-    }
-    
+
     // ============================================================
-    // Celebration Screen - v1.34: Single divider between columns
+    // Show Celebration Screen
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
+        console.log("[SIGN-CARD] showCelebrationScreen called");
+        console.log("[SIGN-CARD] Winner:", winner, "Team A:", teamAScore, "Team B:", teamBScore);
+        console.log("[SIGN-CARD] gameId:", gameId);
+        
+        // v1.11: Clear any existing modals first
         var existingModal = document.getElementById('celebrationModal');
-        if (existingModal) existingModal.remove();
-        
-        clearConfetti();
-        
-        var winnerText = "";
-        var winnerClass = "";
-        
-        if (winner === "A") {
-            winnerText = "🏆 TEAM A WINS! 🏆";
-            winnerClass = "winner-a";
-        } else if (winner === "B") {
-            winnerText = "🏆 TEAM B WINS! 🏆";
-            winnerClass = "winner-b";
-        } else {
-            winnerText = "🤝 TIE GAME! 🤝";
-            winnerClass = "winner-tie";
+        if (existingModal) {
+            console.log("[SIGN-CARD] Removing existing celebration modal");
+            existingModal.remove();
+        }
+        var existingOverlay = document.getElementById('celebrationOverlay');
+        if (existingOverlay) {
+            console.log("[SIGN-CARD] Removing existing celebration overlay");
+            existingOverlay.remove();
         }
         
-        var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
-        var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
+        var isTie = (teamAScore === teamBScore);
+        var emoji = isTie ? '🤝' : (winner === 'A' ? '🏆' : '🏆');
+        var message = isTie ? 'It\'s a Tie!' : (winner === 'A' ? 'Team A Wins!' : 'Team B Wins!');
         
-        // v1.27: Losing team score RED, winning team GREEN
-        var teamALost = (winner === 'B');
-        var teamBLost = (winner === 'A');
-        var teamAColor = teamALost ? '#ff4444' : '#4caf50';
-        var teamBColor = teamBLost ? '#ff4444' : '#4caf50';
+        var teamALabel = 'Team A';
+        var teamBLabel = 'Team B';
+        var teamAColor = '#4caf50';
+        var teamBColor = '#4caf50';
         
-        var celebrationData = {
-            winner: winner,
-            teamAScore: teamAScore,
-            teamBScore: teamBScore,
-            winningPlayers: winningPlayers,
-            gameId: gameId,
-            onClose: onClose
-        };
-        
-        // v1.32: Get photo from sessionStorage (no fallback)
-        getCelebrationImage(function(imageSrc) {
-            var imageHtml = '';
-            if (imageSrc) {
-                // Check if it's a data URL from sessionStorage or a path
-                var src = imageSrc.startsWith('data:image') ? imageSrc : imageSrc;
-                imageHtml = `
-                    <div class="celebration-image-container">
-                        <img src="${src}" class="celebration-image" alt="Celebration" crossorigin="anonymous">
-                    </div>
-                `;
+        if (!isTie) {
+            if (winner === 'A') {
+                teamAColor = '#ffaa44';
+                teamBColor = '#888';
             } else {
-                // Fallback: show trophy icon if no photo (should never happen)
-                console.warn('[SignCard] No photo available for celebration screen');
-                imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
+                teamAColor = '#888';
+                teamBColor = '#ffaa44';
             }
-            
-            // v1.34: Score layout with ONE divider between columns (matching view-history)
-            var modalHtml = `
-                <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
-                    <div class="celebration-modal">
-                        ${imageHtml}
-                        <div class="celebration-title">🏌️ GAME COMPLETED!</div>
-                        <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
-                        <div class="celebration-winner ${winnerClass}">
-                            ${winnerText}
+        }
+        
+        // Build winning players list
+        var winningPlayersHtml = '';
+        if (winner !== 'Tie' && winningPlayers) {
+            var winners = winner === 'A' ? winningPlayers.teamA : winningPlayers.teamB;
+            if (winners && winners.length > 0) {
+                var winnerNames = winners.map(function(p) { 
+                    return p.label || p.name; 
+                }).join(', ');
+                winningPlayersHtml = '<div style="font-size:0.8rem; color:#888; margin:8px 0 12px 0;">🎉 ' + winnerNames + '</div>';
+            }
+        }
+        
+        // v1.11: Add auto-save state
+        var autoSaveStatus = '';
+        
+        var html = `
+            <div id="celebrationModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10001; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
+                <div style="background:#1a1a1a; border-radius:28px; padding:32px; max-width:360px; width:90%; text-align:center; border:2px solid #ffaa44; position:relative;">
+                    <div style="font-size:2.5rem; margin-bottom:8px;">${emoji}</div>
+                    <div style="font-size:1.5rem; font-weight:700; color:#ffaa44; margin-bottom:4px;">${message}</div>
+                    ${winningPlayersHtml}
+                    <div style="display:flex; justify-content:center; align-items:center; gap:20px; margin:12px 0;">
+                        <div style="text-align:center;">
+                            <div style="font-size:0.7rem; color:${teamAColor}; font-weight:600;">${teamALabel}</div>
+                            <div style="font-size:2rem; font-weight:800; color:${teamAColor};">${teamAScore}</div>
                         </div>
-                        <div class="celebration-score" style="padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a;">
-                            <div style="display:flex; justify-content:center; align-items:center; gap:20px;">
-                                <div style="text-align:center; flex:1;">
-                                    <div style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</div>
-                                    <div style="font-size:2.4rem; font-weight:700; color:${teamAColor};">${teamADisplay}</div>
-                                </div>
-                                <div style="font-size:1.6rem; color:#555555;">│</div>
-                                <div style="text-align:center; flex:1;">
-                                    <div style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</div>
-                                    <div style="font-size:2.4rem; font-weight:700; color:${teamBColor};">${teamBDisplay}</div>
-                                </div>
-                            </div>
+                        <div style="font-size:1.2rem; color:#555;">│</div>
+                        <div style="text-align:center;">
+                            <div style="font-size:0.7rem; color:${teamBColor}; font-weight:600;">${teamBLabel}</div>
+                            <div style="font-size:2rem; font-weight:800; color:${teamBColor};">${teamBScore}</div>
                         </div>
-                        <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
                     </div>
-                </div>
-            `;
-            
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-            addCelebrationStyles();
-            launchConfetti();
-            
-            var capturedGameId = gameId;
-            
-            setTimeout(function() {
-                console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
-                if (typeof onClose === 'function') {
-                    onClose();
-                }
-            }, 500);
-            
-            var btn = document.getElementById('handicapAdjustBtn');
-            if (btn) {
-                if (!btn._listenerAttached) {
-                    btn.addEventListener('click', function(e) {
-                        console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
-                        
-                        var targetGameId = capturedGameId || celebrationData.gameId;
-                        console.log("[SignCard] targetGameId:", targetGameId);
-                        
-                        if (!targetGameId) {
-                            console.error("[SignCard] No gameId available for navigation");
-                            if (typeof Modal !== 'undefined') {
-                                Modal.alert("Unable to load handicap adjustment. Please try again.");
-                            }
-                            return;
-                        }
-                        
-                        try {
-                            sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-                            console.log("[SignCard] Celebration data saved to sessionStorage");
-                        } catch(e) {
-                            console.warn("[SignCard] Failed to save celebration data:", e.message);
-                        }
-                        
-                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                            WaitingScreen.show("Loading Handicap Adjustment...");
-                            console.log("[SignCard] Waiting screen shown");
-                        } else {
-                            var overlay = document.createElement('div');
-                            overlay.id = 'waitingScreenOverlay';
-                            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
-                            overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
-                            document.body.appendChild(overlay);
-                            console.log("[SignCard] Fallback waiting screen shown");
-                        }
-                        
-                        var modal = document.getElementById('celebrationModal');
-                        if (modal) {
-                            modal.remove();
-                            console.log("[SignCard] Celebration modal removed");
-                        }
-                        
-                        clearConfetti();
-                        console.log("[SignCard] Confetti cleared");
-                        
-                        setTimeout(function() {
-                            var navigateUrl = 'hcp-adjust.html?gameId=' + targetGameId;
-                            console.log("[SignCard] Navigating to:", navigateUrl);
-                            window.location.href = navigateUrl;
-                        }, 300);
-                    });
-                    btn._listenerAttached = true;
-                }
-            }
-            
-            window._currentCelebrationData = celebrationData;
-        });
-    }
-    
-    function replayCelebration() {
-        var existingModal = document.getElementById('celebrationModal');
-        if (existingModal) existingModal.remove();
-        
-        if (window._currentCelebrationData) {
-            var data = window._currentCelebrationData;
-            showCelebrationScreen(data.winner, data.teamAScore, data.teamBScore, data.winningPlayers, data.gameId, data.onClose);
-        }
-    }
-    
-    // ============================================================
-    // Celebration Styles - v1.34: Updated to match new layout
-    // ============================================================
-    
-    function addCelebrationStyles() {
-        if (document.getElementById('sign-card-styles')) return;
-        
-        var styles = `
-            <style id="sign-card-styles">
-                .modal-overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0,0,0,0.95);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 3000;
-                    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-                }
-                
-                .celebration-overlay {
-                    border-radius: 0 !important;
-                    overflow: visible !important;
-                }
-                
-                .waiting-modal-container {
-                    background: #1a1a1a;
-                    border-radius: 28px;
-                    padding: 32px;
-                    max-width: 360px;
-                    width: 90%;
-                    text-align: center;
-                    border: 2px solid #4caf50;
-                }
-                .waiting-title {
-                    font-size: 1.3rem;
-                    font-weight: 700;
-                    color: #4caf50;
-                    margin-bottom: 20px;
-                }
-                .waiting-message {
-                    font-size: 0.95rem;
-                    color: #ffaa44;
-                    margin-bottom: 8px;
-                }
-                .waiting-submessage {
-                    font-size: 0.75rem;
-                    color: #888;
-                }
-                .waiting-spinner {
-                    width: 32px;
-                    height: 32px;
-                    border: 2px solid #333;
-                    border-top-color: #4caf50;
-                    border-radius: 50%;
-                    margin: 24px auto 0;
-                    animation: spin 1s linear infinite;
-                }
-                
-                .celebration-modal {
-                    background: #1a1a1a;
-                    border-radius: 24px !important;
-                    border-top-left-radius: 24px !important;
-                    border-top-right-radius: 24px !important;
-                    border-bottom-left-radius: 24px !important;
-                    border-bottom-right-radius: 24px !important;
-                    overflow: hidden !important;
-                    padding: 24px 28px 20px 28px;
-                    max-width: 95%;
-                    width: auto;
-                    min-width: 320px;
-                    max-width: 500px;
-                    text-align: center;
-                    border: 2px solid #ffaa44;
-                    box-shadow: 0 0 40px rgba(255,170,68,0.15);
-                    animation: bounceIn 0.6s ease-out;
-                    max-height: 90vh;
-                    overflow-y: auto;
-                }
-                .celebration-modal > * {
-                    border-radius: inherit !important;
-                }
-                
-                .celebration-image-container {
-                    margin-bottom: 12px;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    border-radius: 16px !important;
-                    overflow: hidden !important;
-                }
-                .celebration-image {
-                    max-width: 100%;
-                    max-height: 40vh;
-                    min-height: 120px;
-                    border-radius: 16px !important;
-                    object-fit: cover;
-                    border: 1px solid #2a2a2a;
-                }
-                
-                .celebration-title {
-                    font-size: 28px;
-                    font-weight: 800;
-                    color: #ffaa44;
-                    margin-bottom: 8px;
-                    letter-spacing: 0.5px;
-                }
-                
-                .celebration-beer {
-                    font-size: 36px;
-                    font-weight: 800;
-                    color: #4caf50;
-                    margin-bottom: 8px;
-                    letter-spacing: 1px;
-                    animation: bounce 0.5s ease 2;
-                }
-                
-                .celebration-winner {
-                    font-size: 24px;
-                    font-weight: 800;
-                    margin-bottom: 12px;
-                    padding: 12px 24px;
-                    border-radius: 40px;
-                    display: inline-block;
-                }
-                .winner-a { 
-                    background: rgba(76,175,80,0.2); 
-                    color: #4caf50;
-                    border: 1px solid #4caf50;
-                }
-                .winner-b { 
-                    background: rgba(76,175,80,0.2); 
-                    color: #4caf50;
-                    border: 1px solid #4caf50;
-                }
-                .winner-tie { 
-                    background: rgba(255,170,68,0.2); 
-                    color: #ffaa44;
-                    border: 1px solid #ffaa44;
-                }
-                
-                /* v1.34: Celebration score with single divider */
-                .celebration-score {
-                    padding: 12px 0;
-                    border-top: 1px solid #2a2a2a;
-                    border-bottom: 1px solid #2a2a2a;
-                }
-                .celebration-score .score-container {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    gap: 20px;
-                }
-                .celebration-score .score-col {
-                    text-align: center;
-                    flex: 1;
-                }
-                .celebration-score .score-label {
-                    font-size: 1.2rem;
-                    font-weight: 600;
-                    color: #4caf50;
-                }
-                .celebration-score .score-number {
-                    font-size: 2.4rem;
-                    font-weight: 700;
-                }
-                .celebration-score .score-divider {
-                    font-size: 1.6rem;
-                    color: #555555;
-                }
-                
-                .celebration-btn {
-                    background: #1a3a1a;
-                    border: 1px solid #4caf50;
-                    color: #4caf50;
-                    padding: 16px 24px;
-                    border-radius: 40px;
-                    font-size: 20px;
-                    font-weight: 700;
-                    cursor: pointer;
-                    width: 100%;
-                    transition: all 0.2s;
-                    letter-spacing: 0.5px;
-                    margin-top: 4px;
-                }
-                .celebration-btn:hover {
-                    background: #2a4a2a;
-                    transform: scale(1.01);
-                }
-                .celebration-btn:active {
-                    transform: scale(0.98);
-                }
-                
-                @media (max-width: 380px) {
-                    .celebration-modal {
-                        padding: 16px 16px 16px 16px;
-                        min-width: auto;
-                        width: 94%;
-                    }
-                    .celebration-title { font-size: 22px; }
-                    .celebration-beer { font-size: 28px; }
-                    .celebration-winner { font-size: 18px; padding: 8px 16px; }
-                    .celebration-score .score-container { gap: 12px; }
-                    .celebration-score .score-label { font-size: 1rem; }
-                    .celebration-score .score-number { font-size: 1.8rem; }
-                    .celebration-score .score-divider { font-size: 1.2rem; }
-                    .celebration-btn { font-size: 16px; padding: 14px 16px; }
-                    .celebration-image { max-height: 30vh; min-height: 80px; }
-                }
-                
-                @media (min-width: 401px) and (max-width: 500px) {
-                    .celebration-modal { padding: 24px 28px 20px 28px; }
-                    .celebration-title { font-size: 28px; }
-                    .celebration-beer { font-size: 36px; }
-                    .celebration-winner { font-size: 24px; }
-                    .celebration-score .score-number { font-size: 2.4rem; }
-                    .celebration-image { max-height: 35vh; }
-                }
-                
-                @media (min-width: 501px) {
-                    .celebration-modal { padding: 32px 36px 24px 36px; max-width: 480px; }
-                    .celebration-title { font-size: 32px; }
-                    .celebration-beer { font-size: 40px; }
-                    .celebration-winner { font-size: 28px; padding: 14px 28px; }
-                    .celebration-score .score-number { font-size: 3rem; }
-                    .celebration-btn { font-size: 22px; padding: 18px 28px; }
-                    .celebration-image { max-height: 45vh; }
-                }
-                
-                .confetti {
-                    position: fixed;
-                    width: 10px;
-                    height: 10px;
-                    top: -10px;
-                    border-radius: 2px;
-                    animation: fall linear forwards;
-                    z-index: 3001;
-                }
-                
-                @keyframes spin {
-                    to { transform: rotate(360deg); }
-                }
-                @keyframes bounceIn {
-                    0% { transform: scale(0.3); opacity: 0; }
-                    50% { transform: scale(1.03); }
-                    70% { transform: scale(0.97); }
-                    100% { transform: scale(1); opacity: 1; }
-                }
-                @keyframes bounce {
-                    0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(-8px); }
-                }
-                @keyframes fall {
-                    to { transform: translateY(100vh) rotate(360deg); opacity: 0; }
-                }
-            </style>
-        `;
-        document.head.insertAdjacentHTML('beforeend', styles);
-    }
-    
-    // ============================================================
-    // Helpers
-    // ============================================================
-    
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-    
-    // ============================================================
-    // v1.43: Get photo URL directly from Firebase Storage
-    // This is the single source of truth for the photo
-    // ============================================================
-    function getPhotoUrlFromStorage(gameId, callback) {
-        var storage = firebase.storage();
-        var archiveId = gameId + '_H';
-        var destRef = storage.ref('celebration/' + archiveId + '.jpg');
-        
-        destRef.getDownloadURL()
-            .then(function(url) {
-                console.log('[SignCard] ✅ Photo URL from Storage');
-                callback(null, url);
-            })
-            .catch(function(err) {
-                console.warn('[SignCard] ⚠️ Photo not found in Storage:', err.message);
-                callback(null, null);
-            });
-    }
-    
-    // ============================================================
-    // v1.44: Build complete history record payload with photo URL and handicap
-    // REMOVED: completedAt and createdAt server timestamps (cause WRV verification failure)
-    // ============================================================
-    function buildHistoryPayload(gameId, cache, gameData, imageUrl) {
-        // Use the cache data (already refreshed from Firestore)
-        var players = cache.players || [];
-        var course = cache.course || {};
-        var results = cache.results || {};
-        var signatures = cache.signatures || {};
-        var f1DataString = cache.f1DataString || "";
-        var f2DataString = cache.f2DataString || "";
-        var startingHole = cache.startingHole || 1;
-        var teamGameFormat = cache.teamGameFormat || "tournament";
-        
-        // Final scores from TR
-        var trTeamA = results.tr?.teamA?.[17] || 9.5;
-        var trTeamB = results.tr?.teamB?.[17] || 9.5;
-        var winner = trTeamA > trTeamB ? "A" : (trTeamB > trTeamA ? "B" : "Tie");
-        var winnerText = winner === "A" ? "Team A Wins!" : (winner === "B" ? "Team B Wins!" : "Tie Game!");
-        
-        // Photo path (fixed convention)
-        var photoPath = 'celebration/' + gameId + '_H.jpg';
-        
-        // Store starting handicaps for all players
-        var playersWithStartingHcp = players.map(function(p) {
-            return {
-                name: p.name,
-                label: p.label,
-                handicap: p.handicap,
-                team: p.team,
-                flight: p.flight
-            };
-        });
-        
-        // Build signatures (only signed: true/false)
-        var f1Signed = signatures.f1?.signed === true;
-        var f2Signed = signatures.f2?.signed === true;
-        var signatureData = {
-            f1: { signed: f1Signed },
-            f2: { signed: f2Signed }
-        };
-        
-        // v1.44: Use imageUrl from parameter (read from Storage)
-        var celebrationData = {
-            imageRef: photoPath,
-            imageUrl: imageUrl || null,
-            status: imageUrl ? 'completed' : 'pending'
-        };
-        
-        var archiveId = gameId + '_H';
-        
-        // ============================================================
-        // v1.42: Calculate handicap adjustment at F2 signing time
-        // ============================================================
-        var adjustedHandicaps = null;
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
-            try {
-                // Find the anchor from gameData
-                var anchorName = gameData?.anchor || null;
-                var anchorPlayer = players.find(function(p) { return p.name === anchorName; });
-                if (!anchorPlayer && players.length > 0) {
-                    // Fallback to lowest handicap
-                    var sorted = players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
-                    anchorPlayer = sorted[0];
-                }
-                
-                if (anchorPlayer) {
-                    var hcpResult = HandicapAdjustment.calculateAllAdjustmentsFromRaw(
-                        anchorPlayer,
-                        players,
-                        f1DataString,
-                        f2DataString,
-                        course.si || [],
-                        course.par || []
-                    );
-                    
-                    if (hcpResult && hcpResult.players) {
-                        adjustedHandicaps = {
-                            anchor: anchorPlayer.name,
-                            players: hcpResult.players.map(function(p) {
-                                return {
-                                    name: p.name,
-                                    label: p.label,
-                                    startingHcp: p.startingHcp || p.currentHcp,
-                                    anchorAdj: p.anchorAdj || 0,
-                                    perfAdj: p.perfAdj || 0,
-                                    finalHcp: hcpResult.needsZeroRise ? p.newAnchor : p.newHcp,
-                                    anchorRaw: p.anchorRaw || 0,
-                                    perfRaw: p.perfRaw || 0
-                                };
-                            }),
-                            needsZeroRise: hcpResult.needsZeroRise || false,
-                            zeroRiseAmount: hcpResult.zeroRiseAmount || 0,
-                            newAnchor: hcpResult.newAnchorName || anchorPlayer.name
-                        };
-                        console.log('[SignCard] Handicap calculation added to payload');
-                    }
-                }
-            } catch(e) {
-                console.warn('[SignCard] Handicap calculation failed:', e.message);
-            }
-        }
-        
-        return {
-            originalGameId: gameId,
-            // v1.44: REMOVED completedAt and createdAt server timestamps
-            // These cause WRV verification failure (server timestamps vs Firestore Timestamp objects)
-            // WRV v1.13's skip list doesn't handle nested timestamp fields correctly
-            status: "completed",
-            version: 3,
-            schema: "v3_strings",
-            gameInfo: {
-                date: gameData?.date || new Date().toISOString().split('T')[0],
-                course: {
-                    name: course.name || 'SICC Bukit Course',
-                    id: course.id || '',
-                    par: course.par || [],
-                    si: course.si || []
-                },
-                startingHole: startingHole,
-                teamGameFormat: teamGameFormat
-            },
-            players: playersWithStartingHcp,
-            finalResults: {
-                teamAScore: trTeamA,
-                teamBScore: trTeamB,
-                winner: winner,
-                winnerText: winnerText
-            },
-            signatures: signatureData,
-            f1DataString: f1DataString,
-            f2DataString: f2DataString,
-            results: results,
-            adjustedHandicaps: adjustedHandicaps,
-            archiveId: archiveId,
-            celebration: celebrationData
-        };
-    }
-    
-    // ============================================================
-    // v1.43: Trigger history record write in background (WRV)
-    // Now waits for photo URL to be available in Firebase Storage
-    // ============================================================
-    function triggerHistoryRecordWrite(gameId, cache, gameData) {
-        console.log('[SignCard] 🔄 Triggering background history record write...');
-        
-        var archiveId = gameId + '_H';
-        var maxAttempts = 20;  // 20 * 500ms = 10 seconds max
-        var attempt = 0;
-        
-        function attemptWrite() {
-            attempt++;
-            getPhotoUrlFromStorage(gameId, function(err, imageUrl) {
-                var payload = buildHistoryPayload(gameId, cache, gameData, imageUrl);
-                
-                var hasPhoto = imageUrl !== null && imageUrl !== undefined;
-                var hasHandicap = payload.adjustedHandicaps !== null && payload.adjustedHandicaps !== undefined;
-                
-                console.log('[SignCard] Payload status: photo=' + (hasPhoto ? 'YES' : 'NO') + ', handicap=' + (hasHandicap ? 'YES' : 'NO'));
-                
-                if (!hasPhoto && attempt < maxAttempts) {
-                    console.log('[SignCard] ⏳ Photo not in Storage yet, retry', attempt, 'in 500ms...');
-                    setTimeout(attemptWrite, 500);
-                    return;
-                }
-                
-                if (!hasPhoto) {
-                    console.warn('[SignCard] ⚠️ No photo in Storage after', maxAttempts, 'attempts');
-                }
-                
-                // Write the payload (with or without photo URL)
-                if (typeof WRV !== 'undefined' && WRV.write) {
-                    WRV.write('historyGames', archiveId, payload, function(err, result) {
-                        if (err) {
-                            console.warn('[SignCard] ⚠️ History record write failed:', err.message);
-                        } else {
-                            console.log('[SignCard] ✅ History record written' + (hasPhoto ? ' with photo' : '') + (hasHandicap ? ' with handicap' : ''));
-                        }
-                    });
-                } else {
-                    console.warn('[SignCard] WRV not available, using direct write (background)');
-                    var db = getDb();
-                    db.collection('historyGames').doc(archiveId).set(payload)
-                        .then(function() {
-                            console.log('[SignCard] ✅ History record written (direct)' + (hasPhoto ? ' with photo' : '') + (hasHandicap ? ' with handicap' : ''));
-                        })
-                        .catch(function(err) {
-                            console.warn('[SignCard] ⚠️ History record write failed (direct):', err.message);
-                        });
-                }
-            });
-        }
-        
-        attemptWrite();
-    }
-    
-    // ============================================================
-    // v1.41: FIXED - History write restored to .then() callback (v1.38 approach)
-    // ============================================================
-    
-    function submitSignature(gameId, flight, captainName, collection) {
-        return new Promise(function(resolve, reject) {
-            var db = getDb();
-            var docRef = db.collection(collection).doc(gameId);
-            var flightKey = 'f' + flight;
-            
-            console.log('[SignCard] submitSignature called: flight', flight, 'gameId', gameId);
-            
-            // ============================================================
-            // STEP 1: Refresh cache from Firestore BEFORE signing
-            // ============================================================
-            refreshCacheBeforeSigning(gameId, function(refreshErr, refreshedCache) {
-                if (refreshErr) {
-                    console.warn('[SignCard] Cache refresh had issues, continuing with existing:', refreshErr.message);
-                }
-                
-                var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-                var f1Signed = false;
-                var f2Signed = false;
-                
-                if (cache) {
-                    if (!cache.signatures) cache.signatures = {};
-                    if (!cache.signatures.f1) cache.signatures.f1 = { signed: false };
-                    if (!cache.signatures.f2) cache.signatures.f2 = { signed: false };
-                    
-                    cache.signatures[flightKey] = { signed: true };
-                    
-                    f1Signed = cache.signatures.f1.signed === true;
-                    f2Signed = cache.signatures.f2.signed === true;
-                    
-                    console.log('[SignCard] Cache updated IMMEDIATELY for flight', flight);
-                    console.log('[SignCard] Cache now: f1.signed=' + f1Signed + ', f2.signed=' + f2Signed);
-                }
-                
-                var bothSigned = f1Signed && f2Signed;
-                
-                // ============================================================
-                // STEP 2: Show waiting screen if not both signed
-                // ============================================================
-                if (!bothSigned) {
-                    var waitingFor = flight === 1 ? 2 : 1;
-                    console.log('[SignCard] Showing waiting screen for flight', waitingFor);
-                    showWaitingScreen(waitingFor);
-                }
-                
-                // ============================================================
-                // STEP 3: Write signature to Firestore (atomic, no read first)
-                // v1.36: Direct update with dot notation for nested fields
-                // ============================================================
-                var maxRetries = 5;
-                var attemptCount = 0;
-                var confirmed = false;
-                var listenerFired = false;      // v1.38: Track if listener ever fired
-                var writeTimeout = null;
-                var listenerUnsubscribe = null;
-                
-                function performWrite(retryCount) {
-                    attemptCount = retryCount + 1;
-                    console.log('[SignCard] Write attempt', attemptCount, 'for flight', flight);
-                    
-                    // v1.36: Direct atomic update (no read first)
-                    var updateObj = {};
-                    updateObj['signatures.' + flightKey + '.signed'] = true;
-                    updateObj.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-                    
-                    docRef.update(updateObj)
-                        .then(function() {
-                            console.log('[SignCard] Write attempt', attemptCount, 'successful for flight', flight);
-                            
-                            // v1.41: Trigger history record write IMMEDIATELY (v1.38 approach)
-                            // This is the reliable location - it works when page doesn't navigate away
-                            if (flight === 2 && !historyRecordWritten) {
-                                historyRecordWritten = true;
-                                console.log('[SignCard] F2: Triggering background history record write...');
-                                // Get fresh gameData for the record
-                                docRef.get().then(function(doc) {
-                                    if (doc.exists) {
-                                        var gameData = doc.data();
-                                        triggerHistoryRecordWrite(gameId, cache, gameData);
-                                    } else {
-                                        triggerHistoryRecordWrite(gameId, cache, null);
-                                    }
-                                }).catch(function() {
-                                    triggerHistoryRecordWrite(gameId, cache, null);
-                                });
-                            }
-                            
-                            var confirmTimeout = 3000;
-                            
-                            if (listenerUnsubscribe) {
-                                listenerUnsubscribe();
-                            }
-                            
-                            // v1.38: Listener sets listenerFired = true to tell timeout "I exist"
-                            listenerUnsubscribe = docRef.onSnapshot(function(snapshot) {
-                                if (!snapshot.exists) return;
-                                
-                                listenerFired = true;   // v1.38: Signal that listener fired
-                                
-                                var data = snapshot.data();
-                                var signatures = data.signatures || {};
-                                var f1SignedCheck = signatures.f1?.signed === true;
-                                var f2SignedCheck = signatures.f2?.signed === true;
-                                
-                                // v1.37: Check BOTH signatures - removed confirmed flag check
-                                if (f1SignedCheck && f2SignedCheck) {
-                                    confirmed = true;
-                                    console.log('[SignCard] ✅ BOTH signatures confirmed via listener!');
-                                    
-                                    if (listenerUnsubscribe) {
-                                        listenerUnsubscribe();
-                                        listenerUnsubscribe = null;
-                                    }
-                                    if (writeTimeout) {
-                                        clearTimeout(writeTimeout);
-                                        writeTimeout = null;
-                                    }
-                                    
-                                    console.log('[SignCard] Both signed (confirmed)!');
-                                    
-                                    // v1.41: History write already triggered in .then() callback above
-                                    // No need to trigger here - modal check removed
-                                    
-                                    if (typeof RealGameNav !== 'undefined' && RealGameNav.showGameCompleteModal) {
-                                        RealGameNav.showGameCompleteModal(gameId);
-                                    } else {
-                                        showGameCompleteModalDirect(gameId);
-                                    }
-                                    
-                                    resolve(true);
-                                }
-                            }, function(err) {
-                                console.warn('[SignCard] Listener error:', err.message);
-                            });
-                            
-                            writeTimeout = setTimeout(function() {
-                                // v1.38: Only retry if listener NEVER fired
-                                // If listener fired, write succeeded and we're just waiting for other flight
-                                if (!confirmed && !listenerFired) {
-                                    console.warn('[SignCard] ⚠️ Listener never fired for flight', flight, '(attempt', attemptCount + ')');
-                                    
-                                    if (listenerUnsubscribe) {
-                                        listenerUnsubscribe();
-                                        listenerUnsubscribe = null;
-                                    }
-                                    
-                                    if (attemptCount < maxRetries) {
-                                        var delay = 1000 * Math.pow(1.5, attemptCount);
-                                        console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
-                                        setTimeout(function() {
-                                            performWrite(attemptCount);
-                                        }, delay);
-                                    } else {
-                                        console.error('[SignCard] ❌ All', maxRetries, 'retries failed for flight', flight);
-                                        reject(new Error('Failed to confirm signature after ' + maxRetries + ' retries'));
-                                    }
-                                } else if (!confirmed && listenerFired) {
-                                    // v1.38: Listener fired but only one flight signed - normal waiting state
-                                    console.log('[SignCard] Waiting for other flight... (listener fired, confirmed=false)');
-                                }
-                            }, confirmTimeout);
-                        })
-                        .catch(function(err) {
-                            console.warn('[SignCard] Write attempt', attemptCount, 'failed:', err.message);
-                            
-                            if (attemptCount < maxRetries) {
-                                var delay = 1000 * Math.pow(1.5, attemptCount);
-                                console.log('[SignCard] Retrying in', delay, 'ms... (attempt', attemptCount + 1, 'of', maxRetries + ')');
-                                setTimeout(function() {
-                                    performWrite(attemptCount);
-                                }, delay);
-                            } else {
-                                console.error('[SignCard] ❌ All', maxRetries, 'write attempts failed for flight', flight);
-                                reject(err);
-                            }
-                        });
-                }
-                
-                performWrite(0);
-            });
-        });
-    }
-    
-    function showGameCompleteModalDirect(gameId) {
-        var existing = document.getElementById('gameCompleteModal');
-        if (existing) return;
-        
-        console.log('[SignCard] Showing Game Complete modal directly (fallback)');
-        
-        var modalHtml = `
-            <div class="modal-overlay" id="gameCompleteModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10001; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
-                <div style="background:#1a1a1a; border-radius:28px; padding:32px 28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
-                    <div style="font-size:1.5rem; font-weight:700; color:#ffaa44; margin-bottom:12px;">🏆 GAME COMPLETED</div>
-                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:16px; line-height:1.4;">Both cards have been signed!</div>
-                    <div style="font-size:1.5rem; margin-bottom:24px;">🍺 🏆 🍺</div>
-                    <button id="seeResultsFromModalBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%; transition:all 0.2s;">🏆 SEE RESULTS</button>
+                    ${autoSaveStatus}
+                    <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
+                        <button id="celebrationHandicapBtn" style="width:100%; padding:14px; border-radius:40px; font-weight:700; font-size:1rem; cursor:pointer; border:2px solid #4caf50; background:#1a3a1a; color:#4caf50;">🏌️ HANDICAP ADJUSTMENT</button>
+                        <button id="celebrationMainMenuBtn" style="width:100%; padding:14px; border-radius:40px; font-weight:600; font-size:0.9rem; cursor:pointer; border:1px solid #333; background:#1a1a1a; color:#888;">🏠 Main Menu</button>
+                    </div>
+                    <div style="margin-top:16px; font-size:0.6rem; color:#444; letter-spacing:0.3px;">SICC Ryder Cup</div>
                 </div>
             </div>
         `;
         
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        document.body.insertAdjacentHTML('beforeend', html);
         
-        var btn = document.getElementById('seeResultsFromModalBtn');
-        if (btn) {
-            btn.addEventListener('click', function() {
-                if (btn._clicked) return;
-                btn._clicked = true;
-                btn.disabled = true;
-                btn.textContent = '⏳ Loading...';
+        // ============================================================
+        // v1.11: Auto-save to history on celebration screen load
+        // ============================================================
+        console.log("[SIGN-CARD] 🚀 Attempting auto-save to history on celebration screen load");
+        console.log("[SIGN-CARD] gameId:", gameId);
+        
+        // Small delay to let the modal render, then auto-save
+        setTimeout(function() {
+            if (gameId && typeof saveGameToHistory === 'function') {
+                console.log("[SIGN-CARD] Calling saveGameToHistory for gameId:", gameId);
+                saveGameToHistory(gameId)
+                    .then(function(result) {
+                        console.log("[SIGN-CARD] ✅ Auto-save completed:", result);
+                        if (result.success) {
+                            console.log("[SIGN-CARD] ✅ History record saved:", result.archiveId);
+                            var statusDiv = document.querySelector('#celebrationModal .auto-save-status');
+                            if (statusDiv) {
+                                statusDiv.innerHTML = '<span style="color:#4caf50;">✅ Saved to history</span>';
+                            }
+                            // Store the archive ID for later use
+                            sessionStorage.setItem('lastHistoryArchiveId', result.archiveId);
+                            sessionStorage.setItem('lastHistoryGameId', gameId);
+                        } else {
+                            console.error("[SIGN-CARD] ❌ Auto-save failed:", result.error);
+                            var statusDiv = document.querySelector('#celebrationModal .auto-save-status');
+                            if (statusDiv) {
+                                statusDiv.innerHTML = '<span style="color:#ff6b6b;">⚠️ ' + (result.error || 'Save failed') + '</span>';
+                            }
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error("[SIGN-CARD] ❌ Auto-save error:", err);
+                    });
+            } else {
+                console.warn("[SIGN-CARD] ⚠️ Cannot auto-save: gameId=", gameId, "saveGameToHistory available:", typeof saveGameToHistory === 'function');
+            }
+        }, 500);
+        
+        document.getElementById('celebrationHandicapBtn').addEventListener('click', function() {
+            console.log("[SIGN-CARD] HANDICAP ADJUSTMENT button clicked");
+            var modal = document.getElementById('celebrationModal');
+            if (modal) modal.remove();
+            
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                WaitingScreen.show("Loading Handicap Adjustment...");
+            } else {
+                var overlay = document.createElement('div');
+                overlay.id = 'waitingScreenOverlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
+                document.body.appendChild(overlay);
+            }
+            
+            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        });
+        
+        document.getElementById('celebrationMainMenuBtn').addEventListener('click', function() {
+            console.log("[SIGN-CARD] Main Menu button clicked");
+            var modal = document.getElementById('celebrationModal');
+            if (modal) modal.remove();
+            sessionStorage.removeItem('isPostGame');
+            window.location.href = 'index.html';
+        });
+        
+        // Store onClose callback for cleanup if needed
+        window._celebrationOnClose = onClose;
+    }
+
+    // ============================================================
+    // EXTERNAL FUNCTIONS: saveGameToHistory, setupSigning
+    // ============================================================
+    
+    window.saveGameToHistory = function(gameId) {
+        console.log("[SIGN-CARD] saveGameToHistory called for gameId:", gameId);
+        return new Promise(function(resolve) {
+            // Use GameLoader to load the game data
+            if (typeof GameLoader === 'undefined' || typeof GameLoader.loadGame !== 'function') {
+                console.error("[SIGN-CARD] GameLoader not available");
+                resolve({ success: false, error: "GameLoader not available" });
+                return;
+            }
+            
+            GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                if (!result.success) {
+                    console.error("[SIGN-CARD] Failed to load game data:", result.error);
+                    resolve({ success: false, error: result.error || "Failed to load game data" });
+                    return;
+                }
                 
-                var modal = document.getElementById('gameCompleteModal');
-                if (modal) modal.remove();
-                
-                window.location.href = 'post-game.html?gameId=' + gameId;
+                try {
+                    var cache = result.cache;
+                    console.log("[SIGN-CARD] Game data loaded, cache keys:", Object.keys(cache));
+                    
+                    // Build the history record data
+                    var historyData = buildHistoryRecordData(gameId, cache);
+                    if (!historyData) {
+                        resolve({ success: false, error: "Failed to build history record data" });
+                        return;
+                    }
+                    
+                    // Save to Firestore
+                    var db = firebase.firestore();
+                    var archiveId = gameId + '_H';
+                    
+                    // Check if history record already exists
+                    db.collection("historyGames").doc(archiveId).get()
+                        .then(function(doc) {
+                            var dataToSave = historyData;
+                            
+                            // Determine if we need to merge or set
+                            if (doc.exists) {
+                                // Update existing record
+                                console.log("[SIGN-CARD] History record already exists, updating:", archiveId);
+                                
+                                // v1.31: Use WRV if available for verified write
+                                if (typeof WRV !== 'undefined' && WRV.update) {
+                                    WRV.update("historyGames", archiveId, dataToSave, function(err, writtenData) {
+                                        if (err) {
+                                            console.error("[SIGN-CARD] WRV update failed:", err);
+                                            resolve({ success: false, error: err.message });
+                                        } else {
+                                            console.log("[SIGN-CARD] WRV update verified");
+                                            resolve({ success: true, archiveId: archiveId, action: 'updated' });
+                                        }
+                                    });
+                                } else {
+                                    db.collection("historyGames").doc(archiveId).set(dataToSave, { merge: true })
+                                        .then(function() {
+                                            console.log("[SIGN-CARD] History record updated:", archiveId);
+                                            resolve({ success: true, archiveId: archiveId, action: 'updated' });
+                                        })
+                                        .catch(function(err) {
+                                            console.error("[SIGN-CARD] Failed to update history record:", err);
+                                            resolve({ success: false, error: err.message });
+                                        });
+                                }
+                            } else {
+                                // Create new record
+                                console.log("[SIGN-CARD] Creating new history record:", archiveId);
+                                
+                                // v1.31: Use WRV if available for verified write
+                                if (typeof WRV !== 'undefined' && WRV.write) {
+                                    WRV.write("historyGames", archiveId, dataToSave, function(err, writtenData) {
+                                        if (err) {
+                                            console.error("[SIGN-CARD] WRV write failed:", err);
+                                            resolve({ success: false, error: err.message });
+                                        } else {
+                                            console.log("[SIGN-CARD] WRV write verified");
+                                            resolve({ success: true, archiveId: archiveId, action: 'created' });
+                                        }
+                                    });
+                                } else {
+                                    db.collection("historyGames").doc(archiveId).set(dataToSave)
+                                        .then(function() {
+                                            console.log("[SIGN-CARD] History record created:", archiveId);
+                                            resolve({ success: true, archiveId: archiveId, action: 'created' });
+                                        })
+                                        .catch(function(err) {
+                                            console.error("[SIGN-CARD] Failed to create history record:", err);
+                                            resolve({ success: false, error: err.message });
+                                        });
+                                }
+                            }
+                        })
+                        .catch(function(err) {
+                            console.error("[SIGN-CARD] Failed to check history record:", err);
+                            resolve({ success: false, error: err.message });
+                        });
+                    
+                } catch (e) {
+                    console.error("[SIGN-CARD] Exception in saveGameToHistory:", e);
+                    resolve({ success: false, error: e.message });
+                }
             });
+        });
+    };
+    
+    // ============================================================
+    // v1.40: Build History Record Data - WITH CLINCHEDAT NORMALIZATION
+    // ============================================================
+    
+    function buildHistoryRecordData(gameId, cache) {
+        console.log("[SIGN-CARD] buildHistoryRecordData called");
+        console.log("[SIGN-CARD] cache keys:", Object.keys(cache));
+        console.log("[SIGN-CARD] cache.players:", cache.players ? cache.players.length : 'undefined');
+        console.log("[SIGN-CARD] cache.results:", cache.results ? 'exists' : 'undefined');
+        console.log("[SIGN-CARD] cache.signatures:", cache.signatures ? 'exists' : 'undefined');
+        
+        if (!cache || !cache.players) {
+            console.error("[SIGN-CARD] Invalid cache: missing players");
+            return null;
         }
-    }
-    
-    function isGameCompleted(signatures) {
-        if (!signatures) return false;
-        return signatures.f1?.signed === true && signatures.f2?.signed === true;
-    }
-    
-    function getWinner(trTeamA, trTeamB) {
-        if (trTeamA > trTeamB) return 'A';
-        if (trTeamB > trTeamA) return 'B';
-        return 'Tie';
+        
+        // ============================================================
+        // v1.40: Normalize clinchedAt to use labels
+        // ============================================================
+        var rawClinchedAt = cache.results?.clinchedAt || {};
+        var normalizedClinchedAt = normalizeClinchedAt(rawClinchedAt, cache.players);
+        
+        // Log normalization changes
+        if (Object.keys(rawClinchedAt).length > 0 && Object.keys(normalizedClinchedAt).length > 0) {
+            console.log("[SIGN-CARD] clinchedAt normalized:",
+                Object.keys(rawClinchedAt).length, "→",
+                Object.keys(normalizedClinchedAt).length, "keys");
+        }
+        
+        // Build results object with normalized clinchedAt
+        var results = null;
+        if (cache.results) {
+            results = JSON.parse(JSON.stringify(cache.results));
+            results.clinchedAt = normalizedClinchedAt;
+        }
+        
+        var data = {
+            originalGameId: gameId,
+            gameInfo: {
+                course: cache.course || null,
+                players: cache.players || [],
+                startingHole: cache.startingHole || 1,
+                teamGameFormat: cache.teamGameFormat || "tournament",
+                date: cache.date || new Date().toISOString().split('T')[0]
+            },
+            players: cache.players || [],
+            f1DataString: cache.f1DataString || "",
+            f2DataString: cache.f2DataString || "",
+            results: results,
+            adjustedHandicaps: null,
+            signatures: cache.signatures || {
+                f1: { signed: true, signedAt: null, captainName: null },
+                f2: { signed: true, signedAt: null, captainName: null }
+            },
+            status: "completed",
+            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        // Include handicap adjustment data if available
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.getData) {
+            var hcpData = HandicapAdjustment.getData();
+            if (hcpData) {
+                data.adjustedHandicaps = hcpData;
+                console.log("[SIGN-CARD] Handicap adjustment data included");
+            } else {
+                console.warn("[SIGN-CARD] No handicap data available from HandicapAdjustment");
+            }
+        } else {
+            console.warn("[SIGN-CARD] HandicapAdjustment not available");
+        }
+        
+        // v1.29: Include celebration photo reference if available
+        if (cache.celebration) {
+            data.celebration = cache.celebration;
+            console.log("[SIGN-CARD] Celebration photo included");
+        }
+        
+        console.log("[SIGN-CARD] History record data built successfully");
+        return data;
     }
     
     // ============================================================
@@ -1098,37 +430,35 @@ var SignCard = (function() {
     // ============================================================
     
     return {
-        showWaitingScreen: showWaitingScreen,
-        hideWaitingScreen: hideWaitingScreen,
         showCelebrationScreen: showCelebrationScreen,
         replayCelebration: replayCelebration,
-        submitSignature: submitSignature,
-        isGameCompleted: isGameCompleted,
-        getWinner: getWinner,
-        launchConfetti: launchConfetti,
-        clearConfetti: clearConfetti,
-        ensureArchiveRecord: ensureArchiveRecord,
-        _cachedImagePath: cachedImagePath,
-        refreshCacheBeforeSigning: refreshCacheBeforeSigning,
-        triggerHistoryRecordWrite: triggerHistoryRecordWrite
+        saveGameToHistory: window.saveGameToHistory,
+        buildHistoryRecordData: buildHistoryRecordData,
+        normalizeClinchedAt: normalizeClinchedAt
     };
     
 })();
 
-// Make available globally
+// ============================================================
+// EXPOSE GLOBALLY
+// ============================================================
 window.SignCard = SignCard;
-window.SIGN_CARD_VERSION = "1.44";
+window.replayCelebration = SignCard.replayCelebration;
+window.saveGameToHistory = SignCard.saveGameToHistory;
+window.showCelebrationScreen = SignCard.showCelebrationScreen;
+window.normalizeClinchedAt = SignCard.normalizeClinchedAt;
+
+console.log("[SIGN-CARD] v1.40 loaded - Normalized clinchedAt labels");
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.44
-KEY CHANGES from v1.43:
-   - REMOVED: completedAt and createdAt server timestamps from buildHistoryPayload()
-   - REASON: WRV verification fails on timestamp fields (server timestamps vs Firestore Timestamp objects)
-   - REASON: Timestamps are not needed for data integrity and cause false verification failures
-   - REASON: WRV's skip list does not handle nested timestamp fields correctly
-   - PRESERVED: ALL other functionality from v1.43 unchanged
-DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/game-loader.js, WRV.js
-USED BY: real-game.html, view-game.html, post-game.html, hcp-adjust.html
+VERSION: 1.40
+KEY CHANGES from v1.39:
+   - FIXED: clinchedAt keys now normalized to use labels before saving to history
+   - REASON: Inconsistent clinchedAt keys (some use full names, some use labels)
+   - FIXED: Added normalizeClinchedAt() helper to convert full-name keys to label-based keys
+   - REASON: Ensures all history records use labels consistently for match keys
+   - PRESERVED: ALL other functionality from v1.39 unchanged
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/game-loader.js, js/modal.js, js/waiting-screen.js, js/wrv.js
 STATUS: Ready for integration
 */
