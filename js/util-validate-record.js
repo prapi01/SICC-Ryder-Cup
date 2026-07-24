@@ -1,24 +1,25 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - FIXED: calculateTeamGame() now uses play order instead of natural order
-   - FIXED: calculateStrokeGame() now uses play order instead of natural order
-   - ADDED: startingHole parameter to calculateTeamGame()
-   - ADDED: startingHole parameter to calculateStrokeGame()
-   - REASON: Same shotgun start bug existed in T-1/T-2 and Stroke Game calculations
-   - REASON: Natural order was causing incorrect T-1/T-2 and Stroke displays
-   - PRESERVED: ALL other functionality from v1.29 unchanged
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: deepEqualRounded() - deep equality with floating point tolerance (0.01)
+   - ADDED: deepEqualClinched() - focused comparison of clinch data (winner, loser, clinchedAtHole)
+   - CHANGED: Player Totals comparison now uses deepEqualRounded() instead of deepEqual()
+   - CHANGED: ClinchedAt comparison now uses deepEqualClinched() instead of deepEqual()
+   - REASON: deepEqual() is too strict for floating point numbers (e.g., 0.5 vs 0.5000001)
+   - REASON: Player totals contain sums that may have floating point precision differences
+   - REASON: ClinchedAt validation should focus on the actual clinch data, not deep equality
+   - PRESERVED: ALL other functionality from v1.30 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.30";
+window.UTIL_VALIDATE_VERSION = "1.31";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.30 - Fixed Team Game and Stroke Game play order");
+    console.log("[UTIL-VALIDATE] Initializing v1.31 - Fixed deep equality comparisons (Player Totals, ClinchedAt)");
 
     // ============================================================
     // PARSING FUNCTIONS - Handles partial data
@@ -859,6 +860,75 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
+    // v1.31: DEEP EQUAL WITH ROUNDING - For player totals comparison
+    // ============================================================
+    
+    function deepEqualRounded(a, b, tolerance) {
+        if (tolerance === undefined) {
+            tolerance = 0.01;
+        }
+        
+        if (a === b) return true;
+        if (a === null || b === null) return a === b;
+        if (typeof a === 'undefined' || typeof b === 'undefined') return a === b;
+        
+        if (typeof a === 'number' && typeof b === 'number') {
+            return Math.abs(a - b) < tolerance;
+        }
+        
+        if (typeof a !== 'object' || typeof b !== 'object') return a === b;
+        if (Array.isArray(a) && Array.isArray(b)) {
+            if (a.length !== b.length) return false;
+            for (var i = 0; i < a.length; i++) {
+                if (!deepEqualRounded(a[i], b[i], tolerance)) return false;
+            }
+            return true;
+        }
+        
+        var keysA = Object.keys(a);
+        var keysB = Object.keys(b);
+        if (keysA.length !== keysB.length) return false;
+        for (var k = 0; k < keysA.length; k++) {
+            var key = keysA[k];
+            if (!deepEqualRounded(a[key], b[key], tolerance)) return false;
+        }
+        return true;
+    }
+    
+    // ============================================================
+    // v1.31: DEEP EQUAL FOR CLINCHEDAT - Focus on actual clinch data
+    // ============================================================
+    
+    function deepEqualClinched(a, b) {
+        if (a === b) return true;
+        if (a === null || b === null) return a === b;
+        if (typeof a === 'undefined' || typeof b === 'undefined') return a === b;
+        
+        // Compare by keys (match keys)
+        var keysA = Object.keys(a);
+        var keysB = Object.keys(b);
+        if (keysA.length !== keysB.length) return false;
+        
+        // For each match key, compare the actual clinch data
+        for (var k = 0; k < keysA.length; k++) {
+            var key = keysA[k];
+            var valA = a[key];
+            var valB = b[key];
+            
+            if (valA === valB) continue;
+            if (valA === null || valB === null) return false;
+            if (typeof valA !== 'object' || typeof valB !== 'object') return false;
+            
+            // Compare the three critical fields for clinch data
+            if (valA.clinchedAtHole !== valB.clinchedAtHole) return false;
+            if (valA.winner !== valB.winner) return false;
+            if (valA.loser !== valB.loser) return false;
+        }
+        
+        return true;
+    }
+    
+    // ============================================================
     // PHOTO POINTER VALIDATION
     // ============================================================
     
@@ -1464,7 +1534,7 @@ var UtilValidate = (function() {
         // 9. Player Totals
         var curTotals = recordData.results?.playerTotals || {};
         var newTotals = recalculated.playerTotals || {};
-        if (!deepEqual(curTotals, newTotals)) {
+        if (!deepEqualRounded(curTotals, newTotals)) {
             mismatches.push({ field: 'Player Totals', current: 'stale', expected: 'recalculated' });
             summary.mismatched++;
         } else {
@@ -1476,7 +1546,7 @@ var UtilValidate = (function() {
         // 10. ClinchedAt
         var curClinched = recordData.results?.clinchedAt || {};
         var newClinched = recalculated.clinchedAt || {};
-        if (!deepEqual(curClinched, newClinched)) {
+        if (!deepEqualClinched(curClinched, newClinched)) {
             mismatches.push({ field: 'ClinchedAt', current: Object.keys(curClinched).length + ' entries', expected: Object.keys(newClinched).length + ' entries' });
             summary.mismatched++;
         } else {
@@ -1849,12 +1919,12 @@ var UtilValidate = (function() {
         // 5-7. Removed in v4.0
         
         // 8. Player Totals
-        if (!deepEqual(recordData.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+        if (!deepEqualRounded(recordData.results?.playerTotals || {}, recalculated.playerTotals || {})) {
             updatePayload['results.playerTotals'] = recalculated.playerTotals;
         }
         
         // 9. ClinchedAt
-        if (!deepEqual(recordData.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
+        if (!deepEqualClinched(recordData.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
             updatePayload['results.clinchedAt'] = recalculated.clinchedAt;
         }
         
@@ -2028,6 +2098,8 @@ var UtilValidate = (function() {
         calculateMatchGamePerHole: calculateMatchGamePerHole,
         buildCompleteResultsFromRawData: buildCompleteResultsFromRawData,
         deepEqual: deepEqual,
+        deepEqualRounded: deepEqualRounded,
+        deepEqualClinched: deepEqualClinched,
         validatePhotoPointer: validatePhotoPointer,
         validateAllFields: validateAllFields,
         buildFieldDiff: buildFieldDiff,
@@ -2046,15 +2118,16 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - FIXED: calculateTeamGame() now uses play order instead of natural order
-   - FIXED: calculateStrokeGame() now uses play order instead of natural order
-   - ADDED: startingHole parameter to calculateTeamGame()
-   - ADDED: startingHole parameter to calculateStrokeGame()
-   - REASON: Same shotgun start bug existed in T-1/T-2 and Stroke Game calculations
-   - REASON: Natural order was causing incorrect T-1/T-2 and Stroke displays
-   - PRESERVED: ALL other functionality from v1.29 unchanged
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: deepEqualRounded() - deep equality with floating point tolerance (0.01)
+   - ADDED: deepEqualClinched() - focused comparison of clinch data (winner, loser, clinchedAtHole)
+   - CHANGED: Player Totals comparison now uses deepEqualRounded() instead of deepEqual()
+   - CHANGED: ClinchedAt comparison now uses deepEqualClinched() instead of deepEqual()
+   - REASON: deepEqual() is too strict for floating point numbers (e.g., 0.5 vs 0.5000001)
+   - REASON: Player totals contain sums that may have floating point precision differences
+   - REASON: ClinchedAt validation should focus on the actual clinch data, not deep equality
+   - PRESERVED: ALL other functionality from v1.30 unchanged
 DEPENDS ON: Firebase Firestore, js/game-loader.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
