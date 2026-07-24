@@ -1,28 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.63
-KEY CHANGES from v2.62:
-   - REMOVED: saveAdjustmentToFirestore() - no writes in hcp-adjust (DISPLAY ONLY)
-   - REMOVED: updateAnchorAndRecalculate() - anchor change feature not in this version
-   - REMOVED: updatePlayerRecordsInBackground() - no writes in hcp-adjust (DISPLAY ONLY)
-   - REMOVED: init() - legacy function not used in current flow
-   - REMOVED: showAnchorSelectionModal() - anchor selection not in this version
-   - REMOVED: showChangeAnchorModal() - anchor change not in this version
-   - REMOVED: updatePlayerProfiles() - legacy not used
-   - REMOVED: loadGameData() - only used by removed init()
-   - REMOVED: wrw() and wru() helpers - no longer needed
-   - REMOVED: getDb() - no longer needed
-   - REMOVED: checkUrlAndInit() - auto-init removed
-   - REMOVED: initReadOnly() - redirects to initForHistory
-   - CHANGED: Return object - only expose necessary display/read functions
-   - REASON: hcp-adjust is now DISPLAY ONLY - no user input, no writes, no changes
-   - REASON: ONE complete payload write at F2 signing time eliminates second write
-   - PRESERVED: ALL calculation logic - calculateAllAdjustments(), calculateAllAdjustmentsFromRaw()
-   - PRESERVED: ALL display logic - renderTableToContainer(), showAdjustmentTable(), displayStoredAdjustment()
-   - PRESERVED: initForViewer() - read-only display for hcp-adjust.html
-   - PRESERVED: initForHistory() - read-only display for history viewer
-   - PRESERVED: getData() - used by sign-card.js to build payload
-   - PRESERVED: MULTIPLE_NEW_ANCHOR constant - used by sign-card.js
+VERSION: 2.64
+KEY CHANGES from v2.63:
+   - FIXED: displayStoredAdjustment() now correctly sets rawNew for each player
+   - REASON: Raw column was not showing in view-history because rawNew was null
+   - FIXED: rawNew = startingHcp + anchorAdj + perfAdj (same calculation as display)
+   - PRESERVED: ALL other functionality from v2.63 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -859,7 +842,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.54: Display stored adjustment from history record
+    // v2.64: Display stored adjustment from history record - FIXED rawNew
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
@@ -882,16 +865,22 @@ var HandicapAdjustment = (function() {
         
         var players = adjustedHandicaps.players.map(function(p) {
             var teamInfo = playerMap[p.name] || { team: 'B', startingHcp: p.startingHcp };
+            // v2.64: Calculate rawNew from stored values for Raw column display
+            var startingHcp = p.startingHcp || 0;
+            var anchorAdj = p.anchorAdj || 0;
+            var perfAdj = p.perfAdj || 0;
+            var rawNew = startingHcp + anchorAdj + perfAdj;
+            
             return {
                 name: p.name,
                 label: p.label || p.name.substring(0, 3).toUpperCase(),
-                currentHcp: p.startingHcp,
-                startingHcp: p.startingHcp,
-                anchorAdj: p.anchorAdj || 0,
-                perfAdj: p.perfAdj || 0,
+                currentHcp: startingHcp,
+                startingHcp: startingHcp,
+                anchorAdj: anchorAdj,
+                perfAdj: perfAdj,
                 finalHcp: p.finalHcp,
                 team: teamInfo.team,
-                rawNew: null,
+                rawNew: rawNew,
                 newHcp: null,
                 newAnchor: null,
                 anchorRaw: p.anchorRaw !== undefined ? p.anchorRaw : 0,
@@ -1157,7 +1146,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.63";
+    window.HANDICAP_ADJUST_VERSION = "2.64";
     
     return {
         initForViewer: initForViewer,
@@ -1176,29 +1165,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.63
-KEY CHANGES from v2.62:
-   - REMOVED: saveAdjustmentToFirestore() - no writes in hcp-adjust (DISPLAY ONLY)
-   - REMOVED: updateAnchorAndRecalculate() - anchor change feature not in this version
-   - REMOVED: updatePlayerRecordsInBackground() - no writes in hcp-adjust (DISPLAY ONLY)
-   - REMOVED: init() - legacy function not used in current flow
-   - REMOVED: showAnchorSelectionModal() - anchor selection not in this version
-   - REMOVED: showChangeAnchorModal() - anchor change not in this version
-   - REMOVED: updatePlayerProfiles() - legacy not used
-   - REMOVED: loadGameData() - only used by removed init()
-   - REMOVED: wrw() and wru() helpers - no longer needed
-   - REMOVED: getDb() - no longer needed
-   - REMOVED: checkUrlAndInit() - auto-init removed
-   - REMOVED: initReadOnly() - redirects to initForHistory
-   - CHANGED: Return object - only expose necessary display/read functions
-   - REASON: hcp-adjust is now DISPLAY ONLY - no user input, no writes, no changes
-   - REASON: ONE complete payload write at F2 signing time eliminates second write
-   - PRESERVED: ALL calculation logic - calculateAllAdjustments(), calculateAllAdjustmentsFromRaw()
-   - PRESERVED: ALL display logic - renderTableToContainer(), showAdjustmentTable(), displayStoredAdjustment()
-   - PRESERVED: initForViewer() - read-only display for hcp-adjust.html
-   - PRESERVED: initForHistory() - read-only display for history viewer
-   - PRESERVED: getData() - used by sign-card.js to build payload
-   - PRESERVED: MULTIPLE_NEW_ANCHOR constant - used by sign-card.js
+VERSION: 2.64
+KEY CHANGES from v2.63:
+   - FIXED: displayStoredAdjustment() now correctly sets rawNew for each player
+   - REASON: Raw column was not showing in view-history because rawNew was null
+   - FIXED: rawNew = startingHcp + anchorAdj + perfAdj (same calculation as display)
+   - PRESERVED: ALL other functionality from v2.63 unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
