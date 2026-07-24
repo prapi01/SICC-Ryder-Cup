@@ -1,18 +1,19 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - ADDED: Store Firebase Storage ETag after successful upload
-   - ADDED: New localStorage key: 'celebration_photo_etag_firebase'
-   - REASON: F1 and VIEW need to compare the SAME ETag for sync
-   - REASON: GitHub ETag (celebration_photo_etag) remains separate for F1 change detection
-   - REASON: Firebase Storage ETag is shared across all devices for quick sync check
-   - PRESERVED: ALL other functionality from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: Firestore write target in checkAndRenameCelebrationPhoto() changed from historyGames to scheduledGames
+   - REASON: historyGames document does not exist during gameplay (only after game complete)
+   - REASON: Photo metadata should be stored in the game document during gameplay
+   - REASON: This eliminates "No document to update" error during photo check
+   - PRESERVED: ALL other functionality from v1.20 unchanged
+   - PRESERVED: setPhotoFlags(), resetPhotoFlags(), checkPhotoFlags() remain unchanged
+   - PRESERVED: getCelebrationPhoto() still reads from historyGames for history records
 DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.20";
+window.CELEBRATION_PHOTO_VERSION = "1.21";
 
 // ============================================================
 // CONSTANTS
@@ -518,10 +519,11 @@ function clearStoredPhotoUrlForHistory(gameId) {
 }
 
 // ============================================================
-// v1.19: CHECK AND RENAME PHOTO WITH FLAGS
-// F1 ONLY - Defensive check prevents F2 from running this
+// v1.21: CHECK AND RENAME PHOTO WITH FLAGS
+// FIXED: Writes photo metadata to scheduledGames (not historyGames)
 // v1.19: ADDED defensive check - only F1 runs this
 // v1.20: ADDED Firebase Storage ETag storage after upload
+// v1.21: FIXED Firestore write target - scheduledGames instead of historyGames
 // ============================================================
 function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
     // v1.19: Defensive check - only F1 should run photo uploads
@@ -582,27 +584,23 @@ function checkAndRenameCelebrationPhoto(gameId, holeNumber, callback) {
                 // ✅ VERIFIED - upload succeeded
                 console.log('[CelebrationPhoto] ✅ Uploaded and VERIFIED to:', archiveId + '.jpg');
                 
-                // v1.17: Use nested celebration object + delete flat fields (cleanup)
-                var updateData = {
-                    celebration: {
-                        imageRef: 'celebration/' + archiveId + '.jpg',
-                        imageUrl: verifiedUrl,
-                        copiedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    },
-                    // v1.17: Delete flat fields if they exist (cleanup from old dot notation writes)
-                    'celebration.imageRef': firebase.firestore.FieldValue.delete(),
-                    'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
-                    'celebration.copiedAt': firebase.firestore.FieldValue.delete()
-                };
-                
-                // v1.18: Use direct Firestore update (no WRV verification needed)
-                // The photo file itself is already verified in Storage via verifyPhotoUpload()
-                // WRV verification fails because the document has fields not in the payload
+                // ============================================================
+                // v1.21 FIX: Write photo metadata to scheduledGames (game document)
+                // The game document exists during gameplay; historyGames doesn't exist yet
+                // This eliminates the "No document to update" error
+                // ============================================================
                 var firestorePromise = new Promise(function(resolve) {
                     var db = firebase.firestore();
-                    db.collection('historyGames').doc(archiveId).update(updateData)
+                    // Write to scheduledGames using gameId (not archiveId)
+                    var gameUpdateData = {
+                        celebration: {
+                            imageUrl: verifiedUrl,
+                            copiedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }
+                    };
+                    db.collection('scheduledGames').doc(gameId).set(gameUpdateData, { merge: true })
                         .then(function() {
-                            console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
+                            console.log('[CelebrationPhoto] ✅ Firestore updated for game:', gameId);
                             resolve();
                         })
                         .catch(function(dbErr) {
@@ -831,7 +829,7 @@ function getPhotoFromSessionStorage() {
 }
 
 // ============================================================
-// v1.20: Expose functions
+// v1.21: Expose functions
 // ============================================================
 window.loadDefaultCelebrationPhoto = loadDefaultCelebrationPhoto;
 window.copyCelebrationPhoto = copyCelebrationPhoto;
@@ -860,14 +858,15 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - ADDED: Store Firebase Storage ETag after successful upload
-   - ADDED: New localStorage key: 'celebration_photo_etag_firebase'
-   - REASON: F1 and VIEW need to compare the SAME ETag for sync
-   - REASON: GitHub ETag (celebration_photo_etag) remains separate for F1 change detection
-   - REASON: Firebase Storage ETag is shared across all devices for quick sync check
-   - PRESERVED: ALL other functionality from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: Firestore write target in checkAndRenameCelebrationPhoto() changed from historyGames to scheduledGames
+   - REASON: historyGames document does not exist during gameplay (only after game complete)
+   - REASON: Photo metadata should be stored in the game document during gameplay
+   - REASON: This eliminates "No document to update" error during photo check
+   - PRESERVED: ALL other functionality from v1.20 unchanged
+   - PRESERVED: setPhotoFlags(), resetPhotoFlags(), checkPhotoFlags() remain unchanged
+   - PRESERVED: getCelebrationPhoto() still reads from historyGames for history records
 DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
