@@ -1,13 +1,29 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.62
-KEY CHANGES from v2.61:
-   - ADDED: anchorNameParam parameter to initForViewer() to use stored anchor from game record
-   - CHANGED: anchor selection now uses stored anchor from gameData instead of recalculating
-   - REASON: Anchor is set during game setup and stored in scheduledGames.anchor
-   - REASON: Recalculating anchor as allPlayers[0] is incorrect when multiple zero handicaps exist
-   - PRESERVED: ALL other functionality from v2.61 unchanged
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
+VERSION: 2.63
+KEY CHANGES from v2.62:
+   - REMOVED: saveAdjustmentToFirestore() - no writes in hcp-adjust (DISPLAY ONLY)
+   - REMOVED: updateAnchorAndRecalculate() - anchor change feature not in this version
+   - REMOVED: updatePlayerRecordsInBackground() - no writes in hcp-adjust (DISPLAY ONLY)
+   - REMOVED: init() - legacy function not used in current flow
+   - REMOVED: showAnchorSelectionModal() - anchor selection not in this version
+   - REMOVED: showChangeAnchorModal() - anchor change not in this version
+   - REMOVED: updatePlayerProfiles() - legacy not used
+   - REMOVED: loadGameData() - only used by removed init()
+   - REMOVED: wrw() and wru() helpers - no longer needed
+   - REMOVED: getDb() - no longer needed
+   - REMOVED: checkUrlAndInit() - auto-init removed
+   - REMOVED: initReadOnly() - redirects to initForHistory
+   - CHANGED: Return object - only expose necessary display/read functions
+   - REASON: hcp-adjust is now DISPLAY ONLY - no user input, no writes, no changes
+   - REASON: ONE complete payload write at F2 signing time eliminates second write
+   - PRESERVED: ALL calculation logic - calculateAllAdjustments(), calculateAllAdjustmentsFromRaw()
+   - PRESERVED: ALL display logic - renderTableToContainer(), showAdjustmentTable(), displayStoredAdjustment()
+   - PRESERVED: initForViewer() - read-only display for hcp-adjust.html
+   - PRESERVED: initForHistory() - read-only display for history viewer
+   - PRESERVED: getData() - used by sign-card.js to build payload
+   - PRESERVED: MULTIPLE_NEW_ANCHOR constant - used by sign-card.js
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
 
@@ -39,61 +55,6 @@ var HandicapAdjustment = (function() {
     
     var isStandaloneMode = false;
     var standaloneContainerId = null;
-    
-    // ============================================================
-    // Helper: Get Firestore instance
-    // ============================================================
-    function getDb() {
-        return firebase.firestore();
-    }
-    
-    // ============================================================
-    // Helper: WRV write with Promise wrapper (callback compatible)
-    // ============================================================
-    function wrw(collection, docId, data, merge) {
-        return new Promise(function(resolve, reject) {
-            if (typeof WRV !== 'undefined' && WRV.write) {
-                WRV.write(collection, docId, data, function(err, result) {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                });
-            } else {
-                // Fallback: direct write
-                console.warn('[HCP-ADJUST] WRV not available, using direct write');
-                var db = getDb();
-                var ref = db.collection(collection).doc(docId);
-                var promise = merge ? ref.set(data, { merge: true }) : ref.set(data);
-                promise.then(resolve).catch(reject);
-            }
-        });
-    }
-    
-    // ============================================================
-    // Helper: WRV update with Promise wrapper (callback compatible)
-    // ============================================================
-    function wru(collection, docId, data) {
-        return new Promise(function(resolve, reject) {
-            if (typeof WRV !== 'undefined' && WRV.update) {
-                WRV.update(collection, docId, data, function(err, result) {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                });
-            } else {
-                // Fallback: direct update
-                console.warn('[HCP-ADJUST] WRV not available, using direct update');
-                var db = getDb();
-                db.collection(collection).doc(docId).update(data)
-                    .then(resolve)
-                    .catch(reject);
-            }
-        });
-    }
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -898,221 +859,6 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Show Change Anchor Modal
-    // ============================================================
-    
-    function showChangeAnchorModal() {
-        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
-        if (zeroHcpPlayers.length <= 1) return;
-        
-        var optionsHtml = '';
-        for (var i = 0; i < zeroHcpPlayers.length; i++) {
-            var selected = (anchorPlayer && anchorPlayer.name === zeroHcpPlayers[i].name) ? 'selected' : '';
-            optionsHtml += '<option value="' + zeroHcpPlayers[i].name + '" ' + selected + '>' + zeroHcpPlayers[i].name + ' (HCP ' + zeroHcpPlayers[i].handicap + ')</option>';
-        }
-        
-        var modalHtml = '<div class="modal-overlay" id="changeAnchorModal" style="z-index: 10001;">' +
-            '<div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #ffaa44;">' +
-            '<div style="font-size:1.3rem; font-weight:800; color:#ffaa44; margin-bottom:16px;">🔄 CHANGE ANCHOR</div>' +
-            '<div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Select a new anchor for today\'s game.</div>' +
-            '<select id="changeAnchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">' +
-            optionsHtml +
-            '</select>' +
-            '<div style="display:flex; gap:12px;">' +
-            '<button id="changeAnchorCancelBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#ccc; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">Cancel</button>' +
-            '<button id="changeAnchorConfirmBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:40px; font-weight:700; cursor:pointer;">✓ Confirm</button>' +
-            '</div></div></div>';
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        document.getElementById('changeAnchorCancelBtn').addEventListener('click', function() {
-            document.getElementById('changeAnchorModal').remove();
-            if (currentTableData) {
-                showAdjustmentTable(currentTableData, anchorPlayer.name, false);
-            }
-        });
-        
-        document.getElementById('changeAnchorConfirmBtn').addEventListener('click', function() {
-            var selectedName = document.getElementById('changeAnchorSelect').value;
-            var selectedAnchor = allPlayers.find(function(p) { return p.name === selectedName; });
-            document.getElementById('changeAnchorModal').remove();
-            
-            if (selectedAnchor && selectedAnchor.name !== anchorPlayer.name) {
-                updateAnchorAndRecalculate(selectedAnchor);
-            } else if (currentTableData) {
-                showAdjustmentTable(currentTableData, anchorPlayer.name, false);
-            }
-        });
-    }
-    
-    // ============================================================
-    // v2.57: BACKGROUND UPDATE - playerInformation + usedLabels (CORRECTED)
-    // ============================================================
-    function updatePlayerRecordsInBackground(adjustedPlayersData, allGamePlayers) {
-        console.log('[HCP-ADJUST] Background update starting...');
-        
-        var db = getDb();
-        
-        db.collection('playerInformation').doc('defaultPlayers').get()
-            .then(function(doc) {
-                var currentPlayers = [];
-                var existingUsedLabels = {};
-                
-                if (doc.exists && doc.data().players) {
-                    currentPlayers = doc.data().players;
-                    existingUsedLabels = doc.data().usedLabels || {};
-                }
-                
-                console.log('[HCP-ADJUST] Background: Current usedLabels has', Object.keys(existingUsedLabels).length, 'labels');
-                
-                var updatedCount = 0;
-                for (var i = 0; i < currentPlayers.length; i++) {
-                    for (var j = 0; j < adjustedPlayersData.length; j++) {
-                        if (currentPlayers[i].name === adjustedPlayersData[j].name) {
-                            var newHcp = adjustedPlayersData[j].newHcp;
-                            if (newHcp !== undefined && newHcp !== null) {
-                                currentPlayers[i].handicap = newHcp;
-                                updatedCount++;
-                                console.log('[HCP-ADJUST] Background: Updated ' + adjustedPlayersData[j].name + ' → ' + newHcp);
-                            }
-                            break;
-                        }
-                    }
-                }
-                
-                for (var j = 0; j < adjustedPlayersData.length; j++) {
-                    var found = false;
-                    for (var i = 0; i < currentPlayers.length; i++) {
-                        if (currentPlayers[i].name === adjustedPlayersData[j].name) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        var newHcp = adjustedPlayersData[j].newHcp;
-                        if (newHcp === undefined || newHcp === null) {
-                            newHcp = adjustedPlayersData[j].currentHcp || 0;
-                        }
-                        currentPlayers.push({
-                            name: adjustedPlayersData[j].name,
-                            label: adjustedPlayersData[j].label || adjustedPlayersData[j].name.substring(0, 3).toUpperCase(),
-                            handicap: newHcp,
-                            isDefault: false
-                        });
-                        console.log('[HCP-ADJUST] Background: Added new player ' + adjustedPlayersData[j].name + ' → ' + newHcp);
-                    }
-                }
-                
-                var mergedUsedLabels = {};
-                
-                for (var key in existingUsedLabels) {
-                    mergedUsedLabels[key] = existingUsedLabels[key];
-                }
-                
-                var newLabelCount = 0;
-                if (allGamePlayers && allGamePlayers.length > 0) {
-                    for (var i = 0; i < allGamePlayers.length; i++) {
-                        var label = allGamePlayers[i].label;
-                        if (label && label !== '') {
-                            if (!mergedUsedLabels[label]) {
-                                mergedUsedLabels[label] = true;
-                                newLabelCount++;
-                                console.log('[HCP-ADJUST] Background: Adding new label to usedLabels:', label);
-                            }
-                        }
-                    }
-                }
-                
-                console.log('[HCP-ADJUST] Background: usedLabels merged - added', newLabelCount, 'new labels, total:', Object.keys(mergedUsedLabels).length);
-                
-                var payload = {
-                    players: currentPlayers,
-                    usedLabels: mergedUsedLabels,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                
-                console.log('[HCP-ADJUST] Background: Writing playerInformation with updated handicaps and merged usedLabels');
-                
-                return wrw('playerInformation', 'defaultPlayers', payload, true);
-            })
-            .then(function() {
-                console.log('[HCP-ADJUST] Background: playerInformation updated successfully (players + merged usedLabels)');
-            })
-            .catch(function(err) {
-                console.error('[HCP-ADJUST] Background: Error updating player records:', err);
-            });
-    }
-    
-    // ============================================================
-    // Update anchor and recalculate - v2.55: DISPLAY FIRST, background update
-    // ============================================================
-    
-    function updateAnchorAndRecalculate(newAnchor) {
-        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-            WaitingScreen.show("Recalculating handicaps...");
-        } else {
-            var loadingModal = document.createElement('div');
-            loadingModal.className = 'modal-overlay';
-            loadingModal.id = 'loadingModal';
-            loadingModal.innerHTML = '<div style="background:#1a1a1a; border-radius:24px; padding:28px; text-align:center;"><div class="spin"></div><div style="margin-top:16px; color:#4caf50;">Recalculating handicaps...</div></div>';
-            document.body.appendChild(loadingModal);
-        }
-        
-        var updatePromise = wru('scheduledGames', currentGameId, {
-            anchor: newAnchor.name,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        updatePromise.then(function() {
-            console.log('Anchor updated in scheduledGames:', newAnchor.name);
-            anchorPlayer = newAnchor;
-            
-            var calculationResult = calculateAllAdjustments(newAnchor);
-            currentTableData = calculationResult;
-            
-            return new Promise(function(resolve, reject) {
-                saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(calculationResult);
-                    }
-                });
-            });
-        })
-        .then(function(calculationResult) {
-            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                WaitingScreen.hide();
-            } else {
-                var el = document.getElementById('waitingScreenOverlay');
-                if (el) el.remove();
-                var loadingModal = document.getElementById('loadingModal');
-                if (loadingModal) loadingModal.remove();
-            }
-            
-            showAdjustmentTable(calculationResult, newAnchor.name, false);
-            
-            updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
-        })
-        .catch(function(err) {
-            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                WaitingScreen.hide();
-            } else {
-                var el = document.getElementById('waitingScreenOverlay');
-                if (el) el.remove();
-                var loadingModal = document.getElementById('loadingModal');
-                if (loadingModal) loadingModal.remove();
-            }
-            
-            console.error('Error updating anchor:', err);
-            alert('Failed to update anchor. Please try again.');
-            if (currentTableData) {
-                showAdjustmentTable(currentTableData, anchorPlayer.name, false);
-            }
-        });
-    }
-    
-    // ============================================================
     // v2.54: Display stored adjustment from history record
     // ============================================================
     
@@ -1208,7 +954,7 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function loadFromHistoryLegacy(gameId, returnUrl) {
-        var db = getDb();
+        var db = firebase.firestore();
         db.collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
             .then(function(snapshot) {
                 if (snapshot.empty) {
@@ -1359,61 +1105,8 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // saveAdjustmentToFirestore - v2.55
-    // ============================================================
-    
-    function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
-        var handicapData = {
-            anchor: anchor.name,
-            players: calculationResult.players.map(function(p) {
-                return {
-                    name: p.name,
-                    label: p.label,
-                    currentHcp: p.currentHcp,
-                    startingHcp: p.startingHcp || p.currentHcp,
-                    anchorAdj: p.anchorAdj,
-                    perfAdj: p.perfAdj,
-                    finalHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
-                    anchorRaw: p.anchorRaw || 0,
-                    perfRaw: p.perfRaw || 0
-                };
-            }),
-            needsZeroRise: calculationResult.needsZeroRise,
-            zeroRiseAmount: calculationResult.zeroRiseAmount,
-            newAnchor: calculationResult.newAnchorName || anchor.name
-        };
-        
-        console.log("[HCP-ADJUST] saveAdjustmentToFirestore called");
-        console.log("  archiveId:", currentArchiveId);
-        console.log("  gameId:", currentGameId);
-        console.log("  players:", allPlayers ? allPlayers.length : 0);
-        
-        if (!currentArchiveId && currentGameId) {
-            currentArchiveId = currentGameId + "_H";
-            console.log("  Created archiveId:", currentArchiveId);
-        }
-        
-        if (currentArchiveId && typeof HistoryRecord !== 'undefined' && HistoryRecord.updateWithHandicap) {
-            console.log("  Calling HistoryRecord.updateWithHandicap for:", currentArchiveId);
-            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, allPlayers, function(err) {
-                if (err) {
-                    console.error("Error saving handicap data:", err);
-                    if (callback) callback(err);
-                } else {
-                    console.log("  ✅ Handicap data saved successfully");
-                    if (callback) callback(null);
-                }
-            });
-        } else {
-            console.warn("HistoryRecord.updateWithHandicap not available, skipping status update");
-            console.warn("  currentArchiveId:", currentArchiveId);
-            console.warn("  HistoryRecord:", typeof HistoryRecord);
-            if (callback) callback(null);
-        }
-    }
-    
-    // ============================================================
-    // v2.60: getData() - Returns current handicap data for auto-save
+    // v2.60: getData() - Returns current handicap data for payload building
+    // Used by sign-card.js to build complete payload at F2 signing time
     // ============================================================
     
     function getData() {
@@ -1454,184 +1147,6 @@ var HandicapAdjustment = (function() {
         return result;
     }
     
-    // ============================================================
-    // Legacy init function - v2.55
-    // ============================================================
-    
-    function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
-        console.log("[HCP-ADJUST] init called with gameId:", gameId, "archiveId:", archiveId);
-        currentGameId = gameId;
-        currentArchiveId = archiveId;
-        allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
-        isViewOnly = isViewOnlyMode || false;
-        isReadOnlyMode = false;
-        returnToPreviousPage = false;
-        
-        allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
-        hasMultipleZeroHandicap = (zeroHcpPlayers.length > 1);
-        
-        loadGameData(gameId, function(gameData) {
-            if (!gameData) {
-                window.location.href = "index.html";
-                return;
-            }
-            
-            var storedAnchor = gameData.anchor;
-            var anchorFound = null;
-            
-            if (storedAnchor) {
-                anchorFound = allPlayers.find(function(p) { return p.name === storedAnchor; });
-            }
-            
-            var proceedWithAnchor = function(anchor) {
-                anchorPlayer = anchor;
-                var calculationResult = calculateAllAdjustments(anchorPlayer);
-                currentTableData = calculationResult;
-                
-                saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
-                    if (err) {
-                        console.error("Error saving handicap data:", err);
-                        alert("Error saving handicap data. Please try again.");
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                    } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                        updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
-                    }
-                });
-            };
-            
-            if (anchorFound) {
-                proceedWithAnchor(anchorFound);
-            } else if (zeroHcpPlayers.length === 1) {
-                proceedWithAnchor(zeroHcpPlayers[0]);
-            } else if (zeroHcpPlayers.length > 1) {
-                showAnchorSelectionModal(zeroHcpPlayers);
-            } else {
-                var lowestHcpPlayer = allPlayers[0];
-                proceedWithAnchor(lowestHcpPlayer);
-            }
-        });
-    }
-    
-    // ============================================================
-    // Load game data from Firestore
-    // ============================================================
-    
-    function loadGameData(gameId, callback) {
-        var db = getDb();
-        db.collection("scheduledGames").doc(gameId).get()
-            .then(function(doc) {
-                if (!doc.exists) {
-                    callback(null);
-                    return;
-                }
-                var data = doc.data();
-                courseSi = data.course ? data.course.si : [];
-                coursePar = data.course ? data.course.par : [];
-                startingHole = data.startingHole || 1;
-                flight1Data = data.f1 && data.f1.d ? data.f1.d : "";
-                flight2Data = data.f2 && data.f2.d ? data.f2.d : "";
-                callback(data);
-            })
-            .catch(function(err) {
-                console.error("Error loading game data:", err);
-                callback(null);
-            });
-    }
-    
-    // ============================================================
-    // LEGACY: updatePlayerProfiles
-    // ============================================================
-    
-    function updatePlayerProfiles(players, callback) {
-        var db = getDb();
-        db.collection('playerInformation').doc('defaultPlayers').get()
-            .then(function(doc) {
-                if (doc.exists && doc.data().players) {
-                    var currentPlayers = doc.data().players;
-                    for (var i = 0; i < currentPlayers.length; i++) {
-                        for (var j = 0; j < players.length; j++) {
-                            if (currentPlayers[i].name === players[j].name) {
-                                currentPlayers[i].handicap = players[j].newHcp;
-                                console.log('Updated ' + players[j].name + ': ' + players[j].currentHcp + ' → ' + players[j].newHcp);
-                            }
-                        }
-                    }
-                    return wrw('playerInformation', 'defaultPlayers', {
-                        players: currentPlayers,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }, true);
-                }
-                return Promise.resolve();
-            })
-            .then(function() {
-                if (callback) callback(null);
-            })
-            .catch(function(err) {
-                console.error("Error updating player profiles:", err);
-                if (callback) callback(err);
-            });
-    }
-    
-    function showAnchorSelectionModal(zeroHcpPlayers) {
-        var optionsHtml = '';
-        for (var i = 0; i < zeroHcpPlayers.length; i++) {
-            optionsHtml += '<option value="' + zeroHcpPlayers[i].name + '">' + zeroHcpPlayers[i].name + ' (HCP ' + zeroHcpPlayers[i].handicap + ')</option>';
-        }
-        
-        var modalHtml = '<div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">' +
-            '<div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">' +
-            '<div style="font-size:1.3rem; font-weight:800; color:#4caf50; margin-bottom:16px;">🏌️ SELECT ANCHOR</div>' +
-            '<div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Who is today\'s Anchor? (Lowest handicap player)</div>' +
-            '<select id="anchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">' +
-            optionsHtml +
-            '</select>' +
-            '<button id="anchorConfirmBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%;">✓ Confirm Anchor</button>' +
-            '</div></div>';
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        document.getElementById('anchorConfirmBtn').addEventListener('click', function() {
-            var selectedName = document.getElementById('anchorSelect').value;
-            var selectedAnchor = allPlayers.find(function(p) { return p.name === selectedName; });
-            document.getElementById('anchorSelectModal').remove();
-            
-            anchorPlayer = selectedAnchor;
-            var calculationResult = calculateAllAdjustments(anchorPlayer);
-            currentTableData = calculationResult;
-            
-            saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
-                if (err) {
-                    alert("Error saving handicap data. Please try again.");
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                } else {
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                    updatePlayerRecordsInBackground(calculationResult.players, allPlayers);
-                }
-            });
-        });
-    }
-    
-    function initReadOnly(gameId, returnUrl) {
-        initForHistory(gameId, null, returnUrl);
-    }
-    
-    function checkUrlAndInit() {
-        var urlParams = new URLSearchParams(window.location.search);
-        var gameId = urlParams.get('gameId');
-        var mode = urlParams.get('mode');
-        var returnTo = urlParams.get('returnTo');
-        
-        if (gameId && mode === 'readonly') {
-            var returnUrl = returnTo === 'history' ? 'view-history.html?gameId=' + gameId : null;
-            initReadOnly(gameId, returnUrl);
-            return true;
-        }
-        return false;
-    }
-    
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -1642,22 +1157,14 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.62";
-    
-    if (typeof window !== 'undefined') {
-        checkUrlAndInit();
-    }
+    window.HANDICAP_ADJUST_VERSION = "2.63";
     
     return {
-        init: init,
         initForViewer: initForViewer,
         initForHistory: initForHistory,
-        initReadOnly: initReadOnly,
-        checkUrlAndInit: checkUrlAndInit,
         displayStoredAdjustment: displayStoredAdjustment,
         calculateAllAdjustments: calculateAllAdjustments,
         calculateAllAdjustmentsFromRaw: calculateAllAdjustmentsFromRaw,
-        updatePlayerRecordsInBackground: updatePlayerRecordsInBackground,
         MULTIPLE_NEW_ANCHOR: MULTIPLE_NEW_ANCHOR,
         getData: getData
     };
@@ -1669,13 +1176,29 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.62
-KEY CHANGES from v2.61:
-   - ADDED: anchorNameParam parameter to initForViewer() to use stored anchor from game record
-   - CHANGED: anchor selection now uses stored anchor from gameData instead of recalculating
-   - REASON: Anchor is set during game setup and stored in scheduledGames.anchor
-   - REASON: Recalculating anchor as allPlayers[0] is incorrect when multiple zero handicaps exist
-   - PRESERVED: ALL other functionality from v2.61 unchanged
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js, WRV.js
+VERSION: 2.63
+KEY CHANGES from v2.62:
+   - REMOVED: saveAdjustmentToFirestore() - no writes in hcp-adjust (DISPLAY ONLY)
+   - REMOVED: updateAnchorAndRecalculate() - anchor change feature not in this version
+   - REMOVED: updatePlayerRecordsInBackground() - no writes in hcp-adjust (DISPLAY ONLY)
+   - REMOVED: init() - legacy function not used in current flow
+   - REMOVED: showAnchorSelectionModal() - anchor selection not in this version
+   - REMOVED: showChangeAnchorModal() - anchor change not in this version
+   - REMOVED: updatePlayerProfiles() - legacy not used
+   - REMOVED: loadGameData() - only used by removed init()
+   - REMOVED: wrw() and wru() helpers - no longer needed
+   - REMOVED: getDb() - no longer needed
+   - REMOVED: checkUrlAndInit() - auto-init removed
+   - REMOVED: initReadOnly() - redirects to initForHistory
+   - CHANGED: Return object - only expose necessary display/read functions
+   - REASON: hcp-adjust is now DISPLAY ONLY - no user input, no writes, no changes
+   - REASON: ONE complete payload write at F2 signing time eliminates second write
+   - PRESERVED: ALL calculation logic - calculateAllAdjustments(), calculateAllAdjustmentsFromRaw()
+   - PRESERVED: ALL display logic - renderTableToContainer(), showAdjustmentTable(), displayStoredAdjustment()
+   - PRESERVED: initForViewer() - read-only display for hcp-adjust.html
+   - PRESERVED: initForHistory() - read-only display for history viewer
+   - PRESERVED: getData() - used by sign-card.js to build payload
+   - PRESERVED: MULTIPLE_NEW_ANCHOR constant - used by sign-card.js
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
