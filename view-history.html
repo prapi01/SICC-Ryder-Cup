@@ -1,14 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.46
-KEY CHANGES from v8.45:
-   - REPLACED: All individual .js script tags with load-game.js universal loader
-   - REASON: Single source of truth for version management
-   - REASON: Eliminates risk of missing version updates across HTML files
-   - REASON: One file (versions.json) controls all .js file versions
-   - PRESERVED: All v8.45 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.45 unchanged
-   - PRESERVED: Label Resolution Card unchanged
+VERSION: 8.47
+KEY CHANGES from v8.46:
+   - FIXED: Firebase initialization timing issue - moved db initialization inside loadGameListAndModules()
+   - REASON: firebase.firestore() was called before Firebase was initialized, causing "No Firebase App '[DEFAULT]'" error
+   - ADDED: Firebase readiness check with retry in loadGameListAndModules()
+   - REASON: Ensures Firebase is ready before calling firebase.firestore()
+   - PRESERVED: ALL other functionality from v8.46 unchanged
+   - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
 STATUS: Ready for integration
 -->
@@ -484,7 +483,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.46</div>
+<div class="version-tag">v8.47</div>
 
 <script>
 // ============================================================
@@ -497,10 +496,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.46: Universal script loader
+// VERSION CACHE-BUSTING - v8.47: Fixed Firebase initialization timing
 // ============================================================
-var APP_VERSION = "8.46";
-var CACHE_KEY = "view_history_version_v846";
+var APP_VERSION = "8.47";
+var CACHE_KEY = "view_history_version_v847";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -518,8 +517,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.46";
-console.log("[VIEW-HISTORY] Initializing v8.46 - Universal script loader");
+window.VIEW_HISTORY_VERSION = "8.47";
+console.log("[VIEW-HISTORY] Initializing v8.47 - Fixed Firebase initialization timing");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -536,10 +535,10 @@ function parseCompletedAt(completedAt) {
 }
 
 // ============================================================
-// Firebase already initialized in firebase-config.js
-// (loaded by load-game.js)
+// v8.47: db initialized lazily inside loadGameListAndModules()
+// to ensure Firebase is ready before use
 // ============================================================
-var db = firebase.firestore();
+var db = null;
 
 // ============================================================
 // Global state
@@ -1454,7 +1453,21 @@ function renderGameList(games) {
     loadLabelHistory();
 }
 
+// ============================================================
+// v8.47: loadGameListAndModules - Fixed Firebase initialization timing
+// ============================================================
+
 function loadGameListAndModules() {
+    // v8.47: Ensure Firebase is initialized before using it
+    if (typeof firebase === 'undefined' || !firebase.apps || firebase.apps.length === 0) {
+        console.warn("[VIEW-HISTORY] Firebase not initialized yet, retrying...");
+        setTimeout(loadGameListAndModules, 500);
+        return;
+    }
+    
+    // Initialize db now that Firebase is ready
+    db = firebase.firestore();
+    
     var container = document.getElementById('gameListContainer');
     container.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
@@ -1616,15 +1629,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.46
-KEY CHANGES from v8.45:
-   - REPLACED: All individual .js script tags with load-game.js universal loader
-   - REASON: Single source of truth for version management
-   - REASON: Eliminates risk of missing version updates across HTML files
-   - REASON: One file (versions.json) controls all .js file versions
-   - PRESERVED: All v8.45 functionality unchanged
-   - PRESERVED: All UI styling and layout from v8.45 unchanged
-   - PRESERVED: Label Resolution Card unchanged
+VERSION: 8.47
+KEY CHANGES from v8.46:
+   - FIXED: Firebase initialization timing issue - moved db initialization inside loadGameListAndModules()
+   - REASON: firebase.firestore() was called before Firebase was initialized, causing "No Firebase App '[DEFAULT]'" error
+   - ADDED: Firebase readiness check with retry in loadGameListAndModules()
+   - REASON: Ensures Firebase is ready before calling firebase.firestore()
+   - PRESERVED: ALL other functionality from v8.46 unchanged
+   - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/load-game.js (universal loader), js/versions.json (version manifest), Firebase SDK
 STATUS: Ready for integration
 -->
