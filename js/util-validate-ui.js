@@ -1,21 +1,21 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Raw HCP values now calculated from anchorRaw + perfRaw instead of rawNew
-   - REASON: rawNew is NOT stored in the record (it's a derived value)
-   - REASON: Stored data has anchorRaw and perfRaw which sum to rawNew
-   - REASON: This fixes the "all Raw Cur show —" bug in VALIDATE tab
-   - PRESERVED: ALL other functionality from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: Raw HCP values now calculated from startingHcp + anchorAdj + perfAdj
+   - REASON: Raw column should show integer value (startingHcp + anchorAdj + perfAdj), NOT anchorRaw + perfRaw
+   - REASON: anchorRaw + perfRaw are raw performance values (decimal/bracketed), not the Raw handicap value
+   - REASON: This matches the handicap adjustment definition in hcp-adjust.js
+   - PRESERVED: ALL other functionality from v1.20 unchanged
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.20";
+window.UTIL_VALIDATE_UI_VERSION = "1.21";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.20 - Fixed Raw HCP calculation");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.21 - Fixed Raw HCP calculation (startingHcp + anchorAdj + perfAdj)");
 
     // ============================================================
     // HELPERS (with fallback to util-core.js)
@@ -420,7 +420,7 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // v1.20: RENDER: Handicap Adjustment Card (Fixed Raw HCP)
+    // v1.21: RENDER: Handicap Adjustment Card (Fixed Raw HCP)
     // ============================================================
     
     function renderHandicapAdjustmentCard(validationResult, containerId) {
@@ -633,10 +633,10 @@ var UtilValidateUI = (function() {
             var perfRawCur = stored ? stored.perfRaw : undefined;
             var perfRawExp = recalc ? recalc.perfRaw : 0;
             
-            // v1.20: Raw HCP values - calculate from existing fields (anchorRaw + perfRaw)
-            // rawNew is NOT stored in the record, so we calculate it from available data
-            var rawCur = stored ? (stored.anchorRaw + stored.perfRaw) : undefined;
-            var rawExp = recalc ? (recalc.anchorRaw + recalc.perfRaw) : undefined;
+            // v1.21: Raw HCP values = startingHcp + anchorAdj + perfAdj (integer, no brackets)
+            // This matches the handicap adjustment definition in hcp-adjust.js
+            var rawCur = stored ? (stored.startingHcp + stored.anchorAdj + stored.perfAdj) : undefined;
+            var rawExp = recalc ? (recalc.startingHcp + recalc.anchorAdj + recalc.perfAdj) : undefined;
             
             // v1.17: Get final handicap - use newAnchor as fallback (zero-rised)
             var finalCur = stored ? stored.finalHcp : '—';
@@ -1265,7 +1265,7 @@ var UtilValidateUI = (function() {
         renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
         renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
         
-        // v1.20: Render Handicap Adjustment card with fixed Raw HCP calculation
+        // v1.21: Render Handicap Adjustment card with fixed Raw HCP calculation
         var hcpCardContainer = document.getElementById('validateHandicapCard');
         if (hcpCardContainer) {
             renderHandicapAdjustmentCard(validation, 'validateHandicapCard');
@@ -1888,17 +1888,17 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.20 - Fixed Raw HCP calculation');
+console.log('[UTIL-VALIDATE-UI] v1.21 - Fixed Raw HCP calculation (startingHcp + anchorAdj + perfAdj)');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Raw HCP values now calculated from anchorRaw + perfRaw instead of rawNew
-   - REASON: rawNew is NOT stored in the record (it's a derived value)
-   - REASON: Stored data has anchorRaw and perfRaw which sum to rawNew
-   - REASON: This fixes the "all Raw Cur show —" bug in VALIDATE tab
-   - PRESERVED: ALL other functionality from v1.19 unchanged
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - FIXED: Raw HCP values now calculated from startingHcp + anchorAdj + perfAdj
+   - REASON: Raw column should show integer value (startingHcp + anchorAdj + perfAdj), NOT anchorRaw + perfRaw
+   - REASON: anchorRaw + perfRaw are raw performance values (decimal/bracketed), not the Raw handicap value
+   - REASON: This matches the handicap adjustment definition in hcp-adjust.js
+   - PRESERVED: ALL other functionality from v1.20 unchanged
 DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
