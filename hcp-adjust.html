@@ -1,13 +1,14 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.39
-KEY CHANGES from v1.38:
-   - ADDED: js/history-record.js v3.10 to script dependencies
-   - REASON: HistoryRecord.updateWithHandicap() was not available on hcp-adjust page
-   - REASON: Without history-record.js loaded, auto-save to history record was skipped
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.38
-   - PRESERVED: No user intervention required - auto-save in background
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.62), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js (v3.10)
+VERSION: 1.40
+KEY CHANGES from v1.39:
+   - REMOVED: Auto-save block that called HistoryRecord.updateWithHandicap()
+   - REMOVED: js/history-record.js from script dependencies (no longer needed)
+   - REASON: hcp-adjust is now DISPLAY ONLY - no writes to Firestore
+   - REASON: ONE complete payload write at F2 signing time eliminates second write
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.39
+   - PRESERVED: All display logic, navigation, and celebration flow unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.63), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
 STATUS: Ready for integration
 -->
 
@@ -23,10 +24,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.39"></script>
-    <script src="js/session.js?v=1.39"></script>
-    <script src="js/settings.js?v=1.39"></script>
-    <script src="js/modal.js?v=1.39"></script>
+    <script src="js/firebase-config.js?v=1.40"></script>
+    <script src="js/session.js?v=1.40"></script>
+    <script src="js/settings.js?v=1.40"></script>
+    <script src="js/modal.js?v=1.40"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.08"></script>
@@ -40,10 +41,9 @@ STATUS: Ready for integration
     <!-- v1.23: WRV support -->
     <script src="js/wrv.js?v=1.00"></script>
     
-    <!-- v1.39: HistoryRecord support for auto-save -->
-    <script src="js/history-record.js?v=3.10"></script>
+    <!-- v1.40: history-record.js REMOVED - no longer needed (display only) -->
     
-    <script src="js/hcp-adjust.js?v=2.62"></script>
+    <script src="js/hcp-adjust.js?v=2.63"></script>
     <script src="js/sign-card.js?v=1.21"></script>
     
     <style>
@@ -283,7 +283,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.39</div>
+<div class="version-tag">v1.40</div>
 
 <script>
 // ============================================================
@@ -296,10 +296,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.39: Added history-record.js dependency
+// VERSION CACHE-BUSTING - v1.40: Removed auto-save and history-record.js dependency
 // ============================================================
-var APP_VERSION = "1.39";
-var CACHE_KEY = "hcp_adjust_version_v139";
+var APP_VERSION = "1.40";
+var CACHE_KEY = "hcp_adjust_version_v140";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -316,8 +316,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.39";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.39 - Added history-record.js for auto-save");
+window.HCP_ADJUST_PAGE_VERSION = "1.40";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.40 - Display only, no writes");
 
 // ============================================================
 // v1.35: Restore cache from sessionStorage
@@ -360,7 +360,7 @@ function restoreCelebrationData() {
 }
 
 // ============================================================
-// Main Logic - UNCHANGED from v1.38 except history-record.js now loaded
+// Main Logic - v1.40: DISPLAY ONLY - no writes to Firestore
 // ============================================================
 
 var gameId = null;
@@ -567,25 +567,8 @@ function loadHcpData() {
             );
             console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called with anchor:", cache.anchor || 'null');
             
-            // v1.36: Auto-save calculated handicaps to history record
-            var archiveId = gameId + '_H';
-            var handicapData = HandicapAdjustment.getData ? HandicapAdjustment.getData() : null;
-            var startingPlayers = cache.players || [];
-            
-            if (handicapData && typeof HistoryRecord !== 'undefined' && HistoryRecord.updateWithHandicap) {
-                HistoryRecord.updateWithHandicap(archiveId, handicapData, startingPlayers, function(err) {
-                    if (err) {
-                        console.warn('[HCP-ADJUST-PAGE] ⚠️ Auto-save failed:', err.message);
-                    } else {
-                        console.log('[HCP-ADJUST-PAGE] ✅ Handicap data auto-saved to history record');
-                    }
-                });
-            } else {
-                console.log('[HCP-ADJUST-PAGE] No handicap data to save or HistoryRecord not available');
-                console.log('[HCP-ADJUST-PAGE]   handicapData:', handicapData ? 'exists' : 'null');
-                console.log('[HCP-ADJUST-PAGE]   typeof HistoryRecord:', typeof HistoryRecord);
-                console.log('[HCP-ADJUST-PAGE]   HistoryRecord.updateWithHandicap:', typeof HistoryRecord?.updateWithHandicap);
-            }
+            // v1.40: REMOVED auto-save block - hcp-adjust is DISPLAY ONLY
+            // Handicap data is already in the history record from F2 signing time
             
             var container = document.getElementById('hcpTableContainer');
             if (container) {
@@ -659,13 +642,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.39
-KEY CHANGES from v1.38:
-   - ADDED: js/history-record.js v3.10 to script dependencies
-   - REASON: HistoryRecord.updateWithHandicap() was not available on hcp-adjust page
-   - REASON: Without history-record.js loaded, auto-save to history record was skipped
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.38
-   - PRESERVED: No user intervention required - auto-save in background
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.62), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js, js/history-record.js (v3.10)
+VERSION: 1.40
+KEY CHANGES from v1.39:
+   - REMOVED: Auto-save block that called HistoryRecord.updateWithHandicap()
+   - REMOVED: js/history-record.js from script dependencies (no longer needed)
+   - REASON: hcp-adjust is now DISPLAY ONLY - no writes to Firestore
+   - REASON: ONE complete payload write at F2 signing time eliminates second write
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.39
+   - PRESERVED: All display logic, navigation, and celebration flow unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.63), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
 STATUS: Ready for integration
 -->
