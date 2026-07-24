@@ -1,20 +1,16 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - CHANGED: docRef.set(data, { merge: true }) → docRef.set(data) - OVERWRITE, no merge
-   - ADDED: Hardcoded timestamp skip in deepEqualWithSkip() - ignores ALL timestamps
-   - REMOVED: timestamp comparison logic for Firestore Timestamp objects
-   - REASON: F2 data is the single source of truth - OVERWRITE always
-   - REASON: Timestamps are never used and should never cause verification failure
-   - PRESERVED: Infinite retries with exponential backoff
-   - PRESERVED: skipVerify functionality (backward compatible but no longer needed)
-   - PRESERVED: recover() functionality
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CHANGED: docRef.set(data) → docRef.set(data, { merge: true })
+   - REASON: Preserve existing fields in scheduledGames (setup data) while updating runtime fields
+   - REASON: merge: true works correctly for historyGames (full payload) and scheduledGames (partial payload)
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.13";
+window.WRV_VERSION = "1.14";
 
 var WRV = (function() {
     
@@ -204,7 +200,7 @@ var WRV = (function() {
     // ============================================================
     // WRV.write() - Write payload, verify payload fields only
     // v1.11: INFINITE RETRIES - never gives up
-    // v1.13: OVERWRITE - no merge (F2 data is the single source of truth)
+    // v1.14: RESTORED merge: true to preserve existing fields
     // ============================================================
     
     function writeWithWRV(collection, docId, data, callback, options) {
@@ -217,9 +213,10 @@ var WRV = (function() {
             attempt++;
             console.log('[WRV] Attempt', attempt, 'for', collection + '/' + docId);
             
-            // v1.13: OVERWRITE - no merge
-            // F2 data is the single source of truth - always overwrite
-            docRef.set(data)
+            // v1.14: RESTORED merge: true to preserve existing fields
+            // For scheduledGames: preserves setup fields (players, course, startingHole, etc.)
+            // For historyGames: full payload overwrites all fields (merge with all fields = complete overwrite)
+            docRef.set(data, { merge: true })
                 .then(function() {
                     return docRef.get();
                 })
@@ -473,16 +470,12 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - CHANGED: docRef.set(data, { merge: true }) → docRef.set(data) - OVERWRITE, no merge
-   - ADDED: Hardcoded timestamp skip in deepEqualWithSkip() - ignores ALL timestamps
-   - REMOVED: timestamp comparison logic for Firestore Timestamp objects
-   - REASON: F2 data is the single source of truth - OVERWRITE always
-   - REASON: Timestamps are never used and should never cause verification failure
-   - PRESERVED: Infinite retries with exponential backoff
-   - PRESERVED: skipVerify functionality (backward compatible but no longer needed)
-   - PRESERVED: recover() functionality
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CHANGED: docRef.set(data) → docRef.set(data, { merge: true })
+   - REASON: Preserve existing fields in scheduledGames (setup data) while updating runtime fields
+   - REASON: merge: true works correctly for historyGames (full payload) and scheduledGames (partial payload)
+   - PRESERVED: ALL other functionality from v1.13 unchanged
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
