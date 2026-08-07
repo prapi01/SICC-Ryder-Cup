@@ -12,7 +12,7 @@ STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_APP_VERSION = "1.24";
+window.UTIL_VALIDATE_APP_VERSION = "1.25";
 console.log("[UTIL-VALIDATE-APP] Initializing v1.24 - Fixed sort to use gameInfo.date");
 
 // ============================================================
@@ -870,7 +870,7 @@ function showValidateInfoGuide() {
                 <div class="info-section-title">📊 What Gets Validated</div>
                 <div class="info-text">
                     <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
-                        <li>🏆 <strong>TR Values:</strong> Team A and Team B totals per hole</li>
+                        <li>🏆 <strong>TR Values:</strong> Team A and Team One totals per hole</li>
                         <li>🏅 <strong>Match Play:</strong> 16 individual match results</li>
                         <li>📊 <strong>Team Game:</strong> T-1 and T-2 flight results</li>
                         <li>⛳ <strong>Stroke Game:</strong> Cumulative nett scores</li>

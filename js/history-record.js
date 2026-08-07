@@ -216,7 +216,7 @@ var HistoryRecord = (function() {
                             teamAScore: finalScores.teamA,
                             teamBScore: finalScores.teamB,
                             winner: finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie"),
-                            winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team B Wins!" : "Tie Game!")
+                            winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team One Wins!" : "Tie Game!")
                         },
                         signatures: signatureData,
                         // Store data strings directly - NO conversion
@@ -249,7 +249,7 @@ var HistoryRecord = (function() {
                         winnerText = "Team A Wins!";
                     } else if (finalScores.teamB > finalScores.teamA) {
                         winner = "B";
-                        winnerText = "Team B Wins!";
+                        winnerText = "Team One Wins!";
                     }
                     
                     // Store starting handicaps for all players

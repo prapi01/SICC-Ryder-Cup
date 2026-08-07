@@ -234,9 +234,8 @@ STATUS: Ready for integration
             border-bottom: 1px solid #4caf50;
             color: #4caf50;
             letter-spacing: 1px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            line-height: 1.2;
+            overflow-wrap: break-word;
         }
         
         .player-row {
@@ -1783,7 +1782,7 @@ function render() {
             </div>
             <div class="teams-grid">
                 <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight1A, anchorName)}</div>
-                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight1B, anchorName)}</div>
+                <div class="team"><div class="team-title">TEAM ONE</div>${renderTeam(flight1B, anchorName)}</div>
             </div>
         </div>
         
@@ -1794,7 +1793,7 @@ function render() {
             </div>
             <div class="teams-grid">
                 <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight2A, anchorName)}</div>
-                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight2B, anchorName)}</div>
+                <div class="team"><div class="team-title">TEAM ONE</div>${renderTeam(flight2B, anchorName)}</div>
             </div>
         </div>
         

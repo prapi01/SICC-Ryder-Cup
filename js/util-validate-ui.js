@@ -10,7 +10,7 @@ DEPENDS ON: UtilValidate, util-core.js, util-photo.js
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.23";
+window.UTIL_VALIDATE_UI_VERSION = "1.24";
 
 var UtilValidateUI = (function() {
     
@@ -217,10 +217,22 @@ var UtilValidateUI = (function() {
             html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + m2 + '</td>';
             html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + result + '</td>';
             html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + running + '</td>';
-            html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + display + '</td></tr>';
+            html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + toDisplayMargin(display) + '</td></tr>';
         }
         html += '</table></div>';
         container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // Helper: Team One display shortform for margin strings.
+    // Internal data uses "B" (Team B); the displayed shortform is "O".
+    // "B3" -> "O3"; "A#"/"AS"/numbers unchanged.
+    // ============================================================
+    function toDisplayMargin(val) {
+        if (typeof val === 'string' && val.charAt(0) === 'B') {
+            return 'O' + val.slice(1);
+        }
+        return val;
     }
     
     // ============================================================
@@ -254,7 +266,7 @@ var UtilValidateUI = (function() {
             html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + (r.netA !== null ? r.netA : '-') + '</td>';
             html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + (r.netB !== null ? r.netB : '-') + '</td>';
             html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>';
-            html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + r.display + '</td></tr>';
+            html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + toDisplayMargin(r.display) + '</td></tr>';
         }
         html += '</table></div>';
         container.innerHTML = html;
@@ -343,7 +355,7 @@ var UtilValidateUI = (function() {
         var html = '<div style="overflow-x:auto; max-width:100%;"><table style="width:100%; border-collapse:collapse; font-size:0.7rem;">';
         html += '<tr><th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Hole</th>';
         html += '<th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Team A</th>';
-        html += '<th style="background:#1a1a1a; color:#ff6b6b; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Team B</th>';
+        html += '<th style="background:#1a1a1a; color:#ff6b6b; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Team One</th>';
         html += '<th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Rec A</th>';
         html += '<th style="background:#1a1a1a; color:#ff6b6b; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Rec B</th>';
         html += '<th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">✅</th></tr>';
@@ -620,7 +632,7 @@ var UtilValidateUI = (function() {
             // Team separator - v1.16: Updated colspan from 9 to 11
             if (p.team !== currentTeam) {
                 currentTeam = p.team;
-                var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM ONE';
                 html += '<tr style="background:#1a2a1a; border-top:2px solid #000;">';
                 html += '<td colspan="11" style="padding:4px 3px; text-align:center; color:#4caf50; font-weight:600; font-size:0.65rem;">' + teamLabel + '</td>';
                 html += '</tr>';
@@ -1070,15 +1082,15 @@ var UtilValidateUI = (function() {
         var html = '<div style="display:flex; gap:24px; flex-wrap:wrap; padding:12px 0;">';
         html += '<div style="background:#0a0a0a; padding:8px 16px; border-radius:8px; border-left:3px solid #4caf50;">';
         html += '<div style="font-size:0.65rem; color:#888;">T-1</div>';
-        html += '<div style="font-size:1rem; font-weight:700; color:' + (t1Match ? '#fff' : '#ff6b6b') + ';">' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
+        html += '<div style="font-size:1rem; font-weight:700; color:' + (t1Match ? '#fff' : '#ff6b6b') + ';">' + toDisplayMargin(t1Display) + ' | Record: ' + toDisplayMargin(recT1) + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
         
         html += '<div style="background:#0a0a0a; padding:8px 16px; border-radius:8px; border-left:3px solid #4caf50;">';
         html += '<div style="font-size:0.65rem; color:#888;">T-2</div>';
-        html += '<div style="font-size:1rem; font-weight:700; color:' + (t2Match ? '#fff' : '#ff6b6b') + ';">' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
+        html += '<div style="font-size:1rem; font-weight:700; color:' + (t2Match ? '#fff' : '#ff6b6b') + ';">' + toDisplayMargin(t2Display) + ' | Record: ' + toDisplayMargin(recT2) + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
         
         html += '<div style="background:#0a0a0a; padding:8px 16px; border-radius:8px; border-left:3px solid #4caf50;">';
         html += '<div style="font-size:0.65rem; color:#888;">Strk</div>';
-        html += '<div style="font-size:1rem; font-weight:700; color:' + (strkMatch ? '#fff' : '#ff6b6b') + ';">' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
+        html += '<div style="font-size:1rem; font-weight:700; color:' + (strkMatch ? '#fff' : '#ff6b6b') + ';">' + toDisplayMargin(strkDisplay) + ' | Record: ' + toDisplayMargin(recStrk) + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
         
         var trClass = trMatch ? '' : 'mismatch';
         html += '<div style="background:#0a0a0a; padding:8px 16px; border-radius:8px; border-left:4px solid #ffaa44; flex:1 1 100%;">';

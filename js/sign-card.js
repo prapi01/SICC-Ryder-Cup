@@ -14,7 +14,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.SIGN_CARD_VERSION = "1.40";
+window.SIGN_CARD_VERSION = "1.41";
 console.log("[SIGN-CARD] Initializing v1.40 - Normalized clinchedAt labels");
 
 // ============================================================
@@ -105,10 +105,10 @@ var SignCard = (function() {
         
         var isTie = (teamAScore === teamBScore);
         var emoji = isTie ? '🤝' : (winner === 'A' ? '🏆' : '🏆');
-        var message = isTie ? 'It\'s a Tie!' : (winner === 'A' ? 'Team A Wins!' : 'Team B Wins!');
+        var message = isTie ? 'It\'s a Tie!' : (winner === 'A' ? 'Team A Wins!' : 'Team One Wins!');
         
         var teamALabel = 'Team A';
-        var teamBLabel = 'Team B';
+        var teamBLabel = 'Team One';
         var teamAColor = '#4caf50';
         var teamBColor = '#4caf50';
         
