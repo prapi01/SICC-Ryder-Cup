@@ -1288,7 +1288,7 @@ function renderTeamGameTable(results, containerId, label) {
         var result = (r.holeResult !== null) ? r.holeResult : '-';
         var running = (r.running !== null) ? r.running : '-';
         var display = r.display || '-';
-        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + m1 + '</td><td>' + m2 + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + toDisplayMargin(display) + '</td></tr>';
+        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + toDisplayMargin(m1) + '</td><td>' + toDisplayMargin(m2) + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + toDisplayMargin(display) + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;

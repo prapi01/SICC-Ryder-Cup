@@ -1461,7 +1461,7 @@ function validateTeamFlight() {
     if (flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2) {
         return true;
     } else {
-        Modal.alert("Each flight needs exactly 2 Team A and 2 Team B players.");
+        Modal.alert("Each flight needs exactly 2 Team A and 2 Team One players.");
         return false;
     }
 }
@@ -1934,7 +1934,7 @@ function render() {
                     <div class="team-wrapper">
                         <select class="team-display" data-idx="${originalIdx}" onchange="updatePlayerTeam(${originalIdx}, this.value)">
                             <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
-                            <option value="B" ${p.team === "B" ? "selected" : ""}>B</option>
+                            <option value="B" ${p.team === "B" ? "selected" : ""}>One</option>
                         </select>
                         <span class="arrow">▼</span>
                     </div>

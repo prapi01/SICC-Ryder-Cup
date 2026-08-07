@@ -213,8 +213,8 @@ var UtilValidateUI = (function() {
             var running = (r.running !== null) ? r.running : '-';
             var display = r.display || '-';
             html += '<tr><td style="color:#888;text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + r.hole + '</td>';
-            html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + m1 + '</td>';
-            html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + m2 + '</td>';
+            html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + toDisplayMargin(m1) + '</td>';
+            html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + toDisplayMargin(m2) + '</td>';
             html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + result + '</td>';
             html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + running + '</td>';
             html += '<td class="' + cls + '" style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + toDisplayMargin(display) + '</td></tr>';
