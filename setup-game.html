@@ -392,7 +392,7 @@ STATUS: Ready for integration
             text-align: right;
             padding: 1px 18px 1px 4px;
             font-weight: 600;
-            color: #ffaa44;
+            color: transparent;   /* hidden; .team-short shows the compact value */
             border: 1px solid #2a5a2a;
             border-radius: 3px;
             background: #0a0a0a;
@@ -400,6 +400,24 @@ STATUS: Ready for integration
             -webkit-appearance: none !important;
             appearance: none !important;
             transition: border-color 0.2s ease;
+        }
+        /* Compact team value overlaid on the closed select ("A" / "O");
+           the open list still shows the option text ("A" / "One"). */
+        .team-short {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 18px 0 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #ffaa44;
+            pointer-events: none;
+            z-index: 1;
         }
         .team-display:focus {
             outline: none;
@@ -1406,6 +1424,8 @@ function populatePlayerFields(idx) {
         teamSelect.value = defaultTeam;
         state.players[idx].team = defaultTeam;
     }
+    var teamShort = document.querySelector('.team-short[data-idx="' + idx + '"]');
+    if (teamShort) teamShort.textContent = (player.defaultTeam || "A") === "B" ? "O" : "A";
     
     var labelDisplay = document.querySelector('.label-display[data-idx="' + idx + '"]');
     if (labelDisplay) {
@@ -1936,6 +1956,7 @@ function render() {
                             <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
                             <option value="B" ${p.team === "B" ? "selected" : ""}>One</option>
                         </select>
+                        <span class="team-short" data-idx="${originalIdx}">${p.team === "B" ? "O" : "A"}</span>
                         <span class="arrow">▼</span>
                     </div>
                     <div class="flight-wrapper">

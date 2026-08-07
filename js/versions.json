@@ -45,7 +45,7 @@
   "util-core.js": "1.02",
   "util-delete-record.js": "1.11",
   "util-photo.js": "1.16",
-  "util-players.js": "1.07",
+  "util-players.js": "1.08",
   "util-validate-app.js": "1.25",
   "util-validate-record.js": "1.34",
   "util-validate-ui.js": "1.24",
