@@ -1269,6 +1269,14 @@ function renderFlightTable(scores, players, flightNum, containerId) {
     container.innerHTML = html;
 }
 
+// Team One display shortform for margin strings (internal "B" -> display "O")
+function toDisplayMargin(val) {
+    if (typeof val === 'string' && val.charAt(0) === 'B') {
+        return 'O' + val.slice(1);
+    }
+    return val;
+}
+
 function renderTeamGameTable(results, containerId, label) {
     var container = document.getElementById(containerId);
     var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>' + label + ' M1</th><th>' + label + ' M2</th><th>Result</th><th>Running</th><th>Display</th></tr>';
@@ -1280,7 +1288,7 @@ function renderTeamGameTable(results, containerId, label) {
         var result = (r.holeResult !== null) ? r.holeResult : '-';
         var running = (r.running !== null) ? r.running : '-';
         var display = r.display || '-';
-        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + m1 + '</td><td>' + m2 + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + display + '</td></tr>';
+        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + toDisplayMargin(m1) + '</td><td>' + toDisplayMargin(m2) + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + toDisplayMargin(display) + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
@@ -1298,7 +1306,7 @@ function renderStrkTable(results) {
         html += '<td>' + (r.netA !== null ? r.netA : '-') + '</td>';
         html += '<td>' + (r.netB !== null ? r.netB : '-') + '</td>';
         html += '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>';
-        html += '<td class="' + cls + '">' + r.display + '</td></tr>';
+        html += '<td class="' + cls + '">' + toDisplayMargin(r.display) + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
@@ -1362,7 +1370,7 @@ function renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, ga
     var html = '<div class="scroll-x"><table>';
     html += '<tr><th>Hole</th>';
     html += '<th style="color:#4caf50;">Team A</th>';
-    html += '<th style="color:#ff6b6b;">Team B</th>';
+    html += '<th style="color:#ff6b6b;">Team One</th>';
     html += '<th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
     for (var i = 0; i < 18; i++) {
         var t1 = t1Results[i] || {};
@@ -1450,9 +1458,9 @@ function renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, ga
                    Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
     
     var html = '<div class="summary-box">';
-    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">' + toDisplayMargin(t1Display) + ' | Record: ' + toDisplayMargin(recT1) + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">' + toDisplayMargin(t2Display) + ' | Record: ' + toDisplayMargin(recT2) + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">' + toDisplayMargin(strkDisplay) + ' | Record: ' + toDisplayMargin(recStrk) + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
     
     var trClass = trMatch ? '' : 'mismatch';
     var trDisplayText = trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);

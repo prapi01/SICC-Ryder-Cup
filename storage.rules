@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Celebration photos are the ONLY use of Storage in this app.
+    // The app has no Firebase Auth, so access is public within this folder.
+    // Scoped to /celebration only; nothing else in the bucket is exposed.
+    match /celebration/{allPaths=**} {
+      allow read, write;
+    }
+  }
+}

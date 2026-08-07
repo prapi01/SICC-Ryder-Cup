@@ -1574,7 +1574,7 @@ var UtilValidate = (function() {
             teamAScore: newTrA[17] || 9.5,
             teamBScore: newTrB[17] || 9.5,
             winner: newTrA[17] > newTrB[17] ? 'A' : (newTrB[17] > newTrA[17] ? 'B' : 'Tie'),
-            winnerText: newTrA[17] > newTrB[17] ? 'Team A Wins!' : (newTrB[17] > newTrA[17] ? 'Team B Wins!' : 'Match Tied!')
+            winnerText: newTrA[17] > newTrB[17] ? 'Team A Wins!' : (newTrB[17] > newTrA[17] ? 'Team One Wins!' : 'Match Tied!')
         };
         if (!deepEqual(curFinal, newFinal)) {
             mismatches.push({ field: 'finalResults', current: 'stale', expected: 'recalculated' });
@@ -1952,7 +1952,7 @@ var UtilValidate = (function() {
             teamAScore: finalTrA,
             teamBScore: finalTrB,
             winner: winner,
-            winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
+            winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team One Wins!' : 'Match Tied!'
         };
         if (!deepEqual(recordData.finalResults || {}, newFinal)) {
             updatePayload['finalResults'] = newFinal;

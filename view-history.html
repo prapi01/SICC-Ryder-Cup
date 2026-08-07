@@ -602,7 +602,7 @@ function loadCelebrationImageDirect(game, containerId) {
 function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
     if (typeof HandicapAdjustment === 'undefined') {
         var script = document.createElement('script');
-        script.src = 'js/hcp-adjust.js?v=2.60';
+        script.src = 'js/hcp-adjust.js?v=2.66';
         script.onload = function() {
             HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
         };

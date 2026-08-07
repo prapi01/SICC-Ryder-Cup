@@ -1134,6 +1134,8 @@ function loadPlayerForEdit() {
             document.getElementById('editorLabel').value = player.label || '';
             document.getElementById('editorHandicap').value = player.handicap || 0;
             document.getElementById('editorTeam').value = player.defaultTeam || 'A';
+            var _ets = document.getElementById('editorTeamShort');
+            if (_ets) _ets.textContent = ((player.defaultTeam || 'A') === 'B') ? 'O' : 'A';
             document.getElementById('editorFlight').value = player.flight !== undefined && player.flight !== null ? player.flight : '';
             document.getElementById('editorIsDefault').value = player.isDefault === true ? 'true' : 'false';
             document.getElementById('editorLastLabelChange').value = player.lastLabelChange || '';
@@ -1412,6 +1414,8 @@ function resetPlayerEdit() {
     document.getElementById('editorLabel').value = editorOriginalData.label || '';
     document.getElementById('editorHandicap').value = editorOriginalData.handicap || 0;
     document.getElementById('editorTeam').value = editorOriginalData.defaultTeam || 'A';
+    var _ets = document.getElementById('editorTeamShort');
+    if (_ets) _ets.textContent = ((editorOriginalData.defaultTeam || 'A') === 'B') ? 'O' : 'A';
     document.getElementById('editorFlight').value = editorOriginalData.flight !== undefined && editorOriginalData.flight !== null ? editorOriginalData.flight : '';
     document.getElementById('editorIsDefault').value = editorOriginalData.isDefault === true ? 'true' : 'false';
     document.getElementById('editorLastLabelChange').value = editorOriginalData.lastLabelChange || '';

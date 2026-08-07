@@ -42,7 +42,7 @@ function renderStep2(demoScreenElement, instructionTitleElement, instructionText
                         </div>
                     </div>
                     <div class="team-demo">
-                        <div class="team-title-demo">TEAM B</div>
+                        <div class="team-title-demo">TEAM ONE</div>
                         <div class="player-row-demo">
                             <span class="player-name-demo">Jeff Goh</span>
                             <span class="player-hcp-demo">0</span>
@@ -73,7 +73,7 @@ function renderStep2(demoScreenElement, instructionTitleElement, instructionText
                         </div>
                     </div>
                     <div class="team-demo">
-                        <div class="team-title-demo">TEAM B</div>
+                        <div class="team-title-demo">TEAM ONE</div>
                         <div class="player-row-demo">
                             <span class="player-name-demo">Piti</span>
                             <span class="player-hcp-demo">8</span>
@@ -164,7 +164,7 @@ function renderStep3(demoScreenElement, instructionTitleElement, instructionText
             <div style="display:flex; justify-content:center; gap:16px;">
                 <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM ONE</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7</div></div>
             </div>
             <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
@@ -325,7 +325,7 @@ function renderStep4(demoScreenElement, instructionTitleElement, instructionText
             <div style="display:flex; justify-content:center; gap:16px;">
                 <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">8</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM ONE</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">5</div></div>
             </div>
             <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>

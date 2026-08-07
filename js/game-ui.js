@@ -1020,7 +1020,7 @@ var GameUI = (function() {
                     </div>
                     <div style="font-size: 1.5rem; color: ${separatorColor};">│</div>
                     <div style="text-align: center; min-width: 100px;">
-                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor};">TEAM B</div>
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor};">TEAM ONE</div>
                         <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor};">${teamBDisplay}</div>
                     </div>
                 </div>

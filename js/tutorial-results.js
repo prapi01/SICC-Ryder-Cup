@@ -33,7 +33,7 @@ function renderStep5(demoScreenElement, instructionTitleElement, instructionText
             <div style="display:flex; justify-content:center; gap:16px;">
                 <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11.5</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM ONE</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
             </div>
             <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
@@ -108,7 +108,7 @@ function renderStep6(demoScreenElement, instructionTitleElement, instructionText
             <div style="display:flex; justify-content:center; gap:16px;">
                 <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11.5</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM ONE</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
             </div>
             <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
@@ -191,8 +191,8 @@ function renderStep6(demoScreenElement, instructionTitleElement, instructionText
                         <!-- T-2 Row (Flight 2 Team Game) -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-2</td>
-                            <td class="score-green">B1</td>
-                            <td class="score-green">B1</td>
+                            <td class="score-green">O1</td>
+                            <td class="score-green">O1</td>
                             <td class="score-green">${getAsSquareHtml()}</td>
                             <td class="score-green">A1</td>
                             <td class="score-green">A1</td>
@@ -244,8 +244,8 @@ function renderStep6(demoScreenElement, instructionTitleElement, instructionText
             <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">📊 TEAM GAME + STROKE GAME (3 points)</div>
             <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
                 <strong>Team Game (T-1, T-2 rows)</strong> - 2 points<br>
-                • T-1 row - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>
-                • T-2 row - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>
+                • T-1 row - Flight 1: Best 2 players from Team A vs Best 2 from Team One<br>
+                • T-2 row - Flight 2: Best 2 players from Team A vs Best 2 from Team One<br>
                 • Each flight worth 1 point → 2 points<br><br>
                 <strong>Stroke Game (Strk row)</strong> - 1 point<br>
                 • Cumulative net score of all 8 players<br>
@@ -260,8 +260,8 @@ function renderStep6(demoScreenElement, instructionTitleElement, instructionText
     if (instructionTextElement) {
         instructionTextElement.innerHTML = '<strong>TEAM GAME + STROKE GAME (3 points)</strong><br><br>' +
             '<strong>TEAM GAME (2 points)</strong><br>' +
-            '• <strong>T-1 row</strong> - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>' +
-            '• <strong>T-2 row</strong> - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>' +
+            '• <strong>T-1 row</strong> - Flight 1: Best 2 players from Team A vs Best 2 from Team One<br>' +
+            '• <strong>T-2 row</strong> - Flight 2: Best 2 players from Team A vs Best 2 from Team One<br>' +
             '• Each flight worth 1 point → 2 points<br><br>' +
             '<strong>STROKE GAME (1 point)</strong><br>' +
             '• <strong>Strk row</strong> - Cumulative net score of all 8 players<br>' +

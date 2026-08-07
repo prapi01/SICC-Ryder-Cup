@@ -140,6 +140,28 @@ STATUS: Ready for integration
             pointer-events: none;
             opacity: 0.7;
         }
+        /* Team select: hide native value text; .team-short shows compact "A"/"O"
+           while the open list still shows "Team A"/"Team One". */
+        #playerTeam {
+            color: transparent;
+        }
+        #playerTeam option {
+            color: #e0e0e0;
+        }
+        .select-wrapper .team-short {
+            position: absolute;
+            left: 10px;
+            right: 24px;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            color: #ffaa44;
+            font-size: 0.85rem;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 1;
+        }
         
         /* ===== 2-LINE FORM LAYOUT ===== */
         .form-line {
@@ -900,10 +922,11 @@ function render() {
                 <div class="form-group team-group">
                     <label>Team</label>
                     <div class="select-wrapper">
-                        <select id="playerTeam">
+                        <select id="playerTeam" onchange="updatePlayerTeamShort(this.value)">
                             <option value="A" ${currentTeam === 'A' ? 'selected' : ''}>Team A</option>
-                            <option value="B" ${currentTeam === 'B' ? 'selected' : ''}>Team B</option>
+                            <option value="B" ${currentTeam === 'B' ? 'selected' : ''}>Team One</option>
                         </select>
+                        <span class="team-short" id="playerTeamShort">${currentTeam === 'B' ? 'O' : 'A'}</span>
                         <span class="arrow">▼</span>
                     </div>
                 </div>
@@ -939,6 +962,13 @@ function render() {
     document.getElementById('playerTeam').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
+    
+    // Compact team value shown in the closed dropdown ("A"/"O") while the
+    // open list shows "Team A"/"Team One".
+    function updatePlayerTeamShort(value) {
+        var s = document.getElementById('playerTeamShort');
+        if (s) s.textContent = value === 'B' ? 'O' : 'A';
+    }
     
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
@@ -979,7 +1009,7 @@ function renderPlayerList() {
                 <span class="p-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
                 <span class="p-label">${escapeHtml(label)}</span>
                 <span class="p-hcp">${p.handicap}</span>
-                <span class="p-team">${p.defaultTeam || 'A'}</span>
+                <span class="p-team">${p.defaultTeam === 'B' ? 'O' : 'A'}</span>
                 <div class="p-actions">
                     <button class="btn btn-small btn-small-edit edit-btn" data-index="${i}">${getEditSvg()}</button>
                     <button class="btn btn-small btn-small-delete delete-btn" data-index="${i}">${getDeleteSvg()}</button>

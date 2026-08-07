@@ -34,21 +34,29 @@ STATUS: Ready for integration
     <script src="js/game-data.js"></script>
     <script src="js/game-order.js"></script>
     <script src="js/game-loader.js"></script>
-    <script src="js/hcp-adjust.js"></script>
+    <script src="js/hcp-adjust.js?v=2.66"></script>
     
     <!-- WRV - Write & Verify (v1.09+) - Uses DEFAULT Firebase app -->
     <script src="js/wrv.js"></script>
     
     <!-- Utility JS Files -->
     <script src="js/util-core.js"></script>
-    <script src="js/util-validate-record.js"></script>
-    <script src="js/util-validate-ui.js"></script>
-    <script src="js/util-validate-app.js"></script>
+    <script src="js/util-validate-record.js?v=1.34"></script>
+    <script src="js/util-validate-ui.js?v=1.24"></script>
+    <script src="js/util-validate-app.js?v=1.25"></script>
     <script src="js/util-copy-record.js"></script>
     <script src="js/util-compare-record.js"></script>
     <script src="js/util-delete-record.js"></script>
     <script src="js/util-photo.js"></script>
-    <script src="js/util-players.js"></script>
+    <script src="js/util-players.js?v=1.08"></script>
+    <script>
+    // Compact team value shown in the closed editor dropdown ("A"/"O") while
+    // the open list shows "A"/"One".
+    function updateEditorTeamShort(value) {
+        var s = document.getElementById('editorTeamShort');
+        if (s) s.textContent = value === 'B' ? 'O' : 'A';
+    }
+    </script>
     
     <style>
         /* ===== ALL CSS STYLES ===== */
@@ -315,6 +323,24 @@ STATUS: Ready for integration
         }
         .editor-field input.editor-error {
             border-color: #c0392b;
+        }
+        /* Team select: closed shows compact "A"/"O"; open list shows "A"/"One". */
+        .editor-field .team-picker-wrap { position: relative; }
+        #editorTeam { color: transparent; }
+        #editorTeam option { color: #fff; }
+        .editor-field .team-short {
+            position: absolute;
+            left: 12px;
+            right: 24px;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            color: #ffaa44;
+            font-size: 0.85rem;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 1;
         }
         .editor-field .field-hint {
             font-size: 0.55rem;
@@ -967,10 +993,13 @@ STATUS: Ready for integration
                 <div class="editor-grid">
                     <div class="editor-field">
                         <label for="editorTeam">Team *</label>
-                        <select id="editorTeam">
-                            <option value="A">A</option>
-                            <option value="B">B</option>
-                        </select>
+                        <div class="team-picker-wrap">
+                            <select id="editorTeam" onchange="updateEditorTeamShort(this.value)">
+                                <option value="A">A</option>
+                                <option value="B">One</option>
+                            </select>
+                            <span class="team-short" id="editorTeamShort">A</span>
+                        </div>
                     </div>
                     <div class="editor-field">
                         <label for="editorFlight">Flight</label>

@@ -162,7 +162,7 @@ var CardSubmit = (function() {
             winnerText = "🏆 TEAM A WINS! 🏆";
             winnerClass = "winner-a";
         } else if (trTeamB > trTeamA) {
-            winnerText = "🏆 TEAM B WINS! 🏆";
+            winnerText = "🏆 TEAM ONE WINS! 🏆";
             winnerClass = "winner-b";
         } else {
             winnerText = "🤝 TIE GAME 🤝";
@@ -180,7 +180,7 @@ var CardSubmit = (function() {
                     <div class="final-score ${winnerClass}">
                         <span class="team-a">Team A ${teamADisplay}</span>
                         <span class="vs">vs</span>
-                        <span class="team-b">${teamBDisplay} Team B</span>
+                        <span class="team-b">${teamBDisplay} Team One</span>
                     </div>
                     <div class="final-winner ${winnerClass}">${winnerText}</div>
                     
@@ -190,7 +190,7 @@ var CardSubmit = (function() {
                             ${renderPlayerList(teamAPlayers)}
                         </div>
                         <div class="final-team">
-                            <div class="final-team-title">🏅 TEAM B</div>
+                            <div class="final-team-title">🏅 TEAM ONE</div>
                             ${renderPlayerList(teamBPlayers)}
                         </div>
                     </div>
@@ -264,11 +264,16 @@ var CardSubmit = (function() {
                     display: flex;
                     justify-content: center;
                     gap: 20px;
+                    row-gap: 8px;
                     align-items: center;
+                    flex-wrap: wrap;
                 }
                 .final-score .vs {
                     font-size: 1rem;
                     color: #888;
+                }
+                .final-score .team-a, .final-score .team-b {
+                    white-space: nowrap;
                 }
                 .winner-a .team-a { color: #4caf50; }
                 .winner-a .team-b { color: #ff6b6b; }

@@ -32,7 +32,7 @@ function renderStep7(demoScreenElement, instructionTitleElement, instructionText
             <div style="display:flex; justify-content:center; gap:16px;">
                 <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM ONE</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7</div></div>
             </div>
             <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
@@ -199,7 +199,7 @@ function renderStep9(demoScreenElement, instructionTitleElement, instructionText
                             <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
                             <td class="new-green">14</td>
                         </tr>
-                        <tr class="team-separator"><td colspan="5">⚡ TEAM B</td></tr>
+                        <tr class="team-separator"><td colspan="5">⚡ TEAM ONE</td></tr>
                         <tr>
                             <td>OCB</td>
                             <td class="normal-white">0</td>

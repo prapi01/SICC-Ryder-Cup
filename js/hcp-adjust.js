@@ -406,7 +406,7 @@ var HandicapAdjustment = (function() {
                 
                 if (playerTeam !== currentTeam) {
                     currentTeam = playerTeam;
-                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM ONE';
                     html += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                     html += '<td colspan="6" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
                     html += '<tr>';
@@ -526,7 +526,7 @@ var HandicapAdjustment = (function() {
                 
                 if (playerTeam !== currentTeam) {
                     currentTeam = playerTeam;
-                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM ONE';
                     html += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                     html += '<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
                     html += '<tr>';
@@ -684,7 +684,7 @@ var HandicapAdjustment = (function() {
                 
                 if (playerTeam !== currentTeam) {
                     currentTeam = playerTeam;
-                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM ONE';
                     tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                     tableHtml += '<td colspan="6" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
                     tableHtml += '<tr>';
@@ -804,7 +804,7 @@ var HandicapAdjustment = (function() {
                 
                 if (playerTeam !== currentTeam) {
                     currentTeam = playerTeam;
-                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                    var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM ONE';
                     tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                     tableHtml += '<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
                     tableHtml += '<tr>';
@@ -1273,7 +1273,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.65";
+    window.HANDICAP_ADJUST_VERSION = "2.66";
     
     return {
         initForViewer: initForViewer,

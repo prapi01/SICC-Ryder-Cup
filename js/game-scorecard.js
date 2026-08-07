@@ -15,7 +15,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.19";
+window.GAME_SCORECARD_VERSION = "1.20";
 
 var GameScorecard = (function() {
     
@@ -24,6 +24,19 @@ var GameScorecard = (function() {
     // ============================================================
     function getAsSquareHtml() {
         return '<span class="as-square"></span>';
+    }
+    
+    // ============================================================
+    // Helper: Team One display shortform for margin strings.
+    // Internal data uses "B" (Team B), but the displayed shortform is "O".
+    // "B3" -> "O3", "B11" -> "O11", lone "B" -> "O".
+    // "A#", "AS" and numeric values are left unchanged.
+    // ============================================================
+    function toDisplayMargin(val) {
+        if (typeof val === 'string' && val.charAt(0) === 'B') {
+            return 'O' + val.slice(1);
+        }
+        return val;
     }
     
     // ============================================================
@@ -382,6 +395,7 @@ var GameScorecard = (function() {
                 }
             }
             
+            displayVal = toDisplayMargin(displayVal);
             if (displayVal === 'AS') {
                 displayVal = getAsSquareHtml();
             }
@@ -491,6 +505,7 @@ var GameScorecard = (function() {
                 }
             }
             
+            displayVal = toDisplayMargin(displayVal);
             if (displayVal === 'AS') {
                 displayVal = getAsSquareHtml();
             }
@@ -528,6 +543,7 @@ var GameScorecard = (function() {
                     displayVal = getAsSquareHtml();
                 }
                 
+                displayVal = toDisplayMargin(displayVal);
                 if (displayVal === 'AS') {
                     displayVal = getAsSquareHtml();
                 }
