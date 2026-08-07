@@ -1,6 +1,6 @@
 # SICC Ryder Cup — Two-Device Realtime Test Script
 
-- **Version:** 1.1
+- **Version:** 1.2
 - **Date:** 2026-08-07
 - **Scope:** Manual test script for the production app, focusing on realtime 2-device operation, game completion, handicap adjustment, history archiving, admin functions, and **calculation-logic verification** (match / T-1 / T-2 / Strk / TR / handicap for any score input).
 - **App under test:** SICC Ryder Cup (Cloudflare Pages + Firebase)
@@ -121,6 +121,8 @@ Add/select a test course with a **known Par and SI** so results are hand-computa
 2. Run **Validate** — the tool **recomputes match / T-1 / T-2 / Strk / clinch / TR / handicap from the raw f1/f2 data strings** and compares them to the stored results. Pass = mismatch count **0**.
 3. Run **Fix** on a deliberately corrupted record (tamper one score), then re-validate → the tool detects and rebuilds it; validation passes again.
 4. Because it recomputes from raw data, this verifies the calculation **logic for any score input** — not just the all-PAR scenario.
+
+> ⚠️ **Known edge case (2026-08-07 finding):** the **Fix tool's handicap recalculation** reads the cached `results.matchResults[17]` (hole 18 of the cross-flight match game) instead of recomputing it from the raw f1/f2 strings. If a record is missing `matchResults` (e.g., a partially-saved game, a legacy/migrated record, or F2 data injected outside the app flow), Fix logs `No matchResults data found at hole 18 in cache` and writes **all-zero** handicap adjustments (perf/anchor) instead of the correct ones. **Core calculation logic is unaffected** (Validate recomputes match/T-1/T-2/Strk/TR/handicap correctly from raw data); this is a Fix-tool robustness gap, not a calculation bug. Normal games completed via the app have `matchResults` populated, so Fix works. Tracked as a follow-up.
 
 ### 4.4 Sanity scenario (optional) — all-PAR / all-BOGEY
 Enter the **same score for every player on every hole**:
@@ -275,3 +277,4 @@ When running **Section 5**, the primary logic checks are the **invariants in §4
 |---------|------|---------|
 | 1.0 | 2026-08-07 | Initial two-device realtime test script covering scoring, completion, handicap, history, admin |
 | 1.1 | 2026-08-07 | Reframed Section 4: calculation-logic verification is **score-independent** — primary = logic invariants + the app's recalc/validate (any scores); all-PAR / all-BOGEY demoted to an optional sanity scenario |
+| 1.2 | 2026-08-07 | Documented Fix-tool edge case: handicap recalculation reads cached `results.matchResults[17]`; on records missing it, Fix writes all-zero handicaps (core logic unaffected; normal games OK). Tracked as follow-up |
