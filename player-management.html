@@ -1009,7 +1009,7 @@ function renderPlayerList() {
                 <span class="p-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
                 <span class="p-label">${escapeHtml(label)}</span>
                 <span class="p-hcp">${p.handicap}</span>
-                <span class="p-team">${p.defaultTeam === 'B' ? 'One' : 'A'}</span>
+                <span class="p-team">${p.defaultTeam === 'B' ? 'O' : 'A'}</span>
                 <div class="p-actions">
                     <button class="btn btn-small btn-small-edit edit-btn" data-index="${i}">${getEditSvg()}</button>
                     <button class="btn btn-small btn-small-delete delete-btn" data-index="${i}">${getDeleteSvg()}</button>
