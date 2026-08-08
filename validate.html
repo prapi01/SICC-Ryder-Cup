@@ -1,7 +1,11 @@
 <!--
 FILE: validate.html
-VERSION: 2.07
-KEY CHANGES from v2.06:
+VERSION: 2.08
+KEY CHANGES from v2.07:
+   - FIXED: winnerText now uses "Team One Wins!" (was "Team B Wins!") - Team One display rename
+   - PRESERVED: All other functionality from v2.07 unchanged
+
+PREVIOUS v2.07 (preserved):
    - FIXED: validate.html NO LONGER touches adjustedHandicaps field
    - REMOVED: calculateAdjustedHandicaps() call from fixRecord()
    - REMOVED: adjustedHandicaps from updatePayload
@@ -376,7 +380,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.07</span>
+        <span class="version-tag">v2.08</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -525,7 +529,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.07 — Compares ALL 18 holes. Cache refreshed after fix. adjustedHandicaps is PRESERVED.
+        Validator v2.08 — Compares ALL 18 holes. Cache refreshed after fix. adjustedHandicaps is PRESERVED.
     </div>
 </div>
 
@@ -533,8 +537,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.07";
-console.log("[Validator] v2.07 - adjustedHandicaps is PRESERVED (not recalculated)");
+window.VALIDATOR_VERSION = "2.08";
+console.log("[Validator] v2.08 - adjustedHandicaps is PRESERVED (not recalculated)");
 
 // ============================================================
 // FIREBASE
@@ -1938,7 +1942,7 @@ function executeFixWithBackup(record, recalculated, backupId) {
         teamAScore: finalTrA,
         teamBScore: finalTrB,
         winner: winner,
-        winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
+        winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team One Wins!' : 'Match Tied!'
     };
     updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
     updatePayload['results.computedUpToHole'] = 18;
@@ -2643,8 +2647,12 @@ console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 
 <!--
 FILE: validate.html
-VERSION: 2.07
-KEY CHANGES from v2.06:
+VERSION: 2.08
+KEY CHANGES from v2.07:
+   - FIXED: winnerText now uses "Team One Wins!" (was "Team B Wins!") - Team One display rename
+   - PRESERVED: All other functionality from v2.07 unchanged
+
+PREVIOUS v2.07 (preserved):
    - FIXED: validate.html NO LONGER touches adjustedHandicaps field
    - REMOVED: calculateAdjustedHandicaps() call from fixRecord()
    - REMOVED: adjustedHandicaps from updatePayload

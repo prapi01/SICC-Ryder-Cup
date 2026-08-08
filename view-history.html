@@ -1,12 +1,9 @@
 <!--
 FILE: view-history.html
-VERSION: 8.51
-KEY CHANGES from v8.50:
-   - CHANGED: Detail view "Back to Game List" button replaced with standard back-link design
-   - REASON: Detail view was using a styled button instead of the standard grey text with green divider line
-   - FIXED: Removed .detail-back-btn CSS, now uses .back-link (consistent with list view)
-   - FIXED: Replaced <button> with <div> and updated onclick binding in init()
-   - PRESERVED: ALL other functionality from v8.50 unchanged
+VERSION: 8.52
+KEY CHANGES from v8.51:
+   - FIXED: History card TR header label now shows "TEAM ONE" (was "TEAM B") - Team One display rename
+   - PRESERVED: ALL other functionality from v8.51 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
@@ -463,7 +460,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.51</div>
+<div class="version-tag">v8.52</div>
 
 <script>
 // ============================================================
@@ -478,8 +475,8 @@ if (typeof AppSettings !== 'undefined') {
 // ============================================================
 // VERSION CACHE-BUSTING - v8.51: Detail view back-link standardized
 // ============================================================
-var APP_VERSION = "8.51";
-var CACHE_KEY = "view_history_version_v851";
+var APP_VERSION = "8.52";
+var CACHE_KEY = "view_history_version_v852";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -497,8 +494,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.51";
-console.log("[VIEW-HISTORY] Initializing v8.51 - Detail view back-link standardized");
+window.VIEW_HISTORY_VERSION = "8.52";
+console.log("[VIEW-HISTORY] Initializing v8.52 - Team One display rename");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -1387,7 +1384,7 @@ function renderGameList(games) {
                         </div>
                         <div class="tr-vs">│</div>
                         <div class="tr-team">
-                            <div class="tr-team-label">TEAM B</div>
+                            <div class="tr-team-label">TEAM ONE</div>
                             <div class="tr-team-score" style="color: ${teamBColor};">${teamBDisplay}</div>
                         </div>
                     </div>
@@ -1598,13 +1595,10 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.51
-KEY CHANGES from v8.50:
-   - CHANGED: Detail view "Back to Game List" button replaced with standard back-link design
-   - REASON: Detail view was using a styled button instead of the standard grey text with green divider line
-   - FIXED: Removed .detail-back-btn CSS, now uses .back-link (consistent with list view)
-   - FIXED: Replaced <button> with <div> and updated onclick binding in init()
-   - PRESERVED: ALL other functionality from v8.50 unchanged
+VERSION: 8.52
+KEY CHANGES from v8.51:
+   - FIXED: History card TR header label now shows "TEAM ONE" (was "TEAM B") - Team One display rename
+   - PRESERVED: ALL other functionality from v8.51 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
