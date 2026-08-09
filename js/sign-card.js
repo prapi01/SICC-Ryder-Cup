@@ -397,6 +397,14 @@ var SignCard = (function() {
                 f1: { signed: true, signedAt: null, captainName: null },
                 f2: { signed: true, signedAt: null, captainName: null }
             },
+            finalResults: (function() {
+                var tr = cache.results && cache.results.tr;
+                var tA = tr && tr.teamA ? tr.teamA[17] : 0;
+                var tB = tr && tr.teamB ? tr.teamB[17] : 0;
+                var w = tA > tB ? 'A' : (tB > tA ? 'B' : 'Tie');
+                var wt = w === 'A' ? 'Team A Wins!' : (w === 'B' ? 'Team One Wins!' : 'Tie Game!');
+                return { teamAScore: tA, teamBScore: tB, winner: w, winnerText: wt };
+            })(),
             status: "completed",
             completedAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -426,6 +434,69 @@ var SignCard = (function() {
     }
     
     // ============================================================
+    // submitSignature — restores the function v1.40 removed but real-game-nav.js
+    // (v1.16/v1.17) still calls on SIGN CARD. Writes signatures.f{n}.signed=true
+    // (which real-game-init.js's realtime listener needs to show GAME-COMPLETED),
+    // and when BOTH flights have signed, F2 (single-writer, once) triggers the
+    // history record via the app's own saveGameToHistory.
+    // ============================================================
+    var _historyWriteTriggered = false;
+    function submitSignature(gameId, flight, captainName, collection) {
+        return new Promise(function(resolve, reject) {
+            var db = firebase.firestore();
+            var docRef = db.collection(collection || 'scheduledGames').doc(gameId);
+            var flightKey = 'f' + flight;
+            var unsub = null;
+            var retries = 0;
+
+            // F2 writes the history record exactly once, once BOTH flights are signed.
+            function maybeWriteHistory() {
+                if (flight !== 2 || _historyWriteTriggered) return;
+                _historyWriteTriggered = true;
+                console.log('[SignCard] Both flights signed — F2 writing history record...');
+                if (typeof window.saveGameToHistory === 'function') {
+                    window.saveGameToHistory(gameId);
+                } else {
+                    console.warn('[SignCard] saveGameToHistory not available');
+                }
+            }
+
+            function attempt() {
+                var updateObj = {};
+                updateObj['signatures.' + flightKey + '.signed'] = true;
+                updateObj.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                docRef.update(updateObj).then(function() {
+                    console.log('[SignCard] Signature write OK for flight', flight);
+                    // Watch until BOTH flights are signed, then complete + history.
+                    unsub = docRef.onSnapshot(function(snap) {
+                        var d = snap.exists ? snap.data() : {};
+                        var s = d.signatures || {};
+                        var both = s.f1 && s.f1.signed === true && s.f2 && s.f2.signed === true;
+                        if (both) {
+                            console.log('[SignCard] Both signatures confirmed in Firestore.');
+                            if (unsub) { unsub(); unsub = null; }
+                            maybeWriteHistory();
+                            resolve(true);
+                        }
+                    }, function(err) {
+                        console.warn('[SignCard] Signature listener error:', err.message);
+                    });
+                }).catch(function(err) {
+                    if (retries < 5) {
+                        retries++;
+                        console.warn('[SignCard] Write attempt', retries, 'failed; retrying:', err.message);
+                        setTimeout(attempt, 500);
+                    } else {
+                        console.error('[SignCard] Signature write failed after retries:', err.message);
+                        reject(err);
+                    }
+                });
+            }
+            attempt();
+        });
+    }
+
+    // ============================================================
     // Public API
     // ============================================================
     
@@ -434,7 +505,8 @@ var SignCard = (function() {
         replayCelebration: replayCelebration,
         saveGameToHistory: window.saveGameToHistory,
         buildHistoryRecordData: buildHistoryRecordData,
-        normalizeClinchedAt: normalizeClinchedAt
+        normalizeClinchedAt: normalizeClinchedAt,
+        submitSignature: submitSignature
     };
     
 })();

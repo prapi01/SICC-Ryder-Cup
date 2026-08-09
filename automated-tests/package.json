@@ -8,6 +8,7 @@
     "suite:b": "playwright test specs/suite-b-realtime.spec.js",
     "test": "playwright test",
     "test:headed": "HEADED=1 playwright test",
+    "run:step": "node step-runner.js",
     "install:playwright": "playwright install chromium"
   },
   "devDependencies": {
