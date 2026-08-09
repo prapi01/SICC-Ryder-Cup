@@ -1,9 +1,9 @@
 <!--
 FILE: view-history.html
-VERSION: 8.52
-KEY CHANGES from v8.51:
-   - FIXED: History card TR header label now shows "TEAM ONE" (was "TEAM B") - Team One display rename
-   - PRESERVED: ALL other functionality from v8.51 unchanged
+VERSION: 8.53
+KEY CHANGES from v8.52:
+   - FIXED: History card T-2 / Strk margin shortform now uses "O#" (was "B#") via toDisplayMargin - Team One display rename
+   - PRESERVED: ALL other functionality from v8.52 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
@@ -460,7 +460,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.52</div>
+<div class="version-tag">v8.53</div>
 
 <script>
 // ============================================================
@@ -475,8 +475,8 @@ if (typeof AppSettings !== 'undefined') {
 // ============================================================
 // VERSION CACHE-BUSTING - v8.51: Detail view back-link standardized
 // ============================================================
-var APP_VERSION = "8.52";
-var CACHE_KEY = "view_history_version_v852";
+var APP_VERSION = "8.53";
+var CACHE_KEY = "view_history_version_v853";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -494,8 +494,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.52";
-console.log("[VIEW-HISTORY] Initializing v8.52 - Team One display rename");
+window.VIEW_HISTORY_VERSION = "8.53";
+console.log("[VIEW-HISTORY] Initializing v8.53 - Team One display rename");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -548,13 +548,21 @@ function getFinalTR(results) {
     };
 }
 
+// Team One display shortform for margin strings (internal "B" -> display "O")
+function toDisplayMargin(val) {
+    if (typeof val === 'string' && val.charAt(0) === 'B') {
+        return 'O' + val.slice(1);
+    }
+    return val;
+}
+
 function getFinalDisplayRows(results) {
     if (!results) return { t1: "AS", t2: "AS", strk: "AS" };
     var lastIndex = 17;
     return {
-        t1: results.game2?.displayT1?.[lastIndex] || "AS",
-        t2: results.game2?.displayT2?.[lastIndex] || "AS",
-        strk: results.game3?.displayStrk?.[lastIndex] || "AS"
+        t1: toDisplayMargin(results.game2?.displayT1?.[lastIndex] || "AS"),
+        t2: toDisplayMargin(results.game2?.displayT2?.[lastIndex] || "AS"),
+        strk: toDisplayMargin(results.game3?.displayStrk?.[lastIndex] || "AS")
     };
 }
 
@@ -1595,10 +1603,10 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.52
-KEY CHANGES from v8.51:
-   - FIXED: History card TR header label now shows "TEAM ONE" (was "TEAM B") - Team One display rename
-   - PRESERVED: ALL other functionality from v8.51 unchanged
+VERSION: 8.53
+KEY CHANGES from v8.52:
+   - FIXED: History card T-2 / Strk margin shortform now uses "O#" (was "B#") via toDisplayMargin - Team One display rename
+   - PRESERVED: ALL other functionality from v8.52 unchanged
    - PRESERVED: All UI styling, layout, game list, scorecard, handlers unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/ticker.js, js/hcp-adjust.js (v2.60), js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
