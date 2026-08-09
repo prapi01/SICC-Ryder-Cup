@@ -502,6 +502,8 @@ npx playwright install chromium
 
 > ⚠️ The app's setup commit uses a double-`requestAnimationFrame` gate; in headless `rAF` may not fire — patch it via `addInitScript` (verified 2026-08-07): `window.requestAnimationFrame = cb => { cb(performance.now()); return 1; }`.
 
+> ⚠️ **Device identity (Phase 1 finding, 2026-08-09):** `SessionManager.getShortDeviceName()` allocates `DEV-01..DEV-99` short names by scanning `deviceMapping`. The mappings **accumulate and are never cleaned** — once all 99 names are taken, a new device's allocation loop does ~99 sequential Firestore queries (~2 min) and `pre-game.html` appears to hang (no role buttons). The harness **pre-seeds each context's `localStorage.deviceId` + `shortDeviceName`**, bypassing the loop and writing no new mappings. **App-side fix recommended** (out of scope here): cap/age-out `deviceMapping` docs and make the free-name search indexed/bounded. Monitor with `automated-tests/tools/probe-device-mapping.js`.
+
 > **Suite A** (admin: New Player / New Game / Manage Game + N-series) runs on-demand as a separate spec, not in the routine game run.
 
 ---

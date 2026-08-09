@@ -1,0 +1,16 @@
+{
+  "name": "sicc-ryder-cup-automated-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automated test harness for the SICC Ryder Cup app. Phase 1: skeleton + smoke. Suite A = admin/record integrity (on-demand). Suite B = actual game realtime smoke (4 isolated contexts).",
+  "scripts": {
+    "suite:a": "playwright test specs/suite-a-admin.spec.js",
+    "suite:b": "playwright test specs/suite-b-realtime.spec.js",
+    "test": "playwright test",
+    "test:headed": "HEADED=1 playwright test",
+    "install:playwright": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  }
+}
