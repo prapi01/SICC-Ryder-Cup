@@ -129,17 +129,17 @@ async function main() {
       .then(() => true).catch(() => false);
     console.log('GAME COMPLETED modal on F1:', completed ? '✅' : '❌');
 
-    // Create the history record using the app's own saveGameToHistory (F2)
-    await p2.evaluate((gid) => window.saveGameToHistory(gid), gameId);
-    console.log('saveGameToHistory invoked on F2 — waiting for', historyId, '...');
+    // FIX-TEST: the restored submitSignature auto-creates the history record on F2
+    // when BOTH flights are signed — no manual saveGameToHistory call needed.
+    console.log('waiting for AUTO-created history record', historyId, '...');
     let hist = null;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 45; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       hist = await getDocument('historyGames', historyId).catch(() => null);
       if (hist) break;
     }
     if (!hist) {
-      console.log('❌ history record NOT created');
+      console.log('❌ history record NOT created automatically');
       await browser.close();
       process.exit(4);
     }
