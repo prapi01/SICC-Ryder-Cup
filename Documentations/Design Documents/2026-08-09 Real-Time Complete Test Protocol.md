@@ -1,6 +1,6 @@
 # SICC Ryder Cup — Complete Real-Time Test Protocol
 
-- **Version:** 1.6
+- **Version:** 1.7
 - **Date:** 2026-08-09
 - **Scope:** Complete end-to-end test protocol for the **real-time, 2-flight** scoring app: **unit tests** of the calculation engine, **cross-flight sync** (both flights update the same game live), **cross-flight triggers** (F1 checks the celebration photo, F2 writes the history record on completion), and **view-game real-time** (a read-only viewer sees the game update live).
 - **Complements:** `2026-08-07 SICC Ryder Cup Test Script.md` (manual 2-device flow). This protocol adds the structured unit layer, the realtime concurrency matrix, the cross-flight trigger chain, and an **automated harness**.
@@ -40,6 +40,27 @@ The app identifies devices by `deviceId` in `localStorage` and locks flights via
   - Anchor = **Jeff Goh (0)**
 - **Score scenarios:** all-PAR, all-BOGEY, mixed (varies per flight/player), ties, early-clinch layouts.
 - **Clean state between runs:** clear `localStorage` on every device (fresh `deviceId`/`sessionId`); use a throwaway game id; optionally delete the test game from `scheduledGames` + `historyGames` after.
+
+---
+
+## 0.5 Test Suites (A/B)
+
+The protocol is grouped into **two suites** plus manual checks.
+
+**Suite A — Admin & Record Integrity (run on-demand; "if it's working, it's working"):**
+- New Player, New Game creation, Manage Games
+- **N-series** (New Game Record Integrity) — §10
+- Run occasionally to verify the admin / record-creation tooling; **not** part of the routine game test.
+
+**Suite B — Actual Game (the Step Runner):**
+- The full real-time game journey, ending at **A-series (History Record Integrity)**:
+  - **S** (cross-flight sync) · **T** (triggers: photo + F2 writes history) · **M** (completion/signing) · **H** (handicap) · **C** (cascade) · **R** (rejoin/recovery) · **A** (history record integrity) · **E** (edge)
+  - **V** (View-Game) — **V1/V2 kept as live real-time observers** during the game (not a separate history-viewing test)
+- Driven interactively from the **F1 window control panel** (Step / Go Auto) — §12.
+
+**Manual / not automated:**
+- **History Game VIEW** — completed history records are viewed manually.
+- Post-completion history-rendering checks (V7, A18–A19 render) are manual.
 
 ---
 
@@ -210,6 +231,8 @@ The completion chain: both flights **sign** → triggers photo check (F1) + hist
 
 > **Assertion:** for V2/V3/V4, record the time from "save on scorer" to "render on viewer" — target **< 2s** on normal network; any need for manual refresh = FAIL.
 
+> **Scope note (2026-08-09):** V1/V2 are used as **live real-time observers** inside Suite B during the game (V1–V6). Post-completion history viewing (V7) and history-rendering checks are **manual** — not automated.
+
 ---
 
 ## 5. Completion State Machine & Signing-Order Matrix
@@ -367,6 +390,8 @@ Recoverability: a scorer or viewer **leaves the session** (closes the app, loses
 
 ## 10. New Game Record Integrity — Correct Starting Point (N-series)
 
+> **Suite A (on-demand):** this section verifies the admin / record-creation tooling — run it occasionally, not on every game.
+
 Immediately after **committing a new game** in setup, verify the created `scheduledGames` record is a **correct starting point**: complete per the setup entered, with the proper initial (empty / unsaved) state so the real-time flow begins from a clean, consistent baseline.
 
 **Creation & setup fidelity:**
@@ -450,43 +475,34 @@ At the end of a **completed game**, verify the `_H` history record is **complete
 
 ---
 
-## 12. Automated Harness (Playwright — recommended)
+## 12. Automated Harness (Playwright) — Two Tools (A/B)
 
-Playwright natively supports **isolated browser contexts** (`browser.newContext()`), which gives each device its own `localStorage` — solving the shared-storage limitation found in manual tab testing. The harness drives **3 contexts** (F1, F2, VIEW) against a **test env** (preview/staging = DEV) and asserts the protocol automatically.
+Two tools share the same helpers, chosen at startup. Playwright's `browser.newContext()` gives each device its own `localStorage` (solving the shared-storage limitation found in manual tab testing).
 
+**[A] STEP RUNNER — interactive (Suite B).**
+- Opens **4 headed windows**: F1, F2, V1, V2 (each an isolated context → distinct device identity).
+- **F1 is the main test control window**: an injected floating control panel drives the test. F2 / V1 / V2 stay clean app windows (observers).
+- **F1 panel controls:**
+  - score choice per hole: `[P]`ar / `[B]`ogey / `[A]`lternate (H1 par, H2 bogey, …) / `[M]`anual
+  - `[▶ NEXT STEP]` (step mode waits on this click) · `[⚡ GO AUTO]` (fills both flights to H18, then stops at **Sign Card**) · `[🔁 Rejoin Test]` · `[✖ Quit]`
+  - live snapshot + invariant ✅/❌ shown on the panel after each save
+- **Auto-verifies at every step:** invariants (`trA+trB=19`, `match=16`, `T-1/T-2=1`, `Strk=1`), Firestore record state, and **realtime** (other windows update without refresh — fail if a reload is needed).
+- **Rejoin Test command:** `[o]`ffline / `[k]`ill+relaunch same identity / `[n]`ew device / `[m]`anual (R-series).
+- Ends at **History Record Integrity (A-series)**.
+
+**[B] HEADLESS ASSERT SUITE — automated (CI/regression).**
+- Same helpers, no UI; runs the assert specs (U/S/T/M/H/C/R/A/E) headless for regression.
+
+**Setup:**
 ```
 npm init -y
 npm i -D @playwright/test
 npx playwright install chromium
 ```
 
-**`realtime.spec.js` (sketch):**
-```js
-const { test, expect, chromium } = require('@playwright/test');
-const BASE = process.env.BASE_URL || 'https://<preview>.sicc-ryder-cup.pages.dev';
+> ⚠️ The app's setup commit uses a double-`requestAnimationFrame` gate; in headless `rAF` may not fire — patch it via `addInitScript` (verified 2026-08-07): `window.requestAnimationFrame = cb => { cb(performance.now()); return 1; }`.
 
-test('real-time 2-flight sync + completion', async () => {
-  const browser = await chromium.launch();
-  const ctxF1 = await browser.newContext();           // isolated localStorage
-  const ctxF2 = await browser.newContext();
-  const ctxView = await browser.newContext();
-  const f1 = await ctxF1.newPage();
-  const f2 = await ctxF2.newPage();
-  const view = await ctxView.newPage();
-
-  await Promise.all([f1.goto(BASE), f2.goto(BASE), view.goto(BASE)]);
-  // ... set up game (setup-game.html), tee-off F1 on f1, F2 on f2
-  // save a hole on f1, assert f2 & view render it within 2000ms
-  // save a hole on f2, assert f1 & view render it
-  // assert trA+trB=19 via page.evaluate on the stored results
-  // sign both flights, assert historyGames doc created, photo flag set
-  await browser.close();
-});
-```
-
-**Assertions to embed (map to protocol IDs):** S1–S3 (live propagation, ≤2s), S8 (concurrency), S10 (TR invariant), T1–T6 (signing + photo + history record), V2–V6 (viewer realtime). Screenshot on failure + console-error capture.
-
-> ⚠️ The app's setup commit uses a double-`requestAnimationFrame` gate. In headless/background tabs `rAF` may not fire — the harness should **patch `requestAnimationFrame` to fire synchronously** before committing (verified workaround, 2026-08-07): `page.addInitScript(() => { window.requestAnimationFrame = cb => { cb(performance.now()); return 1; }; })`.
+> **Suite A** (admin: New Player / New Game / Manage Game + N-series) runs on-demand as a separate spec, not in the routine game run.
 
 ---
 
@@ -504,18 +520,23 @@ Use these deterministic inputs so results are hand-checkable:
 
 ## 14. Acceptance Criteria
 
-- All **U1–U25** unit cases pass (or are known-tracked edge cases, e.g., U25).
-- All **N1–N17** new-game integrity checks pass: the created `scheduledGames` record is a correct starting point (setup fidelity, clean initial state, TEE-OFF ready, round-trip).
-- All **S1–S15** sync cases pass: both flights + viewer converge on every save **without refresh**; WRV never reports "verify failed"; invariants hold at every hole.
-- All **T1–T10** trigger cases pass: signing → photo (F1) → history record (F2) exactly once; history renders `TEAM ONE`/`O#`.
-- All **V1–V8** viewer cases pass: real-time < 2s; read-only enforced; completed games render correctly.
+**Suite A — Admin & Record Integrity (on-demand):**
+- All **N1–N17** pass when run: the created `scheduledGames` record is a correct starting point (setup fidelity, clean initial state, TEE-OFF ready, round-trip).
+- New Player / New Game / Manage Game operate without error.
+
+**Suite B — Actual Game (Step Runner / headless):**
+- All **U1–U25** unit cases pass (or known-tracked edge cases, e.g., U25).
+- All **S1–S15** sync cases pass: both flights + V1/V2 converge on every save **without refresh**; WRV never reports "verify failed"; invariants hold at every hole.
+- All **T1–T10** trigger cases pass: signing → photo (F1) → history record (F2) exactly once.
 - All **M1–M11** completion/signing cases pass per the confirmed decisions (both flights always eventually signed → waiting is transient; locked after sign; no revoke; F2-only history writer).
 - All **H1–H12** handicap cases pass: Raw = Old+Perf+Anchor (may be −ve), zero-rise to min Raw = 0, New ≥ 0 with a new anchor; `matchResults` complete after normal completion (H12).
-- All **C1–C11** cascade cases pass: back-nav edits recompute only the affected results (T-2 unaffected by an F1 change), invariants hold, live propagation < 2 s, signed flights locked.
-- All **R1–R11** rejoin/recovery cases pass: scorer + viewer rejoin re-syncs to current state with no data loss, no duplicate writes, preserved role/lock; **≥ 2 View sessions** stay consistent.
-- All **A1–A22** archive-integrity checks pass: `_H` record complete per schema, values match the played game, Validate = 0 mismatches, renders correctly, durable.
+- All **C1–C11** cascade cases pass: back-nav edits recompute only the affected results (T-2 unaffected by an F1 change), invariants hold, live < 2 s, signed flights locked.
+- All **R1–R11** rejoin/recovery cases pass: scorer + viewer rejoin re-syncs with no data loss / no duplicate writes, preserved role/lock; **≥ 2 View sessions** stay consistent.
+- All **A1–A22** archive-integrity checks pass: `_H` record complete per schema, values match the played game, Validate = 0 mismatches, durable.
 - All **E1–E11** edge cases behave as defined (known limitations documented, not silent failures; photo non-blocking by design; DEV out of scope).
 - No console errors; no Firebase 403/404.
+
+**Manual:** History Game VIEW — completed history records are viewed manually.
 
 ---
 
@@ -530,3 +551,4 @@ Use these deterministic inputs so results are hand-checkable:
 | 1.4 | 2026-08-09 | Added **Device Rejoin & Recovery** section (R1–R11): scorer leave/rejoin recoverability + ≥ 2 View sessions (join, leave, rejoin, consistency, role integrity); sections renumbered 9–13 |
 | 1.5 | 2026-08-09 | Added **History Record Integrity** section (A1–A22): post-completion archive check — schema completeness (A1–A10), data fidelity (A11–A16), Validate cross-check + render + durability (A17–A22); sections renumbered 10–14 |
 | 1.6 | 2026-08-09 | Added **New Game Record Integrity** section (N1–N17): post-creation starting-point check — setup fidelity (N1–N5), clean initial data state (N6–N13), readiness/round-trip (N14–N17); sections renumbered 10–15 |
+| 1.7 | 2026-08-09 | Regrouped into **Suites A/B** (A = admin/record integrity on-demand incl. N-series; B = actual game step runner ending at A-series); Step Runner driven from the **F1 window control panel** (Step / Go Auto / Rejoin); V1/V2 = live observers; History VIEW = manual; harness rewritten for the two tools (A/B selection) |
