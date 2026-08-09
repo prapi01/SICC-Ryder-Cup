@@ -2,12 +2,28 @@
 
 ## Version 4.0.0 (2026-08-10)
 
-This release is a **correctness + stability** release. It fixes regressions
-introduced in **Version 3.0.0**, restores data integrity for completed games,
-adds design-standard compliance to the viewer, and ships the automated QA
-harness used to prove it all on live production.
+This release is a **correctness + stability** release with one major feature. It
+introduces the **Team One** rename, fixes regressions introduced in
+**Version 3.0.0**, restores data integrity for completed games, adds
+design-standard compliance to the viewer, and ships the automated QA harness
+used to prove it all on live production.
 
 ---
+
+### ✨ Major feature — Team One
+
+The second team is now displayed as **"Team One"** (short form **"One" / "O"**)
+throughout the app's user-facing UI, replacing the old "Team B" label.
+
+- **Player Management** table: team badge shows **One** (the dropdown keeps the
+  full "Team One").
+- **Team selectors** (setup-game, util record management): compact **O** when
+  closed, **Team One** in the open list.
+- **View History**: TR header **"TEAM ONE"**, T-2/Strk margins use the **O#**
+  short form, winner text **"Team One Wins!"**.
+- **Display-only rename** — internal values remain Team A / B, so there is no
+  data migration and it is fully backward compatible. Shipped with the storage
+  rules fix.
 
 ### 🐛 Critical fixes (Version 3.0.0 regressions)
 
