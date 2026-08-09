@@ -43,12 +43,12 @@ Set via env vars (see `.env.example`):
   double-rAF gate that never fires in headless/background tabs).
 - `sessionStorage.currentGameId` is injected via `addInitScript` so `pre-game.html` knows which
   game to load (survives the app's `?v=` cache-busting redirect).
-- Each device context **pre-seeds `localStorage.deviceId` + `shortDeviceName`**. This avoids
-  `SessionManager.getShortDeviceName()`'s Firestore `deviceMapping` allocation loop, which hangs
-  once **all 99 DEV-## short names are taken** (a real app bottleneck: mappings accumulate and
-  are never cleaned; each check is a ~1-2s Firestore query, so a fresh device can stall ~2 min).
-  Seeding also means the harness never writes new `deviceMapping` docs (no further pollution).
-  See `tools/probe-device-mapping.js` to monitor the accumulation in the target project.
+- Each device context **pre-seeds `localStorage.deviceId` + `shortDeviceName`** (defense-in-depth
+  and to avoid writing new `deviceMapping` docs). The underlying app bottleneck was fixed in
+  `js/session.js` v1.02 (2026-08-09): allocation is now one bulk read + in-memory scan + stale
+  pruning + bounded reap (was up to 99 sequential Firestore queries once all DEV-## names were
+  taken). See `tools/probe-device-mapping.js` (monitor) and `tools/simulate-allocation.js`
+  (dry-run validation) in the target project.
 - Realtime asserts read `GameLoader.getLocalCache()` / player-card DOM **without reloading** —
   a manual refresh would be a FAIL (per protocol §4).
 
@@ -68,4 +68,5 @@ automated-tests/
   tools/
     check-leftovers.js         # leftover test games in scheduledGames
     probe-device-mapping.js    # DEV-## short-name accumulation monitor
+    simulate-allocation.js     # dry-run of the v1.02 allocation algorithm vs live data
 ```

@@ -1,7 +1,13 @@
 /*
 FILE: js/session.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
+   - FIXED (2026-08-09): deviceMapping DEV-## allocation hang. The old logic ran up to
+     99 sequential Firestore "where shortName == DEV-XX" queries when names filled up
+     (~2 min), hanging pre-game.html. Now: one bulk read of the small deviceMapping
+     collection + in-memory free-name scan; stale mappings (lastSeen > 30 days) are
+     pruned in the background and treated as free; when no name is free the
+     least-recently-seen mapping is reaped (bounded, O(1) queries).
    - Added Firestore-based short device names (DEV-01, DEV-02, etc.)
    - New function getShortDeviceName() for async short name retrieval
    - New function getShortNameOnly() for sync short name
@@ -12,8 +18,8 @@ STATUS: Ready for integration
 */
 
 // js/session.js
-// Device Session Manager v1.01
-// ADDED: Firestore-based short device names (DEV-01, DEV-02, etc.)
+// Device Session Manager v1.02
+// FIXED: deviceMapping DEV-## allocation hang (see getShortDeviceName)
 
 var SessionManager = (function() {
     
@@ -47,6 +53,11 @@ var SessionManager = (function() {
     }
     
     // Get or create short device name (DEV-01, DEV-02, etc.)
+    // v1.02: allocation is O(1) network calls — one bulk read, in-memory scan,
+    // stale-mapping pruning, and a bounded reap fallback (no more 99 sequential queries).
+    var DEVICE_MAPPING_STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    var MAX_DEVICE_NUM = 99;
+    
     async function getShortDeviceName() {
         // Check localStorage cache first
         var cached = localStorage.getItem("shortDeviceName");
@@ -71,39 +82,90 @@ var SessionManager = (function() {
             
             if (mappingDoc.exists) {
                 var existingShortName = mappingDoc.data().shortName;
-                // Update lastSeen
-                await firestore.collection(DEVICE_MAPPING_COLLECTION).doc(deviceIdFull).update({
+                // Update lastSeen (fire-and-forget — never block name resolution on it)
+                firestore.collection(DEVICE_MAPPING_COLLECTION).doc(deviceIdFull).update({
                     lastSeen: Date.now()
-                });
+                }).catch(function() {});
                 shortDeviceName = existingShortName;
                 localStorage.setItem("shortDeviceName", existingShortName);
                 console.log("Short device name (existing):", existingShortName);
                 return existingShortName;
             }
             
-            // Get counter document
-            var counterRef = firestore.collection(DEVICE_MAPPING_COLLECTION).doc("counter");
-            var counterDoc = await counterRef.get();
+            // Single bulk read of the deviceMapping collection (small metadata).
+            // Replaces the old up-to-99-sequential-queries scan that hung pre-game.html
+            // once all DEV-01..99 names were taken.
+            var snapshot = await firestore.collection(DEVICE_MAPPING_COLLECTION).get();
             
+            var usedNames = {};
+            var staleDocs = [];
+            var counterData = null;
+            var now = Date.now();
+            snapshot.forEach(function(doc) {
+                if (doc.id === "counter") {
+                    counterData = doc.data();
+                    return;
+                }
+                var data = doc.data();
+                if (!data.shortName) return;
+                // Stale mappings free their names and are deleted in the background
+                if (data.lastSeen && (now - data.lastSeen > DEVICE_MAPPING_STALE_MS)) {
+                    staleDocs.push(doc);
+                    return;
+                }
+                usedNames[data.shortName] = true;
+            });
+            
+            // Prune stale mappings (fire-and-forget)
+            if (staleDocs.length) {
+                staleDocs.forEach(function(doc) {
+                    firestore.collection(DEVICE_MAPPING_COLLECTION).doc(doc.id).delete().catch(function() {});
+                });
+            }
+            
+            // Start allocation after the last assigned number (counter doc)
             var nextNumber = 1;
-            if (counterDoc.exists) {
-                nextNumber = (counterDoc.data().lastNumber % 99) + 1;
+            if (counterData && counterData.lastNumber) {
+                nextNumber = (counterData.lastNumber % MAX_DEVICE_NUM) + 1;
             }
             
-            // Check if this number is already in use (by another active device)
-            var existingWithNumber = await firestore.collection(DEVICE_MAPPING_COLLECTION)
-                .where("shortName", "==", "DEV-" + nextNumber.toString().padStart(2, '0'))
-                .get();
-            
-            // If taken, find next available number (simple linear search, max 99)
-            while (!existingWithNumber.empty) {
-                nextNumber = (nextNumber % 99) + 1;
-                existingWithNumber = await firestore.collection(DEVICE_MAPPING_COLLECTION)
-                    .where("shortName", "==", "DEV-" + nextNumber.toString().padStart(2, '0'))
-                    .get();
+            // In-memory linear scan for the next free name (bounded, no network per candidate)
+            var newShortName = null;
+            for (var attempts = 0; attempts < MAX_DEVICE_NUM; attempts++) {
+                var candidate = "DEV-" + nextNumber.toString().padStart(2, '0');
+                if (!usedNames[candidate]) {
+                    newShortName = candidate;
+                    break;
+                }
+                nextNumber = (nextNumber % MAX_DEVICE_NUM) + 1;
             }
             
-            var newShortName = "DEV-" + nextNumber.toString().padStart(2, '0');
+            // All names in use: reap the least-recently-seen active mapping
+            // (in-memory from the snapshot; keeps allocation bounded)
+            if (!newShortName) {
+                var oldestDoc = null;
+                var oldestLastSeen = Infinity;
+                snapshot.forEach(function(doc) {
+                    if (doc.id === "counter") return;
+                    var data = doc.data();
+                    if (!data.shortName) return;
+                    var ls = data.lastSeen || 0;
+                    if (ls < oldestLastSeen) {
+                        oldestLastSeen = ls;
+                        oldestDoc = doc;
+                    }
+                });
+                if (oldestDoc) {
+                    var reapedName = oldestDoc.data().shortName;
+                    await firestore.collection(DEVICE_MAPPING_COLLECTION).doc(oldestDoc.id).delete();
+                    newShortName = reapedName;
+                }
+            }
+            
+            // Final safety net: derive from device id (should never be reached)
+            if (!newShortName) {
+                newShortName = "DEV-" + getDeviceId().slice(-2).padStart(2, '0');
+            }
             
             // Save mapping
             await firestore.collection(DEVICE_MAPPING_COLLECTION).doc(deviceIdFull).set({
@@ -114,8 +176,9 @@ var SessionManager = (function() {
             });
             
             // Update counter
-            await counterRef.set({
-                lastNumber: nextNumber
+            var usedNumber = parseInt(newShortName.replace("DEV-", ""), 10) || nextNumber;
+            await firestore.collection(DEVICE_MAPPING_COLLECTION).doc("counter").set({
+                lastNumber: usedNumber
             });
             
             shortDeviceName = newShortName;
@@ -363,8 +426,11 @@ var SessionManager = (function() {
 
 /*
 FILE: js/session.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
+   - FIXED (2026-08-09): deviceMapping DEV-## allocation hang — one bulk read +
+     in-memory scan, stale-mapping pruning, bounded reap fallback (no more 99
+     sequential queries).
    - Added Firestore-based short device names (DEV-01, DEV-02, etc.)
    - New function getShortDeviceName() for async short name retrieval
    - New function getShortNameOnly() for sync short name
