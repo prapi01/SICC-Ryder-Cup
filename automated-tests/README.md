@@ -69,4 +69,6 @@ automated-tests/
     check-leftovers.js         # leftover test games in scheduledGames
     probe-device-mapping.js    # DEV-## short-name accumulation monitor
     simulate-allocation.js     # dry-run of the v1.02 allocation algorithm vs live data
+    verify-unseeded-device.js  # fresh (unseeded) device → pre-game renders quickly (regression)
+    debug-fresh-device.js      # capture console/state for a fresh device on pre-game
 ```
