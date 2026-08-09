@@ -107,6 +107,17 @@ var SignCard = (function() {
         var emoji = isTie ? '🤝' : (winner === 'A' ? '🏆' : '🏆');
         var message = isTie ? 'It\'s a Tie!' : (winner === 'A' ? 'Team A Wins!' : 'Team One Wins!');
         
+        // v1.41: Celebration photo - sessionStorage ONLY (restored from v1.32/v1.39).
+        // The v1.40 regression (Version_3.0.0) removed the photo from the celebration
+        // screen. Design standard (photo v5.0): default photo is on ALL devices, so the
+        // celebration shows the photo. Only fall back to the trophy emoji if absent.
+        var photoData = sessionStorage.getItem('celebrationPhoto');
+        var imageHtml = photoData
+            ? '<div style="display:flex; justify-content:center; align-items:center; margin-bottom:12px; border-radius:16px; overflow:hidden;">' +
+              '<img src="' + photoData + '" alt="Celebration" crossorigin="anonymous" ' +
+              'style="max-width:100%; max-height:38vh; min-height:120px; border-radius:16px; object-fit:cover; border:1px solid #2a2a2a; display:block;"></div>'
+            : '<div style="font-size:2.5rem; margin-bottom:8px;">' + emoji + '</div>';
+        
         var teamALabel = 'Team A';
         var teamBLabel = 'Team One';
         var teamAColor = '#4caf50';
@@ -140,7 +151,7 @@ var SignCard = (function() {
         var html = `
             <div id="celebrationModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10001; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
                 <div style="background:#1a1a1a; border-radius:28px; padding:32px; max-width:360px; width:90%; text-align:center; border:2px solid #ffaa44; position:relative;">
-                    <div style="font-size:2.5rem; margin-bottom:8px;">${emoji}</div>
+                    ${imageHtml}
                     <div style="font-size:1.5rem; font-weight:700; color:#ffaa44; margin-bottom:4px;">${message}</div>
                     ${winningPlayersHtml}
                     <div style="display:flex; justify-content:center; align-items:center; gap:20px; margin:12px 0;">
