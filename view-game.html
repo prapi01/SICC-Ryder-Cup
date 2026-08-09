@@ -1437,28 +1437,23 @@ function renderBottomMenuWithContext() {
     
     container.innerHTML = '';
     
-    var btn = document.createElement('button');
-    btn.id = 'menuBtn';
-    
-    if (isPostGameContext) {
-        btn.textContent = '← Back to Main Menu';
-        btn.style.borderColor = '#ffaa44';
-        btn.style.color = '#ffaa44';
-        btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; border:1px solid #ffaa44; color:#ffaa44; margin-top:20px;';
-        btn.onclick = function() {
+    // Design standard (game-ui.js v5.10): plain back-link, not a styled pill button.
+    var link = document.createElement('div');
+    link.id = 'menuLink';
+    link.className = 'back-link';
+    link.textContent = '← Back to Main Menu';
+    link.style.cssText = 'border-top: 1px solid #2a5a2a; text-align: center; margin-top: 16px; padding: 12px 0; color: #666; cursor: pointer; font-size: 0.75rem; transition: color 0.15s ease; letter-spacing: 0.2px; width: 100%;';
+    link.onclick = function() {
+        if (isPostGameContext) {
             console.log("[VIEW-GAME] Post-game context - showing exit modal");
             showPostGameExitModal();
-        };
-    } else {
-        btn.textContent = '← Back to Main Menu';
-        btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;';
-        btn.onclick = function() {
+        } else {
             console.log("[VIEW-GAME] LIVE context - showing exit confirmation");
             showLiveExitModal();
-        };
-    }
+        }
+    };
     
-    container.appendChild(btn);
+    container.appendChild(link);
 }
 
 // ============================================================
@@ -1543,6 +1538,15 @@ async function init() {
     
     // v8.14: Photo check will be triggered by realtime listener on score updates
     console.log('[VIEW-GAME] 📸 Photo check will be triggered by realtime listener on score updates');
+    
+    // Photo design v5.0: load the DEFAULT celebration photo at game start so
+    // sessionStorage is never empty (celebration always shows a photo, not the 🏆
+    // fallback) — matches the scorers' real-game-init behavior.
+    if (typeof window.loadDefaultCelebrationPhoto === 'function') {
+        window.loadDefaultCelebrationPhoto(function(err) {
+            if (err) console.warn('[VIEW-GAME] Failed to load default celebration photo:', err && err.message);
+        });
+    }
     
     var collection = "scheduledGames";
     GameLoader.addDataCallback(onCacheUpdate);

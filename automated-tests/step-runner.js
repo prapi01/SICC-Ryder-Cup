@@ -27,9 +27,12 @@ const readline = require('readline');
 const { BASE_URL } = require('./helpers/env');
 const {
   createTestGame,
+  createRealBukitGame,
   deleteTestGame,
   fetchGame,
-  PLAYERS
+  PLAYERS,
+  SICC_BUKIT,
+  REAL_BUKIT_PLAYERS
 } = require('./helpers/game');
 const {
   newDeviceContext,
@@ -41,6 +44,24 @@ const {
   readInvariants,
   nextHole
 } = require('./helpers/realtime');
+
+// ---------------------------------------------------------------------------
+// Scenario: SR_SCENARIO=real → real SICC Bukit game + real player scores
+// ---------------------------------------------------------------------------
+const SCENARIO = (process.env.SR_SCENARIO || 'auto').toLowerCase();
+const SCENARIO_PLAYERS = SCENARIO === 'real' ? REAL_BUKIT_PLAYERS : PLAYERS;
+
+// Real gross scores from the SICC Bukit game (natural hole 1..18)
+const REAL_SCORES = {
+  ACH:  [7, 4, 6, 5, 4, 6, 5, 3, 4, 4, 5, 4, 5, 4, 6, 6, 4, 5],
+  CK:   [6, 3, 6, 7, 4, 5, 5, 4, 7, 5, 4, 3, 7, 6, 6, 4, 3, 6],
+  OCB:  [7, 4, 5, 6, 3, 7, 5, 5, 7, 5, 5, 4, 5, 4, 6, 5, 3, 5],
+  JO:   [6, 5, 4, 7, 5, 8, 6, 6, 4, 6, 8, 3, 7, 3, 8, 5, 3, 7],
+  KF:   [5, 5, 5, 7, 2, 4, 6, 5, 5, 5, 6, 5, 5, 6, 7, 4, 3, 6],
+  YHM:  [5, 4, 4, 5, 4, 6, 6, 4, 7, 5, 8, 5, 6, 4, 6, 10, 3, 8],
+  Piti: [5, 3, 5, 6, 3, 6, 5, 5, 7, 7, 5, 3, 7, 4, 7, 5, 4, 6],
+  JG:   [3, 5, 5, 6, 4, 9, 6, 5, 6, 4, 4, 4, 5, 4, 6, 5, 4, 5]
+};
 
 // ---------------------------------------------------------------------------
 // Dedicated control window (hosts the panel + live log, not the F1 overlay)
@@ -255,7 +276,7 @@ function log(msg) {
 // Scoring + steps
 // ---------------------------------------------------------------------------
 function flightPlayers(flight) {
-  return PLAYERS.filter((p) => p.flight === flight).map((p) => p.name);
+  return SCENARIO_PLAYERS.filter((p) => p.flight === flight).map((p) => p.name);
 }
 
 function holeIsBogey(hole) {
@@ -265,6 +286,16 @@ function holeIsBogey(hole) {
 }
 
 async function scoreFlight(page, flight, hole) {
+  if (SCENARIO === 'real') {
+    // Enter the real player scores for this hole (delta from the hole's par)
+    const par = SICC_BUKIT.par[hole - 1];
+    for (const name of flightPlayers(flight)) {
+      const target = REAL_SCORES[name][hole - 1];
+      const delta = target - par;
+      if (delta !== 0) await setPlayerScoreOnScorer(page, { playerName: name, delta });
+    }
+    return;
+  }
   if (!holeIsBogey(hole)) return; // par / manual → default scores already par
   for (const name of flightPlayers(flight)) {
     await setPlayerScoreOnScorer(page, { playerName: name, delta: 1 }); // par→bogey
@@ -381,8 +412,10 @@ async function rejoinF2(kind) {
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
-  state.gameId = await createTestGame({ testRunId: 'step-' + Date.now() });
-  console.log('Step Runner — test game:', state.gameId);
+  state.gameId = SCENARIO === 'real'
+    ? await createRealBukitGame({ testRunId: 'step-' + Date.now() })
+    : await createTestGame({ testRunId: 'step-' + Date.now() });
+  console.log('Step Runner — test game:', state.gameId, '| scenario:', SCENARIO, SCENARIO === 'real' ? '(' + SICC_BUKIT.name + ', real scores)' : '');
 
   // Option 3: no system shortcut changes. The user is on the target Space
   // (windows are laid out on the CURRENT Space). Pause until they confirm.
