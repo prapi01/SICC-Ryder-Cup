@@ -36,13 +36,28 @@ function initScriptForGame(gameId, deviceId, shortName) {
   `;
 }
 
-/** Create an isolated device context pre-wired for a game (deviceIndex 0..3). */
-async function newDeviceContext(browser, gameId, deviceIndex) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+/** Core: create an isolated device context pre-wired for a game with an EXPLICIT
+ *  device identity (deviceId + shortName). Used by newDeviceContext (fresh) and
+ *  reopenDeviceContext (same-device rejoin). */
+async function makeDeviceContext(browser, gameId, deviceId, shortName, viewport = { width: 1280, height: 900 }) {
+  const context = await browser.newContext({ viewport });
+  await context.addInitScript(initScriptForGame(gameId, deviceId, shortName));
+  context._srDevice = { deviceId, shortName };
+  return context;
+}
+
+/** Create a fresh device context (deviceIndex 0..3). viewport defaults to the
+ *  Phase-1 headless size; the Step Runner passes the iPhone 14 Pro viewport. */
+async function newDeviceContext(browser, gameId, deviceIndex, viewport = { width: 1280, height: 900 }) {
   const deviceId = `dev_autotest_${Date.now()}_${deviceIndex}`;
   const shortName = `DEV-${String(90 + deviceIndex).padStart(2, '0')}`; // DEV-90..93, distinct
-  await context.addInitScript(initScriptForGame(gameId, deviceId, shortName));
-  return context;
+  return makeDeviceContext(browser, gameId, deviceId, shortName, viewport);
+}
+
+/** Reopen a device with an EXISTING identity — simulates the same device rejoining
+ *  after leaving (its context/page was closed). Same deviceId → same lock owner. */
+async function reopenDeviceContext(browser, gameId, deviceId, shortName, viewport = { width: 1280, height: 900 }) {
+  return makeDeviceContext(browser, gameId, deviceId, shortName, viewport);
 }
 
 /**
@@ -150,7 +165,7 @@ async function readInvariants(page, { hole }) {
 }
 
 /** Save the current hole on a scorer page (click SAVE, fallback to direct call). */
-async function saveCurrentHole(page, { flight, timeout = 20000 }) {
+async function saveCurrentHole(page, { flight, charIndex = 0, timeout = 20000 }) {
   const saveBtn = page.locator('#compactSaveBtn, .compact-save-btn').first();
   try {
     await saveBtn.waitFor({ state: 'visible', timeout: 15000 });
@@ -170,8 +185,24 @@ async function saveCurrentHole(page, { flight, timeout = 20000 }) {
       const s = flight === 1 ? c.f1DataString : c.f2DataString;
       return typeof s === 'string' && s.charAt(charIndex) === 'T';
     },
-    { flight, charIndex: 0 },
+    { flight, charIndex },
     { timeout }
+  );
+}
+
+/** Advance the scorer to the next hole (uses the app's own navigation). */
+async function nextHole(page) {
+  await page.evaluate(() => {
+    if (window.nextHole) window.nextHole();
+    else if (window._nextHoleCallback) window._nextHoleCallback();
+  });
+  await new Promise((r) => setTimeout(r, 500));
+}
+
+/** Read the current hole number from the app state. */
+async function getCurrentHole(page) {
+  return page.evaluate(() =>
+    window.RealGameState && window.RealGameState.getCurrentHole ? RealGameState.getCurrentHole() : null
   );
 }
 
@@ -187,7 +218,9 @@ async function setPlayerScoreOnScorer(page, { playerName, delta }) {
 }
 
 module.exports = {
+  makeDeviceContext,
   newDeviceContext,
+  reopenDeviceContext,
   openPreGame,
   selectRoleAndTeeOff,
   openScorer,
@@ -196,5 +229,7 @@ module.exports = {
   expectPlayerScore,
   readInvariants,
   saveCurrentHole,
-  setPlayerScoreOnScorer
+  setPlayerScoreOnScorer,
+  nextHole,
+  getCurrentHole
 };

@@ -47,9 +47,44 @@ const PLAYERS = [
 
 const ANCHOR = 'AutoD1'; // lowest handicap player (setup default anchor)
 
+// SICC Bukit — real course (par 71), read from the Firestore `courses` collection
+// (id iTph634Zg0h768bJleyO). Used for realistic real-game scenarios.
+const SICC_BUKIT = {
+  name: 'SICC Bukit Course',
+  par: [4, 3, 4, 5, 3, 4, 4, 4, 4, 4, 4, 3, 5, 3, 5, 4, 3, 5],
+  si: [13, 15, 7, 3, 17, 1, 5, 11, 9, 14, 2, 8, 6, 16, 10, 4, 18, 12]
+};
+
+// Real players from the SICC Bukit game screenshot (Anchor B5 dropped — it was a
+// duplicate of JG). 2 flights × (2×Team A + 2×Team B), real handicaps.
+const REAL_BUKIT_PLAYERS = [
+  { name: 'ACH', label: 'A1', team: 'A', flight: 1, handicap: 2 },
+  { name: 'CK', label: 'A2', team: 'A', flight: 1, handicap: 10 },
+  { name: 'OCB', label: 'B1', team: 'B', flight: 1, handicap: 1 },
+  { name: 'JO', label: 'B2', team: 'B', flight: 1, handicap: 10 },
+  { name: 'KF', label: 'A3', team: 'A', flight: 2, handicap: 2 },
+  { name: 'YHM', label: 'A4', team: 'A', flight: 2, handicap: 14 },
+  { name: 'Piti', label: 'B3', team: 'B', flight: 2, handicap: 10 },
+  { name: 'JG', label: 'B4', team: 'B', flight: 2, handicap: 0 }
+];
+
 function defaultDataString() {
   // 18 holes × ('F' + 4×2-digit par=04) = 162 chars, all unsaved
   return Array(18).fill('F04040404').join('');
+}
+
+// Rotate the initial (all-par) string for a shotgun start. Data strings are in
+// PLAY ORDER (position 0 = natural startingHole … position 17 = startingHole−1),
+// each 9-char block = 'F' + 4×2-digit PAR for that natural hole. All-par AUTOTEST
+// (start 1) is unaffected.
+function rotatedDataString(par, startingHole) {
+  const order = [];
+  for (let i = startingHole; i <= 18; i++) order.push(i);
+  for (let i = 1; i < startingHole; i++) order.push(i);
+  return order.map((h) => {
+    const s = String(par[h - 1]).padStart(2, '0');
+    return 'F' + s + s + s + s;
+  }).join('');
 }
 
 function emptyResults() {
@@ -87,23 +122,24 @@ function emptyResults() {
   };
 }
 
-function buildGameData({ testRunId }) {
-  const ds = defaultDataString();
+function buildGameData({ testRunId, course = COURSE, players = PLAYERS, startingHole = 1 }) {
+  const ds = rotatedDataString(course.par, startingHole);
+  const anchor = players.reduce((a, b) => (b.handicap < a.handicap ? b : a)).name;
   return {
     date: new Date().toISOString().split('T')[0],
-    course: COURSE,
-    players: PLAYERS.map((p) => ({ name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label })),
+    course: course,
+    players: players.map((p) => ({ name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label })),
     status: 'scheduled',
     gameType: 'real',
-    startingHole: 1,
+    startingHole: startingHole,
     teamGameFormat: 'tournament',
-    anchor: ANCHOR,
+    anchor: anchor,
     updatedAt: new Date().toISOString(),
     f1: { d: ds, se: false, x: false },
     f2: { d: ds, se: false, x: false },
     locks: { f1: null, f2: null },
-    currentHoleF1: 1,
-    currentHoleF2: 1,
+    currentHoleF1: startingHole,
+    currentHoleF2: startingHole,
     results: emptyResults(),
     createdAt: new Date().toISOString(),
     lastSyncedPosition: -1,
@@ -124,6 +160,12 @@ async function createTestGame({ testRunId }) {
   return gameId;
 }
 
+async function createRealBukitGame({ testRunId, startingHole = 1 }) {
+  const gameId = generateGameId();
+  await createDocument(COLLECTION, gameId, buildGameData({ testRunId, course: SICC_BUKIT, players: REAL_BUKIT_PLAYERS, startingHole }));
+  return gameId;
+}
+
 async function fetchGame(gameId) {
   return getDocument(COLLECTION, gameId);
 }
@@ -137,9 +179,12 @@ module.exports = {
   COURSE,
   PLAYERS,
   ANCHOR,
+  SICC_BUKIT,
+  REAL_BUKIT_PLAYERS,
   generateGameId,
   buildGameData,
   createTestGame,
+  createRealBukitGame,
   fetchGame,
   deleteTestGame
 };

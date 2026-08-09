@@ -426,6 +426,35 @@ var SignCard = (function() {
     }
     
     // ============================================================
+    // PROGNOSIS TEST (branch: test/sign-submit-prognosis)
+    // submitSignature restored — v1.40 removed it, but real-game-nav.js
+    // (v1.16/v1.17) still calls SignCard.submitSignature() on SIGN CARD.
+    // Writes signatures.f{n}.signed=true, which the realtime listener in
+    // real-game-init.js needs to show the Game-Complete (celebration) modal.
+    // Minimal version for A/B testing; a full production fix should port the
+    // complete v1.39 implementation (retries, waiting screen, history write).
+    // ============================================================
+    function submitSignature(gameId, flight, captainName, collection) {
+        return new Promise(function(resolve, reject) {
+            var db = firebase.firestore();
+            var docRef = db.collection(collection || 'scheduledGames').doc(gameId);
+            var flightKey = 'f' + flight;
+            var updateObj = {};
+            updateObj['signatures.' + flightKey + '.signed'] = true;
+            updateObj.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+            docRef.update(updateObj)
+                .then(function() {
+                    console.log('[SignCard] submitSignature write OK for flight', flight);
+                    resolve({ success: true });
+                })
+                .catch(function(err) {
+                    console.error('[SignCard] submitSignature write FAILED:', err.message);
+                    reject(err);
+                });
+        });
+    }
+
+    // ============================================================
     // Public API
     // ============================================================
     
@@ -434,7 +463,8 @@ var SignCard = (function() {
         replayCelebration: replayCelebration,
         saveGameToHistory: window.saveGameToHistory,
         buildHistoryRecordData: buildHistoryRecordData,
-        normalizeClinchedAt: normalizeClinchedAt
+        normalizeClinchedAt: normalizeClinchedAt,
+        submitSignature: submitSignature
     };
     
 })();
