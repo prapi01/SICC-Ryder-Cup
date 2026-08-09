@@ -417,22 +417,78 @@ var SignCard = (function() {
                 return { teamAScore: tA, teamBScore: tB, winner: w, winnerText: wt };
             })(),
             status: "completed",
+            version: 3,
+            schema: "v3_strings",
+            archiveId: gameId + '_H',
             completedAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        // Include handicap adjustment data if available
-        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.getData) {
+        // ============================================================
+        // Handicap adjustment — computed at history-write time from RAW data
+        // (restores v1.42 behavior). The hcp-adjust page is DISPLAY ONLY, so the
+        // auto-created history record must carry adjustedHandicaps itself.
+        // Falls back to HandicapAdjustment.getData() if a session is active.
+        // ============================================================
+        var adjustedHandicaps = null;
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.calculateAllAdjustmentsFromRaw) {
+            try {
+                var anchorName = cache.anchor || null;
+                var anchorPlayer = null;
+                if (cache.players && cache.players.length > 0) {
+                    for (var pi = 0; pi < cache.players.length; pi++) {
+                        if (cache.players[pi].name === anchorName) { anchorPlayer = cache.players[pi]; break; }
+                    }
+                    if (!anchorPlayer) {
+                        var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
+                        anchorPlayer = sorted[0];
+                    }
+                }
+                if (anchorPlayer) {
+                    var course = cache.course || {};
+                    var hcpResult = HandicapAdjustment.calculateAllAdjustmentsFromRaw(
+                        anchorPlayer,
+                        cache.players,
+                        cache.f1DataString || '',
+                        cache.f2DataString || '',
+                        course.si || [],
+                        course.par || []
+                    );
+                    if (hcpResult && hcpResult.players) {
+                        adjustedHandicaps = {
+                            anchor: anchorPlayer.name,
+                            players: hcpResult.players.map(function(p) {
+                                return {
+                                    name: p.name,
+                                    label: p.label,
+                                    startingHcp: p.startingHcp || p.currentHcp,
+                                    anchorAdj: p.anchorAdj || 0,
+                                    perfAdj: p.perfAdj || 0,
+                                    finalHcp: hcpResult.needsZeroRise ? p.newAnchor : p.newHcp,
+                                    anchorRaw: p.anchorRaw || 0,
+                                    perfRaw: p.perfRaw || 0
+                                };
+                            }),
+                            needsZeroRise: hcpResult.needsZeroRise || false,
+                            zeroRiseAmount: hcpResult.zeroRiseAmount || 0,
+                            newAnchor: hcpResult.newAnchorName || anchorPlayer.name
+                        };
+                        console.log('[SignCard] Handicap adjustment computed from raw data');
+                    }
+                }
+            } catch (e) {
+                console.warn('[SignCard] Handicap calculation failed:', e.message);
+            }
+        }
+        
+        if (!adjustedHandicaps && typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.getData) {
             var hcpData = HandicapAdjustment.getData();
             if (hcpData) {
-                data.adjustedHandicaps = hcpData;
-                console.log("[SIGN-CARD] Handicap adjustment data included");
-            } else {
-                console.warn("[SIGN-CARD] No handicap data available from HandicapAdjustment");
+                adjustedHandicaps = hcpData;
+                console.log("[SIGN-CARD] Handicap adjustment data included (from session)");
             }
-        } else {
-            console.warn("[SIGN-CARD] HandicapAdjustment not available");
         }
+        data.adjustedHandicaps = adjustedHandicaps;
         
         // v1.29: Include celebration photo reference if available
         if (cache.celebration) {
