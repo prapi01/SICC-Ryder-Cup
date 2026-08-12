@@ -1,3 +1,12 @@
 .DS_Store
 Thumbs.db
 .firebaserc
+
+# Copilot project instructions (kept local — contains private local paths)
+.github/copilot-instructions.md
+AD-HOC.md
+
+# Local chat-history tooling (private absolute paths) + macOS resource-fork artifacts
+Rename & Clean Chats.command
+Icon*
+Icon
