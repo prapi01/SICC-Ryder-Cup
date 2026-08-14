@@ -6,12 +6,12 @@
 ## Current status (2026-08-12)
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
   v3.0.0 regression fixes, automated QA harness). Verified on production.
-- Root folder: `~/Developer/sicc-ryder-cup` (now lowercase to match the repo name).
+- Root folder: `~/Developer/W/sicc-ryder-cup` (now lowercase to match the repo name).
   ⚠️ macOS APFS is case-insensitive, but VS Code derives a NEW workspace hash per path casing —
   current identity hash `b0806d73…` (lowercase), older identity `b06a4bc2…` (uppercase casing).
   Both currently hold the restored chat history (indexed).
 - Chat-history backup/restore tooling lives at
-  `~/Developer/Extensions - VSCode/chat-backup-automator-vscext/backup/` (was `~/Developer/_chat-backups/`).
+  `~/Developer/V/chat-backup-automator-vscext/backup/` (was `~/Developer/_chat-backups/`).
   That folder's `HANDOVER.md` is the CANONICAL operating doc for backup/restore.
 
 ## Decisions

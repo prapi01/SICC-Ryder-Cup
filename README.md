@@ -17,6 +17,6 @@ Repo: https://github.com/prapi01/sicc-ryder-cup
   rejoin / cascade scenarios, production regression tools (`prod-regression`, `hcp-postgame-regression`).
 
 ## Chat history / backups
-- Tooling (canonical): `~/Developer/Extensions - VSCode/chat-backup-automator-vscext/backup/`
+- Tooling (canonical): `~/Developer/V/chat-backup-automator-vscext/backup/`
   (see its `HANDOVER.md` for the operating docs: restore template, `chat_index_lib`, web app).
 - To restore chat history for this project, follow `.github/copilot-instructions.md`.

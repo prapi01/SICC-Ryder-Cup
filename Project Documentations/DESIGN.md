@@ -6,7 +6,7 @@
 ## Stack
 - Firebase (Hosting, Firestore, Storage); plain HTML + JS per page (no framework).
 - Live site: https://sicc-ryder-cup.pages.dev (verified in v4.0.0 production QA).
-- Repo: https://github.com/prapi01/sicc-ryder-cup · Root folder: `~/Developer/sicc-ryder-cup`
+- Repo: https://github.com/prapi01/sicc-ryder-cup · Root folder: `~/Developer/W/sicc-ryder-cup`
 
 ## Core architecture
 - One page per screen (`index.html`, `real-game.html`, `view-history.html`, `post-game.html`,
