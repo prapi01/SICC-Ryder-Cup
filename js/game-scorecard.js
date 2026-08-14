@@ -1,6 +1,6 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.19
+VERSION: 1.20
 KEY CHANGES from v1.18:
    - FIXED: renderScorecard() now captures clinchedAt from the 17th parameter
    - REASON: view-history.html passes clinchedAt as the 17th parameter, but it was being ignored
@@ -687,7 +687,7 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.19
+VERSION: 1.20
 KEY CHANGES from v1.18:
    - FIXED: renderScorecard() now captures clinchedAt from the 17th parameter
    - REASON: view-history.html passes clinchedAt as the 17th parameter, but it was being ignored

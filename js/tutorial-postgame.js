@@ -1,6 +1,6 @@
 /*
 FILE: js/tutorial-postgame.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
    - NEW: Isolated Step 7, 8, 9 for post-game tutorial
    - Step 7: Sign card modal with gold sign button
@@ -306,7 +306,7 @@ window.TutorialPostGame = {
 
 /*
 FILE: js/tutorial-postgame.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
    - NEW: Isolated Step 7, 8, 9 for post-game tutorial
    - Step 7: Sign card modal with gold sign button

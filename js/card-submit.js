@@ -1,6 +1,6 @@
 /*
 FILE: js/card-submit.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES from v1.00:
    - FIXED: Removed dependency on global 'db' variable
    - Replaced all 'db' references with 'firebase.firestore()' calls
@@ -368,7 +368,7 @@ window.CardSubmit = CardSubmit;
 
 /*
 FILE: js/card-submit.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES from v1.00:
    - FIXED: Removed dependency on global 'db' variable
    - Replaced all 'db' references with 'firebase.firestore()' calls

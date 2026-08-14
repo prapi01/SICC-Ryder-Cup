@@ -1,6 +1,6 @@
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.24
+VERSION: 1.25
 KEY CHANGES from v1.23:
    - FIXED: loadValidateRecords() sort now uses gameInfo.date (actual game date) instead of root date
    - REASON: Records store the actual game date in gameInfo.date, not at root level
@@ -971,11 +971,11 @@ window.generateBackupId = generateBackupId;
 window.fetchFreshRecord = fetchFreshRecord;
 window.performValidation = performValidation;
 
-console.log('[UTIL-VALIDATE-APP] v1.24 loaded - Fixed sort to use gameInfo.date');
+console.log('[UTIL-VALIDATE-APP] v1.25 loaded - Fixed sort to use gameInfo.date');
 
 /*
 FILE: js/util-validate-app.js
-VERSION: 1.24
+VERSION: 1.25
 KEY CHANGES from v1.23:
    - FIXED: loadValidateRecords() sort now uses gameInfo.date (actual game date) instead of root date
    - REASON: Records store the actual game date in gameInfo.date, not at root level

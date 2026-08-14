@@ -1,6 +1,6 @@
 /*
 FILE: js/util-players.js
-VERSION: 1.07
+VERSION: 1.08
 KEY CHANGES from v1.06:
    - FIXED: executeRebuildUsedLabels() now MERGES usedLabels instead of REPLACING
    - CHANGED: Rebuild now reads existing usedLabels and merges (preserves existing, adds new)
@@ -11,8 +11,8 @@ STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_PLAYERS_VERSION = "1.07";
-console.log("[UTIL-PLAYERS] Initializing v1.07 - Merge usedLabels (not replace)");
+window.UTIL_PLAYERS_VERSION = "1.08";
+console.log("[UTIL-PLAYERS] Initializing v1.08 - Merge usedLabels (not replace)");
 
 // ============================================================
 // STATE
@@ -1675,13 +1675,13 @@ window.resetPlayerEdit = resetPlayerEdit;
 window.validatePlayerForm = validatePlayerForm;
 window.buildUpdateObject = buildUpdateObject;
 
-window.UTIL_PLAYERS_VERSION = "1.07";
+window.UTIL_PLAYERS_VERSION = "1.08";
 
-console.log("[UTIL-PLAYERS] v1.07 loaded - Merge usedLabels (not replace)");
+console.log("[UTIL-PLAYERS] v1.08 loaded - Merge usedLabels (not replace)");
 
 /*
 FILE: js/util-players.js
-VERSION: 1.07
+VERSION: 1.08
 KEY CHANGES from v1.06:
    - FIXED: executeRebuildUsedLabels() now MERGES usedLabels instead of REPLACING
    - CHANGED: Rebuild now reads existing usedLabels and merges (preserves existing, adds new)

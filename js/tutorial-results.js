@@ -1,6 +1,6 @@
 /*
 FILE: js/tutorial-results.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
    - NEW: Isolated Step 5, 6 for results tutorial
    - Step 5: Match game with colored bubbles (unchanged from v1.22)
@@ -289,7 +289,7 @@ window.TutorialResults = {
 
 /*
 FILE: js/tutorial-results.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
    - NEW: Isolated Step 5, 6 for results tutorial
    - Step 5: Match game with colored bubbles (unchanged from v1.22)

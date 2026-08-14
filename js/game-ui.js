@@ -1,6 +1,6 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.10
+VERSION: 5.11
 KEY CHANGES from v5.09:
    - CHANGED: renderBottomMenu() now uses standard back-link design instead of styled button
    - REASON: Consistent with app-wide standard (grey text with green divider line)
@@ -13,7 +13,7 @@ STATUS: Ready for integration
 
 var GameUI = (function() {
     
-    console.log("[GAME-UI] Initializing v5.10 - Standard back-link in renderBottomMenu");
+    console.log("[GAME-UI] Initializing v5.11 - Standard back-link in renderBottomMenu");
     
     // ============================================================
     // Constants
@@ -1401,7 +1401,7 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.10
+VERSION: 5.11
 KEY CHANGES from v5.09:
    - CHANGED: renderBottomMenu() now uses standard back-link design instead of styled button
    - REASON: Consistent with app-wide standard (grey text with green divider line)

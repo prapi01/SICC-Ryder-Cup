@@ -1,6 +1,6 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES from v3.10:
    - CHANGED: updateWithHandicap() now uses WRV.write() with merge: true instead of WRV.update()
    - REASON: WRV.update() fails on documents not in WRV's local cache
@@ -610,7 +610,7 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES from v3.10:
    - CHANGED: updateWithHandicap() now uses WRV.write() with merge: true instead of WRV.update()
    - REASON: WRV.update() fails on documents not in WRV's local cache

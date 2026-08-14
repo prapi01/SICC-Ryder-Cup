@@ -1,6 +1,6 @@
 # sicc-ryder-cup — Main Design (DESIGN.md)
 
-**Status:** Active (Firebase web app) · **Latest release:** Version 4.0.0 (2026-08-10) · **Updated:** 2026-08-12
+**Status:** Active (Firebase web app) · **Latest release:** Version 4.0.0 (2026-08-10) · **Updated:** 2026-08-14
 **Full design:** `Design Documents/SICC Ryder Cup Complete Design Documentation.md`.
 
 ## Stack
@@ -30,6 +30,12 @@
   `saveGameToHistory` after both flights sign); celebration photo restored and the default photo
   loads on all devices at game start (scorers + viewer).
 - **2026-08-10 — Storage rules fix** shipped with the Team One rename.
+- **2026-08-14 — Version / cache-busting alignment (system integrity):** `js/versions.json`
+  is the single source of truth for the `load-game.js` universal loader (used by `real-game.html`).
+  Aligned it with every JS file's header/footer `VERSION:` and every HTML `<script …?v=>` cache-busting
+  token (previously inconsistent — some pages had stale `?v=` that could serve old cached JS, and 7 pages
+  had no cache-busting at all). `index.html` on-screen version bumped 3.67 → 4.00 to match the 4.0.0
+  release. Display/comment-only — **no logic changed**.
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs

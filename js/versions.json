@@ -5,7 +5,7 @@
   },
   "auth-pin.js": "2.08",
   "card-submit.js": "1.02",
-  "celebration-photo.js": "1.20",
+  "celebration-photo.js": "1.21",
   "display-cache.js": "1.00",
   "encoding.js": "1.01",
   "firebase-config.js": "1.02",
@@ -26,7 +26,7 @@
   "real-game-cascade.js": "1.02",
   "real-game-init.js": "1.16",
   "real-game-main.js": "1.00",
-  "real-game-nav.js": "1.17",
+  "real-game-nav.js": "1.18",
   "real-game-save.js": "1.42",
   "real-game-state.js": "1.02",
   "real-game-ui.js": "1.08",
@@ -50,5 +50,5 @@
   "util-validate-record.js": "1.34",
   "util-validate-ui.js": "1.24",
   "waiting-screen.js": "1.00",
-  "wrv.js": "1.12"
+  "wrv.js": "1.14"
 }

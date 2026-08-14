@@ -1,6 +1,6 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.33
+VERSION: 1.34
 KEY CHANGES from v1.32:
    - REMOVED: Player Totals comparison from validateAllFields() (section 9)
    - REMOVED: Player Totals fix from buildFixPayload() (section 8)
@@ -2117,7 +2117,7 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.33
+VERSION: 1.34
 KEY CHANGES from v1.32:
    - REMOVED: Player Totals comparison from validateAllFields() (section 9)
    - REMOVED: Player Totals fix from buildFixPayload() (section 8)

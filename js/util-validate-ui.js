@@ -1,6 +1,6 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.23
+VERSION: 1.24
 KEY CHANGES from v1.22:
    - FIXED: Total mismatches count now shows green (#4caf50) when 0, red (#ff6b6b) when > 0
    - REASON: "0 mismatches" was showing in red, which is confusing and incorrect
@@ -1931,11 +1931,11 @@ window.getStagedPhoto = UtilValidateUI.getStagedPhoto;
 
 window.renderValidateResults = UtilValidateUI.renderValidateResults;
 
-console.log('[UTIL-VALIDATE-UI] v1.23 - Fixed total mismatches color');
+console.log('[UTIL-VALIDATE-UI] v1.24 - Fixed total mismatches color');
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.23
+VERSION: 1.24
 KEY CHANGES from v1.22:
    - FIXED: Total mismatches count now shows green (#4caf50) when 0, red (#ff6b6b) when > 0
    - REASON: "0 mismatches" was showing in red, which is confusing and incorrect

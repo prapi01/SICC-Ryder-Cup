@@ -1,6 +1,6 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.40
+VERSION: 1.41
 KEY CHANGES from v1.39:
    - FIXED: clinchedAt keys now normalized to use labels before saving to history
    - REASON: Inconsistent clinchedAt keys (some use full names, some use labels)
@@ -15,7 +15,7 @@ STATUS: Ready for integration
 // Version Exposure for Console Debugging
 // ============================================================
 window.SIGN_CARD_VERSION = "1.41";
-console.log("[SIGN-CARD] Initializing v1.40 - Normalized clinchedAt labels");
+console.log("[SIGN-CARD] Initializing v1.41 - Normalized clinchedAt labels");
 
 // ============================================================
 // v1.40: Helper: Normalize clinchedAt keys to use labels
@@ -587,11 +587,11 @@ window.saveGameToHistory = SignCard.saveGameToHistory;
 window.showCelebrationScreen = SignCard.showCelebrationScreen;
 window.normalizeClinchedAt = SignCard.normalizeClinchedAt;
 
-console.log("[SIGN-CARD] v1.40 loaded - Normalized clinchedAt labels");
+console.log("[SIGN-CARD] v1.41 loaded - Normalized clinchedAt labels");
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.40
+VERSION: 1.41
 KEY CHANGES from v1.39:
    - FIXED: clinchedAt keys now normalized to use labels before saving to history
    - REASON: Inconsistent clinchedAt keys (some use full names, some use labels)

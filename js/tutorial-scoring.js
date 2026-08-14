@@ -1,6 +1,6 @@
 /*
 FILE: js/tutorial-scoring.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
    - NEW: Isolated Step 2, 3, 4 for scoring tutorial
    - Step 3: Updated control bar with flight toggle button [P] [F2] [SAVE H7] [◀] [7] [▶]
@@ -448,7 +448,7 @@ window.TutorialScoring = {
 
 /*
 FILE: js/tutorial-scoring.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
    - NEW: Isolated Step 2, 3, 4 for scoring tutorial
    - Step 3: Updated control bar with flight toggle button [P] [F2] [SAVE H7] [◀] [7] [▶]

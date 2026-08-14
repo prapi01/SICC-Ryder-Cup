@@ -1,11 +1,9 @@
 <!--
 FILE: index.html
-VERSION: 3.67
-KEY CHANGES from v3.66:
-   - FIXED: NEXT GAME button now navigates to pre-game.html?mode=preview (view-only)
-   - CHANGED: handleNextGame() function now uses proper navigation instead of alert
-   - This allows users to view upcoming game setup before game day
-   - PRESERVED: All styling, functionality, and UI from v3.66
+VERSION: 4.00
+KEY CHANGES from v3.67:
+   - VERSION: on-screen version bumped 3.67 -> 4.00 to match the 4.0.0 release (display/comment only, no logic change)
+   - PRESERVED: All styling, functionality, and UI from v3.67 unchanged (incl. v3.66 NEXT GAME preview)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -36,11 +34,11 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js"></script>
-    <script src="js/session.js"></script>
-    <script src="js/settings.js"></script>
-    <script src="js/firebase-retry.js"></script>
-    <script src="js/modal.js"></script>
+    <script src="js/firebase-config.js?v=1.02"></script>
+    <script src="js/session.js?v=1.02"></script>
+    <script src="js/settings.js?v=1.00"></script>
+    <script src="js/firebase-retry.js?v=1.01"></script>
+    <script src="js/modal.js?v=1.03"></script>
     <script src="js/index-hidden.js?v=1.08"></script>
     
     <style>
@@ -585,14 +583,14 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.67</div>
+<div class="version-tag">v4.00</div>
 
 <script>
-// FILE: index.html v3.67
-// VERSION: 3.67
+// FILE: index.html v4.00
+// VERSION: 4.00
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.67";
+window.INDEX_VERSION = "4.00";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -603,8 +601,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.67";
-var CACHE_KEY = "index_version_v367";
+var APP_VERSION = "4.00";
+var CACHE_KEY = "index_version_v400";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -1417,7 +1415,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.67
+// Initialization - v4.00
 // ============================================================
 
 function initApp() {
@@ -1505,7 +1503,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.67
+// Start the app - v4.00
 // ============================================================
 
 if (isFirstLoad) {
@@ -1540,8 +1538,8 @@ if (isFirstLoad) {
 </html>
 
 <!--
-FILE: index.html v3.67
-VERSION: 3.67
+FILE: index.html v4.00
+VERSION: 4.00
 KEY CHANGES from v3.66:
    - FIXED: NEXT GAME button now navigates to pre-game.html?mode=preview (view-only)
    - CHANGED: handleNextGame() function now uses proper navigation instead of alert

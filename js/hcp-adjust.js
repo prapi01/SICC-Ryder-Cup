@@ -1,6 +1,6 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.65
+VERSION: 2.66
 KEY CHANGES from v2.64:
    - FIXED: showAdjustmentTable() now conditionally renders Raw column when needsZeroRise is true
    - REASON: Previously showAdjustmentTable() always used 5-column layout (no Raw column)
@@ -1292,7 +1292,7 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.65
+VERSION: 2.66
 KEY CHANGES from v2.64:
    - FIXED: showAdjustmentTable() now conditionally renders Raw column when needsZeroRise is true
    - REASON: Previously showAdjustmentTable() always used 5-column layout (no Raw column)
