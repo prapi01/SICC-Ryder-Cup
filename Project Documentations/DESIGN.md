@@ -1,6 +1,6 @@
 # sicc-ryder-cup — Main Design (DESIGN.md)
 
-**Status:** Active (Firebase web app) · **Latest release:** Version 4.0.0 (2026-08-10) · **Updated:** 2026-08-14
+**Status:** Active (Firebase web app) · **Latest release:** Version 4.0.0 (2026-08-10) · **Updated:** 2026-10-29
 **Full design:** `Design Documents/SICC Ryder Cup Complete Design Documentation.md`.
 
 ## Stack

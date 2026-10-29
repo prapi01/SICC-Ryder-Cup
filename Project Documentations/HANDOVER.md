@@ -3,9 +3,14 @@
 > Running project log. Updated after every milestone: new decisions, design changes,
 > new technical findings. Read at the start of every session. Updated 2026-08-14.
 
-## Current status (2026-08-12)
+## Current status (2026-10-29)
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
   v3.0.0 regression fixes, automated QA harness). Verified on production.
+- **2026-10-29 — Pre-match full-app test (Saturday game 2026-10-31): end-to-end match-day flow
+  verified GREEN on PROD (v4.00; deployed == `main`, 0 file diffs).** The real Saturday game
+  `GM_260914_1342_52` (SICC Millennium-Peirce, 8 players) was snapshotted first and confirmed
+  **byte-identical afterwards (untouched)**. See "Technical findings" for the 2 issues found
+  (both in the test harness, not the app).
 - Root folder: `~/Developer/W/sicc-ryder-cup` (2026-08-14 category reorg — `~/Developer` is now
   B/M/O/P/S/V/W/_SYS).
   ⚠️ VS Code derives a NEW workspace hash per path. Current identity: `0a844743…` (W/sicc-ryder-cup).
@@ -39,6 +44,29 @@
   no logic change. Also reset local + `origin/staging` to `main` (removed garbage commits).
 
 ## Technical findings
+- 2026-10-29 — **Pre-match test run (all suites on PROD, deployed == `main`, 0 file diffs):**
+  Suite A 1/1, Suite B 1/1 (4-device realtime, both directions, TR=19, 16 matches),
+  `prod-regression` 12/12, `hcp-postgame-regression` 9/9, rejoin R2/R5/R7 PASS, UI-surfaces
+  14/14 (new tool `automated-tests/tools/verify-ui-surfaces.js`). Verified flow: score all 18 →
+  sign both → GAME COMPLETED → auto history `_H` (finalResults 14:5 + adjustedHandicaps) →
+  celebration photo (live + cold viewer) → viewer/history read-only scorecard → handicap table →
+  post-game. Admin: hub, manage-games (list + PIN-guarded delete), setup-game, courses,
+  player-management, auth PIN (wrong-PIN reject + 5-attempt lockout).
+- 2026-10-29 — **Harness bug FIXED:** `automated-tests/helpers/game.js deleteTestGame()` was
+  hardcoded to `scheduledGames`, so every full-flow tool's `_H` cleanup was a **silent no-op**
+  (error swallowed by the caller's `.catch()`). It orphaned 2 test records in PROD `historyGames`
+  (`GM_261029_1103_84_H`, `GM_261029_1104_53_H`) — both now deleted. `deleteTestGame()` now also
+  deletes `historyGames/<gameId>_H` (validated: both collections cleaned).
+- 2026-10-29 — Rejoin scenario **R1 FAIL was a harness close-race, not an app bug**: the test
+  closed the F1 page immediately after the last save, aborting in-flight Firestore writes (so
+  only part of F1's own holes reached Firestore). With persistence verified before close, F1
+  fully re-synced own H1-5 + F2 H1-10. R2/R5/R7 rejoin cases passed.
+- 2026-10-29 — App nuance (documented, low real-world risk): Firestore runs **online-only**
+  (no `enablePersistence`), so a scorer tab closed *immediately* after a save can lose a write
+  that has not yet been ACKed. WRV retries *failures*, but cannot flush writes on tab close.
+  Scorers keep the page open, so normal play is unaffected.
+- 2026-10-29 — `view-history.html` **ignores `?gameId=`** (it opens the record LIST); a record is
+  opened via its `.btn-scorecard` button. (Corrected an earlier assumption.)
 - 2026-08-10 — VS Code's history list (`/sessions`) is driven ONLY by `chat.ChatSessionStore.index`
   in `state.vscdb`; VS Code never scans `chatSessions/`. Restoring `.jsonl` requires rebuilding the
   index (`chat_index_lib.sync_index`). Single source of truth lives in `backup/`
@@ -64,11 +92,17 @@
   and force-pushed.
 
 ## Open questions
+- (2026-10-29) Track: real-time **tab-close data loss** risk on scorers (online-only Firestore).
+  Mitigation options: enable offline persistence, or a small "saving… keep page open" guard on
+  the scorer. Not blocking Saturday; needs a decision before any change.
 - Re-run rename+clean for the `W/sicc-ryder-cup` identity to make chat-title date prefixes consistent?
 - Confirm each of the 13 per-project `AD-HOC.md` "Rename & Clean chat sessions" tasks completes as
   each project is opened (the next chat session in that folder drives it, then empties the file).
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
+- Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
+  verified green 2026-10-29 on v4.00.
+- Decide whether to mitigate the scorer tab-close write risk (see Open questions).
 - Open each project once so its `AD-HOC.md` rename+clean task runs (then it self-empties).
 - See `backup/HANDOVER.md` for chat backup/restore operating instructions.

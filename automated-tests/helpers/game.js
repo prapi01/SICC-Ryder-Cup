@@ -170,8 +170,21 @@ async function fetchGame(gameId) {
   return getDocument(COLLECTION, gameId);
 }
 
+/**
+ * Delete a test game AND its auto-created history record (if any).
+ *
+ * The completion flow writes the archive to `historyGames` with id `<gameId>_H`.
+ * This helper previously deleted only the `scheduledGames` doc, so every
+ * full-flow tool's `_H` cleanup silently no-op'd (the error was swallowed by the
+ * caller's `.catch()`), leaving orphaned records in PROD. Both collections are
+ * now cleaned; a missing `_H` is harmless (DELETE returns 200/404).
+ */
 async function deleteTestGame(gameId) {
-  if (gameId) await deleteDocument(COLLECTION, gameId);
+  if (!gameId) return;
+  await deleteDocument(COLLECTION, gameId);
+  await deleteDocument('historyGames', gameId + '_H').catch((e) => {
+    console.warn(`[game] history cleanup skipped for ${gameId}_H: ${e.message}`);
+  });
 }
 
 module.exports = {

@@ -35,7 +35,9 @@ Set via env vars (see `.env.example`):
   `setup-game.html` writes, tagged `testGame: true` + `testRunId`.
 - Suite B opens **4 isolated browser contexts** (each = its own device identity / localStorage):
   F1, F2, V1, V2. All go through `pre-game.html` and TEE OFF with their role.
-- The game is **always deleted** in `afterAll`, even on failure.
+- The game is **always deleted** in `afterAll`, even on failure. `deleteTestGame()` deletes both
+  the `scheduledGames` doc **and** its `historyGames/<gameId>_H` archive (a full-flow game auto-writes
+  the `_H` record; the helper used to delete only `scheduledGames`, silently orphaning `_H`).
 
 ## Design notes
 
@@ -71,4 +73,5 @@ automated-tests/
     simulate-allocation.js     # dry-run of the v1.02 allocation algorithm vs live data
     verify-unseeded-device.js  # fresh (unseeded) device → pre-game renders quickly (regression)
     debug-fresh-device.js      # capture console/state for a fresh device on pre-game
+    verify-ui-surfaces.js      # read-only admin + viewer/history UI checks (U1-U10 + safety S1-S4)
 ```
