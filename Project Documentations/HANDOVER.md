@@ -1,7 +1,7 @@
 # sicc-ryder-cup — HANDOVER Log
 
 > Running project log. Updated after every milestone: new decisions, design changes,
-> new technical findings. Read at the start of every session. Updated 2026-08-14.
+> new technical findings. Read at the start of every session. Updated 2026-10-29.
 
 ## Current status (2026-10-29)
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
@@ -26,6 +26,11 @@
 - 2026-08-10 — Chat-backup "one folder" model: chat-backup-automator-vscext extension = front-end,
   `backup/` subfolder = backend + data.
 - 2026-08-12 — `.github/copilot-instructions.md` + `AD-HOC.md` added to `.gitignore` (private paths).
+- 2026-10-29 — Pre-match verification is **test-only**: no app code changed. Commit `1106d07` fixes
+  the test harness (`deleteTestGame` now also cleans `historyGames/_H`) and adds
+  `automated-tests/tools/verify-ui-surfaces.js`; docs updated.
+- 2026-10-29 — **Leave the scorer tab-close write risk as-is for now** (user decision). Recorded as
+  an open question to decide later; not blocking the 2026-10-31 game.
 
 ## Design changes
 - 2026-08-10 — v4.0.0: sign-card `submitSignature` restored, celebration photo restored + default

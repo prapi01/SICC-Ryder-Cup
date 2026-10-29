@@ -36,6 +36,13 @@
   token (previously inconsistent — some pages had stale `?v=` that could serve old cached JS, and 7 pages
   had no cache-busting at all). `index.html` on-screen version bumped 3.67 → 4.00 to match the 4.0.0
   release. Display/comment-only — **no logic changed**.
+- **2026-10-29 — Match-day flow verification + test tooling:** the full production suite was run
+  green before the 2026-10-31 game (see HANDOVER "Technical findings"). New read-only tool
+  `automated-tests/tools/verify-ui-surfaces.js` covers the admin + viewer/history surfaces.
+  `deleteTestGame()` now removes both the `scheduledGames` doc and the `historyGames/<gameId>_H`
+  archive. Recorded nuance: Firestore runs **online-only** (no offline persistence), so a scorer
+  tab closed mid-save can lose a not-yet-ACKed write (open question in HANDOVER). **No app logic
+  changed.**
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs

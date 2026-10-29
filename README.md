@@ -14,7 +14,10 @@ Repo: https://github.com/prapi01/sicc-ryder-cup
 
 ## Tests
 - `automated-tests/` — Playwright QA harness: Step Runner (5-window live), real-data / shotgun /
-  rejoin / cascade scenarios, production regression tools (`prod-regression`, `hcp-postgame-regression`).
+  rejoin / cascade scenarios, production regression tools (`prod-regression`, `hcp-postgame-regression`),
+  and read-only UI-surface checks (`verify-ui-surfaces`). All full-flow tools auto-clean their
+  `scheduledGames` game **and** its `historyGames/_H` record.
+- Last full run: **2026-10-29 green on PROD v4.00** (match-day flow verified for the 2026-10-31 game).
 
 ## Chat history / backups
 - Tooling (canonical): `~/Developer/V/chat-backup-automator-vscext/backup/`
