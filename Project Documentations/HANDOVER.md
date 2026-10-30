@@ -6,14 +6,16 @@
 ## Current status (2026-10-30)
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
   v3.0.0 regression fixes, automated QA harness). Verified on production.
-- **2026-10-30 — iPhone celebration-photo upload pipeline: ROOT CAUSE FOUND (not yet fixed).**
-  The iPhone Shortcut "Upload to Github" stopped uploading. Cause: its `Receive Images` action has
-  **Select Multiple** on, so the "Save File → a-Shell, Subpath `C.jpg`" action saves the image
-  **into a folder named `C.jpg`** instead of writing a file named `C.jpg`; the sync script's
-  `[ -f ~/Documents/C.jpg ]` test is then false and it exits at `ERROR: C.jpg missing` before
-  `add`/`commit`/`push`. **Fix: turn OFF *Select Multiple* in the `Receive Images` action**
-  (approved: shortcut-side only; script logic unchanged), delete the stale `C.jpg` folder, and turn
+- **2026-10-30 — iPhone celebration-photo upload pipeline: ROOT CAUSE FOUND + worked around.**
+  The iPhone Shortcut "Upload to Github" stopped uploading. Cause: the image is saved **inside a
+  folder named `C.jpg`** (the Save action's `Subpath: C.jpg` acts as a folder, and the saved files
+  keep their original `IMG_xxxx` names), so the sync script's `[ -f ~/Documents/C.jpg ]`
+  test is false and it exits at `ERROR: …` before `add`/`commit`/`push`.
+  **Fix (shortcut-side; script logic unchanged):** delete the stale `C.jpg` folder, add a
+  **Rename File → `C.jpg`** action after "Convert Image", clear the Save action's Subpath, and turn
   off *Keep going after an error* so failures are no longer masked. Details in "Technical findings".
+  **Workaround applied 2026-10-30:** `IMG_4343.jpeg` was copied verbatim into
+  `images/celebration/C.jpg` and pushed (`f15e2ee`); verified live on the site.
 - **2026-10-29 — Pre-match full-app test (Saturday game 2026-10-31): end-to-end match-day flow
   verified GREEN on PROD (v4.00; deployed == `main`, 0 file diffs).** The real Saturday game
   `GM_260914_1342_52` (SICC Millennium-Peirce, 8 players) was snapshotted first and confirmed
@@ -73,10 +75,20 @@
   original `IMG_xxxx` name, never `C.jpg`; (4) **confirmed again on the 21:26 attempt** —
   `IMG_4343.jpeg` inside the folder was re-written at 21:26, so the save keeps landing *in* the
   folder even for a single shared image (the action itself, not the batch size, creates the folder).
-  **Fix (approved): shortcut-side only** — turn OFF *Select Multiple* in the `Receive Images` action,
-  delete the stale `C.jpg` folder so the next run writes a real file, and turn OFF *Keep going after
-  an error* on the a-Shell "Execute Command" action so a failure is no longer masked by a trailing
+  Decisive detail: the saved files keep their **original `IMG_xxxx` names** (`IMG_4343.jpeg`,
+  `IMG_4359.jpeg`, …) and never become `C.jpg`, so the Save action's `Subpath: C.jpg` is treated as a
+  **folder to save into**, not a filename to save as.
+  **Fix (approved): shortcut-side only** — delete the stale `C.jpg` folder first, then add a
+  **Rename File** action (to `C.jpg`) after "Convert Image" and set the Save action's Subpath to
+  empty, so a real file named `C.jpg` is written; and turn OFF *Keep going after an error* on the
+  a-Shell "Execute Command" action so a failure is no longer masked by a trailing
   `--- Sync Complete! ---`. Script logic is unchanged and correct for a single file.
+- 2026-10-30 — **Manual upload used as a workaround: celebration photo updated.**
+  The user's chosen image `IMG_4343.jpeg` (iPhone 14 Pro, 1920×1080, taken 2026-10-29) was copied
+  verbatim from the a-Shell Documents folder to `images/celebration/C.jpg` and pushed (`f15e2ee`).
+  **Verified live:** `https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg` now returns
+  sha256 `d927a485…` (506,871 bytes), matching the repo file (first poll still served the old
+  `b45ed281…`; it switched on the second poll).
 - 2026-10-30 — **The iPhone's script vs the Mac mirror.** The phone copy of
   `sync_celebration.sh` (v1.2, obtained from the user) is **byte-identical to the Mac mirror**
   `~/Documents/a-shell/sync_celebration.sh` (md5 `b12b6bb0…`), but **differs from the repo copy**
@@ -162,10 +174,10 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Fix the iPhone shortcut (user-side, 2026-10-30):** in "Upload to Github", open the
-  `Receive Images` action and turn **OFF *Select Multiple***; then delete the stale
-  `Documents/C.jpg/` folder in a-Shell **before** the next run so the save writes a real file (a
-  Save action will not replace a folder of the same name); optionally turn off *Keep going after an
+- **Fix the iPhone shortcut (user-side, 2026-10-30):** in "Upload to Github" — (1) delete the stale
+  `Documents/C.jpg/` folder in a-Shell (Files app → On My iPhone → a-Shell) **before** the next run;
+  (2) add a **Rename File** action (to `C.jpg`) after "Convert Image" and clear the Save action's
+  `Subpath`, so a real file named `C.jpg` is written; (3) optionally turn off *Keep going after an
   error* on the a-Shell "Execute Command" action so failures are visible. Then verify: share one
   photo → expect a new `Update celebration photo` commit and the site
   `images/celebration/C.jpg` updating.
