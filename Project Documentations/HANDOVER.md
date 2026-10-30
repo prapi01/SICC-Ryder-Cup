@@ -332,17 +332,21 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Confirm the guarded uploader on the iPhone (2026-10-31).** The missing-no-input guard is **fixed and
-  verified** (run with a photo → HTTP 201, commit `edf0bcfc`), and the corrected file sha256
-  **`06d35668…`** is delivered to iCloud `…/CloudDocs/Upload/UploadPhoto.shortcut` (copy in `~/Downloads/`).
-  The installed `pk=129 UploadPhoto` on this Mac **has already been patched** with the guard.
-  **On the iPhone — one of two routes:**
-  1. Let iCloud sync the patched shortcut down (fastest, but watch for the sync conflict noted above), or
-  2. Import the delivered file fresh: Files → iCloud Drive → Upload → `UploadPhoto.shortcut` → tap → Add
-     Shortcut, then delete any older `UploadPhoto`/`CelebrationPhotoUpload` entry.
+- **Confirm the uploader on the iPhone (2026-10-31).** Fixes in place and each verified by running:
+  missing `Bearer ` prefix, missing no-input guard, and the **quarantine/hidden state that stopped it
+  appearing in the share sheet**. The installed `pk=129 UploadPhoto` has been patched and is
+  **un-quarantined, visible, guarded, and has `Show Result`** so the next run reports its outcome.
+  Latest delivered file sha256 **`97b600d0…`** (iCloud `.../CloudDocs/Upload/UploadPhoto.shortcut`, copy in
+  `~/Downloads/`).
+  **On the iPhone — prefer route 1:**
+  1. **Let iCloud sync the fixed shortcut down** (fastest, no import). Watch briefly for the sync-conflict
+     behaviour noted above; the correct copy must show a token starting `github_pat_` at step 1.
+  2. Only if needed, import the file. ⚠️ Importing through the **Files** app is what **quarantined and
+     hid** the shortcut last time and stopped it appearing in the share sheet — so after any import,
+     **verify it is actually offered in the share sheet** before relying on it.
   Then Photos → Share → **UploadPhoto** on a real photo and confirm a new commit on `main`.
-  **Sanity check first:** step 1 of the shortcut must show a token starting `github_pat_` (not the word
-  `PASTE_YOUR_GITHUB_TOKEN_HERE`) — if it shows the placeholder, it is the stale copy and will 401.
+  **The run now shows a result** (commit JSON on success, exact error text on failure) — report what it
+  says if anything goes wrong.
 - **Never tap/run the uploader without a photo** as a "test". Until you confirm the guard is present on
   the phone, a no-image run **wipes `C.jpg` to 0 bytes**.
   **⚠️ CORRECT recovery recipe — you MUST use the blobs API, not the Contents API:**
