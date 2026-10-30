@@ -138,12 +138,19 @@
   **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
-- 2026-10-30 — **The delivered uploader is end-to-end proven.** Final artifact
-  `UploadPhoto.shortcut` (iCloud `…/CloudDocs/Upload/`, copy in `~/Downloads/`): 8 actions,
-  `Authorization` = literal **`"Bearer \ufffc"`** with token attached at **`{7, 1}`**, and the token
-  **baked in** so there is no paste step. Verified by importing that exact file and running it with a
-  real photo → **HTTP 201, 673,944 bytes, commit `ba40c369`**. Also verified the **token survives
-  import** (imported copy held the real `github_pat_…` value, not the placeholder).
+- 2026-10-30 — **The delivered uploader is end-to-end proven.** Artifact `UploadPhoto.shortcut`
+  (iCloud `…/CloudDocs/Upload/`, copy in `~/Downloads/`, sha256 `3b9fd763…`): **8 actions**,
+  `Authorization` = literal **`"Bearer \ufffc"`** with the token attached at **`{7, 1}`**, and the token
+  **baked in** so there is **no paste step**. Verified by importing that exact graph and **running** it
+  with a real photo → **HTTP 201, 673,944 bytes, commit `ba40c369`**. Also verified the **token survives
+  import** (the imported copy held the real `github_pat_…` value, not the placeholder).
+  Deliberately ships **without** a `showresult` action — this is byte-for-byte the graph that was run and
+  proven, not an unverified variant (a `showresult` version was built but could not be import-tested).
+- 2026-10-30 — **The Mac's Shortcuts GUI import stopped accepting files mid-session.** After many
+  imports, `open -a Shortcuts <file>.shortcut` silently did nothing (no new `ZSHORTCUT` row) and the app
+  relaunched with **0 windows** (`System Events` confirmed `count of windows = 0`), so Apple Events were
+  dropped; `open -b com.apple.shortcuts` behaved the same. Combined with the sync conflict above, the
+  reliable route is a **user-initiated import on the device**, not automation from this Mac.
 - 2026-10-30 — **`?branch=` is silently ignored by the GitHub Contents API.** A PUT carrying
   `?branch=test/branchcheck` landed on **`main`** instead. The branch must be sent as a `branch` key in
   the **JSON body**. This is what put 8 API test artifacts on `main` (removed in commit `a28bf39`; the
