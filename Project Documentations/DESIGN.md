@@ -44,14 +44,18 @@
   tab closed mid-save can lose a not-yet-ACKed write (open question in HANDOVER). **No app logic
   changed.**
 - **2026-10-30 — Celebration-photo upload pipeline (iPhone Shortcut + a-Shell): root cause found.**
-  The shortcut's `Receive Images` action accepted **multiple** images; the "Save File → a-Shell,
-  Subpath `C.jpg`" action then wrote them **into a folder named `C.jpg`** instead of a single file, so
-  the sync script's `[ -f ~/Documents/C.jpg ]` test failed, the script aborted before
-  `add`/`commit`/`push`, and nothing reached GitHub (last celebration commit `777fdc9`, 2026-08-09).
-  **Rule: share ONE image per run.** Fix is shortcut-side only — script logic unchanged.
+  The shortcut's `Receive Images` action has **Select Multiple** on; the "Save File → a-Shell,
+  Subpath `C.jpg`" action then saves the image **into a folder named `C.jpg`** instead of writing a
+  file of that name, so the sync script's `[ -f ~/Documents/C.jpg ]` test fails, the script aborts
+  before `add`/`commit`/`push`, and nothing reaches GitHub (last celebration commit `777fdc9`,
+  2026-08-09). Confirmed on the 21:26 attempt: `IMG_4343.jpeg` was re-written *inside* the folder.
+  **Rule: the `Receive Images` action must have Select Multiple OFF, and any stale `C.jpg` folder
+  must be deleted before a run.** Fix is shortcut-side only — script logic unchanged.
   Corrected facts: the shortcut saves into **a-Shell's `Documents`** folder (iCloud-synced; on the Mac
   it appears as `~/Documents/a-shell/`), not `~/Documents/SICC-Ryder-Cup/`; and the resize width is
-  **1920** (the "1280" in the full design doc §10.7.11 is stale).
+  **1920** (the "1280" in the full design doc §10.7.11 is stale). Note the repo copy
+  `iOS/sync_celebration.sh` is **not canonical** — it differs from the phone/Mac copy and lacks the
+  `C.jpg` move entirely.
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs

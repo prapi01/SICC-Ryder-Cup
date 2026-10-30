@@ -7,12 +7,13 @@
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
   v3.0.0 regression fixes, automated QA harness). Verified on production.
 - **2026-10-30 — iPhone celebration-photo upload pipeline: ROOT CAUSE FOUND (not yet fixed).**
-  The Mac Shortcut "Upload to Github" had stopped uploading. Cause: the shortcut's `Receive Images`
-  action has **Select Multiple** on, so sharing several images makes the "Save File → a-Shell,
-  Subpath `C.jpg`" action write them **into a folder named `C.jpg`**; the sync script's
-  `[ -f ~/Documents/C.jpg ]` test is then false and it exits with `ERROR: C.jpg missing` before
-  `add`/`commit`/`push`. **Fix: share ONE image per run** (approved: shortcut-side only; script
-  logic unchanged). Details in "Technical findings".
+  The iPhone Shortcut "Upload to Github" stopped uploading. Cause: its `Receive Images` action has
+  **Select Multiple** on, so the "Save File → a-Shell, Subpath `C.jpg`" action saves the image
+  **into a folder named `C.jpg`** instead of writing a file named `C.jpg`; the sync script's
+  `[ -f ~/Documents/C.jpg ]` test is then false and it exits at `ERROR: C.jpg missing` before
+  `add`/`commit`/`push`. **Fix: turn OFF *Select Multiple* in the `Receive Images` action**
+  (approved: shortcut-side only; script logic unchanged), delete the stale `C.jpg` folder, and turn
+  off *Keep going after an error* so failures are no longer masked. Details in "Technical findings".
 - **2026-10-29 — Pre-match full-app test (Saturday game 2026-10-31): end-to-end match-day flow
   verified GREEN on PROD (v4.00; deployed == `main`, 0 file diffs).** The real Saturday game
   `GM_260914_1342_52` (SICC Millennium-Peirce, 8 players) was snapshotted first and confirmed
@@ -60,21 +61,34 @@
   Symptom: iPhone shortcut "Upload to Github" runs and prints `ERROR: C.jpg missing`, then
   `--- Sync Complete! ---`; **no image uploaded** (repo `images/celebration/C.jpg` unchanged since
   `777fdc9`, 2026-08-09).
-  Cause: `C.jpg` on the device is a **directory**, not a file — the folder
-  `<a-Shell Documents>/C.jpg/` contains `IMG_4343/4344/4359/4360/4361/4362/4363.jpeg`
-  (each **1920 px wide**, 144 dpi, quarantine `0081…` = written by a file provider). Because the
-  shortcut's first action has **Select Multiple** on, sharing several photos gives the Save action
-  multiple items, so iOS creates a **folder named `C.jpg`** instead of overwriting one file.
-  The script's `[ -f ~/Documents/C.jpg ]` is therefore false → `exit 1` → nothing is staged,
-  committed, or pushed.
+  Cause: `C.jpg` in a-Shell's `Documents` is a **directory**, not a file — the folder
+  `Documents/C.jpg/` contains `IMG_4343/4344/4359/4360/4361/4362/4363.jpeg`
+  (each **1920 px wide**, 144 dpi, quarantine `0081…` = written by a file provider). The shortcut's
+  first action has **Select Multiple** on, so the "Save File, Subpath `C.jpg`" action saves the image
+  **into a folder named `C.jpg`** rather than writing a file of that name. The script's
+  `[ -f ~/Documents/C.jpg ]` is therefore false → `exit 1` → nothing is staged, committed, or pushed.
   Evidence chain: (1) the JPEGs are 1920 px wide = the shortcut's "Resize to 1920 × Auto Height"
   output; (2) the user's shared screenshots are 1179×2556, and 1179→1920 scaling gives **4162 px**
   height — exactly the height of the saved `IMG_4359..4363.jpeg`; (3) every saved file keeps its
-  original `IMG_xxxx` name, never `C.jpg`.
-  **Fix (approved): shortcut-side only — share ONE image per run** (with Select Multiple off the
-  Save action writes a single `C.jpg`, which the script already handles). Script logic is unchanged
-  and correct. Also: the exit is **masked** by "Keep going after an error" being ON, which is why the
-  run still ends with `--- Sync Complete! ---` despite the failure.
+  original `IMG_xxxx` name, never `C.jpg`; (4) **confirmed again on the 21:26 attempt** —
+  `IMG_4343.jpeg` inside the folder was re-written at 21:26, so the save keeps landing *in* the
+  folder even for a single shared image (the action itself, not the batch size, creates the folder).
+  **Fix (approved): shortcut-side only** — turn OFF *Select Multiple* in the `Receive Images` action,
+  delete the stale `C.jpg` folder so the next run writes a real file, and turn OFF *Keep going after
+  an error* on the a-Shell "Execute Command" action so a failure is no longer masked by a trailing
+  `--- Sync Complete! ---`. Script logic is unchanged and correct for a single file.
+- 2026-10-30 — **The iPhone's script vs the Mac mirror.** The phone copy of
+  `sync_celebration.sh` (v1.2, obtained from the user) is **byte-identical to the Mac mirror**
+  `~/Documents/a-shell/sync_celebration.sh` (md5 `b12b6bb0…`), but **differs from the repo copy**
+  `iOS/sync_celebration.sh` (md5 `1f9845af…`). The repo copy is a reduced variant: no `Version:`,
+  no `cd` guard, no git-identity block, **no `C.jpg` check**, and `lg2 pull` instead of
+  `fetch`+`merge`. It has `lg2 add`/`commit`/`push` but no `mv` of `~/Documents/C.jpg` into
+  `images/celebration/C.jpg`, so it could not upload the photo even if it ran.
+  ⚠️ The phone's output text `ERROR: C.jpg missing` is **not produced by either script copy**
+  (the shared v1.2 prints `ERROR: C.jpg not found in Documents folder!`; the repo copy has no check
+  at all) — so the script actually executing on the phone is a **third, newer revision not present
+  on the Mac**, or the script was edited on the phone since the Mac copy last synced.
+  The repo's `iOS/sync_celebration.sh` should therefore be treated as **not canonical**.
 - 2026-10-30 — **Two doc facts corrected** (both wrong before): the shortcut saves into
   **a-Shell's `Documents`** folder — iCloud-synced, and visible on the Mac at `~/Documents/a-shell/`
   (same inode) — **not** `~/Documents/SICC-Ryder-Cup/` as DESIGN §10.7.11 claimed; and the resize
@@ -145,11 +159,13 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Fix the iPhone shortcut (user-side, 2026-10-30):** in "Upload to Github", share **only ONE
-  image** per run (or turn off *Select Multiple* in the `Receive Images` action); optionally turn off
-  *Keep going after an error* on the a-Shell "Execute Command" action so a failure is visible instead
-  of being masked. Then delete the folder `<a-Shell Documents>/C.jpg/` so the next single share
-  writes a real file. Verify with a fresh share → repo commit "Update celebration photo".
+- **Fix the iPhone shortcut (user-side, 2026-10-30):** in "Upload to Github", open the
+  `Receive Images` action and turn **OFF *Select Multiple***; then delete the stale
+  `Documents/C.jpg/` folder in a-Shell **before** the next run so the save writes a real file (a
+  Save action will not replace a folder of the same name); optionally turn off *Keep going after an
+  error* on the a-Shell "Execute Command" action so failures are visible. Then verify: share one
+  photo → expect a new `Update celebration photo` commit and the site
+  `images/celebration/C.jpg` updating.
 - Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
   verified green 2026-10-29 on v4.00.
 - Decide whether to mitigate the scorer tab-close write risk (see Open questions).
