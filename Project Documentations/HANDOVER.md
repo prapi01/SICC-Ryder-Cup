@@ -164,6 +164,19 @@
   ⚠️ The `shortcuts` **CLI bypasses this guard** (`shortcuts run` with no `-i` still uploads and still
   produces a 0-byte file), so the CLI cannot validate the guard — only a real share-sheet run exercises
   it. Do not "test" the guard from the CLI against `main`.
+- 2026-10-31 — **Repeat uploads WORK; failures pre-date the PUT and were invisible (fixed by adding
+  `Show Result`).** Evidence at 07:16 SGT: three iPhone uploads succeeded back-to-back at 23:15:04,
+  23:15:22 and 23:16:02 SGT (979,419 / 635,029 / 1,480,820 bytes) — repeated runs do work and **no
+  0-byte write** occurred. `C.jpg` on `main` is **1,480,820 bytes** (`8597b4f5`, sha `f844b46b…`) and the
+  CDN `ETag` equals the blob sha, so the app's ETag/size change-detection (`checkPhotoChanged`) is sound.
+  The PAT is healthy (HTTP 200, 4,297+ calls remaining). **A failed run therefore produces NO commit** —
+  the stop happens *before* the PUT — and the shortcut displayed nothing, so the cause stayed invisible to
+  both the user and the AI across several rounds. **Action:** the installed shortcut now ends with a
+  **`Show Result`** action, so the next run displays the exact GitHub response (commit JSON on success,
+  precise error text on failure).
+  ⚠️ **Possibility, NOT confirmed:** the Contents API returns `cache-control: max-age=60`, so a re-run
+  within ~60 s can read a stale `sha` and get **409**. The three successes were 18–40 s apart, which
+  argues against this being the cause; recorded as a lead only.
 - 2026-10-31 — **Confirmed the shortcut authenticates and uploads from the iPhone.** Real uploads landed
   on `main` at 22:53–22:55 SGT on 2026-10-30: `6ee5c2a4` (0 B), `a6e3f2d9` (597,392 B), `67a5483f`
   (641,989 B), `b8ac561c` (635,029 B) — all "(unsigned)", message "Update celebration photo".
