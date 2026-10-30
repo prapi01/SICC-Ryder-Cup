@@ -122,14 +122,28 @@
   asynchronously, and several imports landed seconds late). Judging a shortcut broken from
   `ZACTIONCOUNT=0` produces false conclusions. Authoritative check:
   `SELECT ZDATA FROM ZSHORTCUTACTIONS WHERE ZSHORTCUT=<pk>` → `plistlib.loads()` → `len(list)`.
-- 2026-10-30 — **Importing a `.shortcut` via the iOS **Files** app quarantines it, and it will not run.**
-  The on-device import was stored with `ZQUARANTINE=1`, `ZSHOWINSEARCH=0`, `ZRUNEVENTSCOUNT=0`, and a
-  `ZSHORTCUTQUARANTINE` row whose source is `com.apple.DocumentsApp` (the Files app) — the **only**
-  quarantined shortcut in the whole library, while a pre-existing `ShortcutSourceFilePublic` shortcut
-  had `ZQUARANTINE=None` and had run 1×. A quarantined shortcut is silently inert when tapped: no error,
-  no upload. **Working delivery path: import the signed file *on the Mac* (no quarantine, `ZSHOWINSEARCH=1`)
-  and let Shortcuts iCloud sync carry it to the iPhone** — verified: `pk=121` imported on `Piti-M1-MBP`
-  with `ZQUARANTINE=None`.
+- 2026-10-30 — **⚠️ CORRECTION: `ZQUARANTINE=1` does NOT stop a shortcut from running.** An earlier note
+  here claimed a Files-app import is "silently inert". **That is wrong — disproved by direct test:**
+  a quarantined shortcut (`ZQUARANTINE=1`, `ZSHOWINSEARCH=0`) was run on this Mac and completed
+  normally (**HTTP 201**, file committed). Quarantine is a *provenance* marker (source
+  `com.apple.DocumentsApp`), not a run blocker; the real user-visible symptom of that import was the
+  **stale graph** below, not the flag. Do not cite quarantine as the cause of a failed run.
+- 2026-10-30 — **⚠️ iCloud put an OLD version of the shortcut on the iPhone (sync conflict).** The
+  corrected shortcut was imported on the Mac (`pk=121`, `ZLASTSAVEDONDEVICENAME=Piti-M1-MBP`), but the
+  copy that materialised on the iPhone was stored as a **separate record marked
+  `ZCONFLICTOF = 121`** (`pk=126`, `ZLASTSAVEDONDEVICENAME=Piti-iPhone`) — and iCloud kept **both**.
+  `pk=126` carried the **stale graph**: step-1 token = literal `PASTE_YOUR_GITHUB_TOKEN_HERE`, and
+  `Authorization` literal `'\ufffc'` with the attachment at range `{0, 1}` (**no `Bearer ` prefix**) —
+  the pre-fix version. So the iPhone was running an outdated graph despite the Mac being correct.
+  **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
+  delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
+  graph already correct and **user-initiated** import.
+- 2026-10-30 — **The delivered uploader is end-to-end proven.** Final artifact
+  `UploadPhoto.shortcut` (iCloud `…/CloudDocs/Upload/`, copy in `~/Downloads/`): 8 actions,
+  `Authorization` = literal **`"Bearer \ufffc"`** with token attached at **`{7, 1}`**, and the token
+  **baked in** so there is no paste step. Verified by importing that exact file and running it with a
+  real photo → **HTTP 201, 673,944 bytes, commit `ba40c369`**. Also verified the **token survives
+  import** (imported copy held the real `github_pat_…` value, not the placeholder).
 - 2026-10-30 — **`?branch=` is silently ignored by the GitHub Contents API.** A PUT carrying
   `?branch=test/branchcheck` landed on **`main`** instead. The branch must be sent as a `branch` key in
   the **JSON body**. This is what put 8 API test artifacts on `main` (removed in commit `a28bf39`; the
@@ -232,17 +246,21 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Confirm the uploader on the iPhone (2026-10-30).** The `Bearer `-prefix bug is **fixed and verified**
-  by a real run on this Mac (HTTP 201, commit `c0ddf3a4`), and a corrected, trusted copy is installed
-  and will sync to the iPhone as **`CelebrationPhotoUpload`** (imported on `Piti-M1-MBP`, quarantined
-  copy removed). It already holds the working token, so it is tap-ready. **On the iPhone:**
-  1. Wait for iCloud sync, then confirm `CelebrationPhotoUpload` appears in the Shortcuts app.
-  2. Photos → Share → **CelebrationPhotoUpload** → confirm a new commit on `main` and a changed live URL.
-  - If it does **not** appear, do NOT re-import it through the iPhone **Files** app (that path
-    quarantines it and it silently won't run) — import the file on the Mac instead and let sync carry it.
-- **ROTATE the `gh` OAuth token (`gho_...`).** It was used during API verification and its bytes remain
-  in freed pages of `~/Library/Shortcuts/Shortcuts.sqlite` (verified: **0 live rows** contain it, but
-  free-page residue is not guaranteed unrecoverable). Rotating is a 1-minute precaution.
+- **Install `UploadPhoto` on the iPhone (2026-10-30).** Everything is now provably correct end-to-end:
+  the delivered file was imported and **run** on this Mac with a real photo → **HTTP 201, 673,944 bytes,
+  commit `ba40c369`**, and the baked-in token **survives import**. Previous attempts failed because the
+  iPhone ended up with a **stale graph** (iCloud sync conflict — see Technical findings), so a
+  user-initiated import of the new file is the reliable path.
+  **On the iPhone (Files → iCloud Drive → Upload → `UploadPhoto.shortcut` → tap → Add Shortcut):**
+  1. If iOS warns about an untrusted source: **Settings → Shortcuts → Allow Untrusted Shortcuts** on.
+  2. Then **delete the old `CelebrationPhotoUpload`** shortcut(s) so there is no ambiguity.
+  3. Photos → Share → **UploadPhoto** → expect a new commit on `main` and a changed live URL.
+  - **No token paste is needed** — it is baked into the file.
+  - Prefer importing from **iCloud Drive/Files**. An earlier claim that a Files import is "silently
+    inert" was **wrong** and has been corrected; the real failure was the stale graph.
+- **ROTATE the `gh` OAuth token (`gho_...`) AND the photo PAT.** Both were used in plaintext during this
+  session's testing. The PAT is now **baked into `UploadPhoto.shortcut`** (readable by anyone who gets
+  the file) — rotating it after the setup settles is strongly advised.
 - **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
   `~/Documents/a-shell/` and `iOS/sync_celebration.sh` (now dead code — the API path replaces it).
 - **Investigate the unidentified 0-byte writer (open, evidence-only).** Commits `22b8c91` (emptied
