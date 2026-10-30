@@ -138,6 +138,18 @@
   **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
+- 2026-10-31 — **⚠️ SECOND CAUSE OF "first one works then the rest fail": TWO upload shortcuts compete in
+  the Photos share sheet.** `pk=106 "Upload to Github"` (the **old a-Shell** shortcut:
+  `image.resize → image.convert → documentpicker.save → a-Shell.ExecuteCommandIntent`) **also accepts
+  `WFImageContentItem`**, so it appears in the same share sheet as `pk=129 "UploadPhoto"`. The old one
+  **cannot work** — it writes a `C.jpg` *folder* via a-Shell and pushes nothing to GitHub — and it fails
+  **silently**, producing exactly the "no commit" symptom. Picking the wrong of the two identical-looking
+  entries on the phone is indistinguishable from a broken shortcut.
+  **Action:** `pk=106` renamed to **`OLD Upload to Github (BROKEN - do not use; use UploadPhoto)`** so the
+  share sheet is unambiguous, and `pk=129` re-asserted as un-quarantined and searchable.
+  **Rule: exactly ONE GitHub-upload shortcut should accept share-sheet images — delete or rename any
+  other.** This supersedes the earlier single-cause quarantine finding (both were real; see the
+  quarantine entry above).
 - 2026-10-31 — **⚠️ ROOT CAUSE OF THE SILENT "tapped but nothing happened": the shortcut became
   QUARANTINED and HIDDEN (imported via the Files app).** `pk=129 UploadPhoto` was found with
   **`ZQUARANTINE = 2`**, **`ZSHOWINSEARCH = 0`**, and a `ZSHORTCUTQUARANTINE` row
@@ -170,10 +182,12 @@
   indistinguishable in effect from the missing-no-input guard. **Rule: to copy/restore any image over
   1 MB, use `GET /git/blobs/<sha>`, never the Contents API `content` field.** (This also refines the
   earlier note: the Contents API *PUT* accepts large bodies fine — it is the *GET* that omits content.)
-- 2026-10-31 — **Rapid repeat runs are NOT a failure mode (a theory tested and disproved).** Three runs
-  4 s apart at 07:21:08/12/16 SGT all succeeded (`60aa0b97`, `e4fd7a41`, `fe2d31c0`). Combined with
-  three successes 18–40 s apart from the iPhone earlier, the "Contents API `max-age=60` stale sha → 409"
-  hypothesis is **refuted** — do not pursue it.
+- 2026-10-31 — **Rapid repeat runs are NOT a failure mode (theory tested and DISPROVED — including the
+  version of the test that actually proves it).** An earlier test ran the *same* photo three times 4 s
+  apart and succeeded, which proved nothing because the resulting blob sha never changed. Re-tested
+  properly on a scratch branch (`verify/race`) with **three different payloads** (400 KB / 700 KB /
+  1.1 MB, so each sha genuinely changed): all three `GET → PUT` cycles returned **HTTP 200** in 2.1–2.5 s.
+  The "Contents API `max-age=60` stale sha → 409" hypothesis is therefore **refuted**. Do not pursue it.
 - 2026-10-30 — **The delivered uploader is end-to-end proven.** Artifact `UploadPhoto.shortcut`
   (iCloud `.../CloudDocs/Upload/`, copy in `~/Downloads/`, sha256 `06d35668...`): **8 actions**,
   `Authorization` = literal **`"Bearer \ufffc"`** with the token attached at **`{7, 1}`**, and the token
