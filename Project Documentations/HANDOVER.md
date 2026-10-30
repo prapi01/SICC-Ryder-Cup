@@ -110,6 +110,26 @@
   `AEA1` container wrapping a plist; the action graph is **not** readable back out of it (neither
   `plistlib` at the `bplist00` offsets nor a zlib scan recovers the payload). Consequence: validate the
   **source** `.shortcut` plist (pre-sign) — that is the only point where the graph can be inspected.
+- 2026-10-30 — **⚠️ THE ACTUAL UPLOAD BUG: the `Authorization` header was missing its `Bearer ` prefix.**
+  The header was built as a bare token attachment (`string: "\ufffc"` with the token attached), so the
+  literal header value resolved to *just the token* and GitHub answered **`401 Requires authentication`**.
+  Fix: the header must be the literal **`"Bearer \ufffc"`** with the token attached at range **`{7, 1}`**
+  (i.e. after the 7-character `Bearer ` prefix). Proven by running the shortcut on this Mac with a real
+  photo: with the bare token → `401`; with `Bearer ` + token → **HTTP 201 Created**, 673,944 bytes,
+  commit `c0ddf3a4`. **Any future edit to the auth header must keep `Bearer ` in the literal.**
+- 2026-10-30 — **`ZACTIONCOUNT` is unreliable; read `ZSHORTCUTACTIONS.ZDATA` instead.** Right after an
+  import `ZACTIONCOUNT` is often `0` while the actions are in fact present (the column updates
+  asynchronously, and several imports landed seconds late). Judging a shortcut broken from
+  `ZACTIONCOUNT=0` produces false conclusions. Authoritative check:
+  `SELECT ZDATA FROM ZSHORTCUTACTIONS WHERE ZSHORTCUT=<pk>` → `plistlib.loads()` → `len(list)`.
+- 2026-10-30 — **Importing a `.shortcut` via the iOS **Files** app quarantines it, and it will not run.**
+  The on-device import was stored with `ZQUARANTINE=1`, `ZSHOWINSEARCH=0`, `ZRUNEVENTSCOUNT=0`, and a
+  `ZSHORTCUTQUARANTINE` row whose source is `com.apple.DocumentsApp` (the Files app) — the **only**
+  quarantined shortcut in the whole library, while a pre-existing `ShortcutSourceFilePublic` shortcut
+  had `ZQUARANTINE=None` and had run 1×. A quarantined shortcut is silently inert when tapped: no error,
+  no upload. **Working delivery path: import the signed file *on the Mac* (no quarantine, `ZSHOWINSEARCH=1`)
+  and let Shortcuts iCloud sync carry it to the iPhone** — verified: `pk=121` imported on `Piti-M1-MBP`
+  with `ZQUARANTINE=None`.
 - 2026-10-30 — **`?branch=` is silently ignored by the GitHub Contents API.** A PUT carrying
   `?branch=test/branchcheck` landed on **`main`** instead. The branch must be sent as a `branch` key in
   the **JSON body**. This is what put 8 API test artifacts on `main` (removed in commit `a28bf39`; the
@@ -212,12 +232,14 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Install and test the new one-tap uploader (2026-10-30, Route A — Pure Shortcut).** The signed
-  shortcut is already delivered to `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/`
-  (`CelebrationPhotoUpload.shortcut`, copy in `~/Downloads/`). Remaining user steps on the iPhone:
-  1. Create a **fine-grained PAT** (repo `prapi01/SICC-Ryder-Cup` only, **Contents: Read and write**).
-  2. Open the shortcut → it prompts for the token (the `Text` action at step 1) → paste it.
-  3. Photos → Share → **CelebrationPhotoUpload** → confirm a new commit on `main` and a changed live URL.
+- **Confirm the uploader on the iPhone (2026-10-30).** The `Bearer `-prefix bug is **fixed and verified**
+  by a real run on this Mac (HTTP 201, commit `c0ddf3a4`), and a corrected, trusted copy is installed
+  and will sync to the iPhone as **`CelebrationPhotoUpload`** (imported on `Piti-M1-MBP`, quarantined
+  copy removed). It already holds the working token, so it is tap-ready. **On the iPhone:**
+  1. Wait for iCloud sync, then confirm `CelebrationPhotoUpload` appears in the Shortcuts app.
+  2. Photos → Share → **CelebrationPhotoUpload** → confirm a new commit on `main` and a changed live URL.
+  - If it does **not** appear, do NOT re-import it through the iPhone **Files** app (that path
+    quarantines it and it silently won't run) — import the file on the Mac instead and let sync carry it.
 - **ROTATE the `gh` OAuth token (`gho_...`).** It was used during API verification and its bytes remain
   in freed pages of `~/Library/Shortcuts/Shortcuts.sqlite` (verified: **0 live rows** contain it, but
   free-page residue is not guaranteed unrecoverable). Rotating is a 1-minute precaution.
