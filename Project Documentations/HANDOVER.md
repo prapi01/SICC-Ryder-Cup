@@ -139,13 +139,39 @@
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
 - 2026-10-30 — **The delivered uploader is end-to-end proven.** Artifact `UploadPhoto.shortcut`
-  (iCloud `…/CloudDocs/Upload/`, copy in `~/Downloads/`, sha256 `3b9fd763…`): **8 actions**,
+  (iCloud `.../CloudDocs/Upload/`, copy in `~/Downloads/`, sha256 `06d35668...`): **8 actions**,
   `Authorization` = literal **`"Bearer \ufffc"`** with the token attached at **`{7, 1}`**, and the token
   **baked in** so there is **no paste step**. Verified by importing that exact graph and **running** it
-  with a real photo → **HTTP 201, 673,944 bytes, commit `ba40c369`**. Also verified the **token survives
+  with a real photo → **HTTP 201, 673,944 bytes, commit `edf0bcfc`**. Also verified the **token survives
   import** (the imported copy held the real `github_pat_…` value, not the placeholder).
   Deliberately ships **without** a `showresult` action — this is byte-for-byte the graph that was run and
   proven, not an unverified variant (a `showresult` version was built but could not be import-tested).
+- 2026-10-31 — **⚠️ THIRD BUG, AND THE ONE THAT BROKE IT AFTER THE FIRST SUCCESS: the shortcut had no
+  "no input" behaviour, so a run that received no image committed an EMPTY file (0 bytes).**
+  User symptom: "worked one time and then failed after". Evidence: `pk=129 UploadPhoto` had
+  **`ZNOINPUTBEHAVIORDATA = NULL`**, whereas the old working `Upload To Github` (`pk=106`) has
+  `{Name: WFWorkflowNoInputBehaviorAskForInput, Parameters: {ItemClass: WFPhotoMediaContentItem}}`.
+  Without it, a run with no image still executes the whole chain: the resize gets no input,
+  `base64encode` encodes nothing, the PUT sends `content: ""`, and GitHub **successfully writes a
+  0-byte `C.jpg`** while reporting success — wiping the celebration photo on every device. This explains
+  commits `22b8c914` (2026-10-30 — the previously "unidentified 0-byte writer") and `6ee5c2a4`
+  (2026-10-31 06:53 SGT, the failure right after the first success).
+  **Fix:** the source plist needs top-level key **`WFWorkflowNoInputBehavior`** — verified by import:
+  the two plausible alternatives `WFNoInputBehavior` and `WFNoInputBehaviorData` are **silently ignored**
+  and leave the behaviour NULL. Value = `{"Name":"WFWorkflowNoInputBehaviorAskForInput",
+  "Parameters":{"ItemClass":"WFPhotoMediaContentItem"}}`, identical to the old working shortcut.
+  **Verified after the fix:** run **with** a photo → **HTTP 201, 673,944 bytes, commit `edf0bcfc`**.
+  ⚠️ The `shortcuts` **CLI bypasses this guard** (`shortcuts run` with no `-i` still uploads and still
+  produces a 0-byte file), so the CLI cannot validate the guard — only a real share-sheet run exercises
+  it. Do not "test" the guard from the CLI against `main`.
+- 2026-10-31 — **Confirmed the shortcut authenticates and uploads from the iPhone.** Real uploads landed
+  on `main` at 22:53–22:55 SGT on 2026-10-30: `6ee5c2a4` (0 B), `a6e3f2d9` (597,392 B), `67a5483f`
+  (641,989 B), `b8ac561c` (635,029 B) — all "(unsigned)", message "Update celebration photo".
+  `images/celebration/C.jpg` is restored to **`635,029` bytes** (`b8ac561c`, sha `1fd66cff…`).
+  The a-Shell hypothesis is **retired**: the new API path demonstrably works from the device.
+- 2026-10-31 — **CDN note:** `sicc-ryder-cup.pages.dev` serves `C.jpg` through Cloudflare's edge and can
+  lag behind `main` after an upload (it served a stale 673,944 B copy until it converged ~20 s later).
+  Verify with a cache-buster query string before concluding an upload failed.
 - 2026-10-30 — **The Mac's Shortcuts GUI import stopped accepting files mid-session.** After many
   imports, `open -a Shortcuts <file>.shortcut` silently did nothing (no new `ZSHORTCUT` row) and the app
   relaunched with **0 windows** (`System Events` confirmed `count of windows = 0`), so Apple Events were
@@ -253,21 +279,22 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Install `UploadPhoto` on the iPhone (2026-10-30).** Everything is now provably correct end-to-end:
-  the delivered file was imported and **run** on this Mac with a real photo → **HTTP 201, 673,944 bytes,
-  commit `ba40c369`**, and the baked-in token **survives import**. Previous attempts failed because the
-  iPhone ended up with a **stale graph** (iCloud sync conflict — see Technical findings), so a
-  user-initiated import of the new file is the reliable path.
-  **On the iPhone (Files → iCloud Drive → Upload → `UploadPhoto.shortcut` → tap → Add Shortcut):**
-  1. If iOS warns about an untrusted source: **Settings → Shortcuts → Allow Untrusted Shortcuts** on.
-  2. Then **delete the old `CelebrationPhotoUpload`** shortcut(s) so there is no ambiguity.
-  3. Photos → Share → **UploadPhoto** → expect a new commit on `main` and a changed live URL.
-  - **No token paste is needed** — it is baked into the file.
-  - Prefer importing from **iCloud Drive/Files**. An earlier claim that a Files import is "silently
-    inert" was **wrong** and has been corrected; the real failure was the stale graph.
-- **ROTATE the `gh` OAuth token (`gho_...`) AND the photo PAT.** Both were used in plaintext during this
-  session's testing. The PAT is now **baked into `UploadPhoto.shortcut`** (readable by anyone who gets
-  the file) — rotating it after the setup settles is strongly advised.
+- **Confirm the guarded uploader on the iPhone (2026-10-31).** The missing-no-input guard is **fixed and
+  verified** (run with a photo → HTTP 201, commit `edf0bcfc`), and the corrected file sha256
+  **`06d35668…`** is delivered to iCloud `…/CloudDocs/Upload/UploadPhoto.shortcut` (copy in `~/Downloads/`).
+  The installed `pk=129 UploadPhoto` on this Mac **has already been patched** with the guard.
+  **On the iPhone — one of two routes:**
+  1. Let iCloud sync the patched shortcut down (fastest, but watch for the sync conflict noted above), or
+  2. Import the delivered file fresh: Files → iCloud Drive → Upload → `UploadPhoto.shortcut` → tap → Add
+     Shortcut, then delete any older `UploadPhoto`/`CelebrationPhotoUpload` entry.
+  Then Photos → Share → **UploadPhoto** on a real photo and confirm a new commit on `main`.
+  **Sanity check first:** step 1 of the shortcut must show a token starting `github_pat_` (not the word
+  `PASTE_YOUR_GITHUB_TOKEN_HERE`) — if it shows the placeholder, it is the stale copy and will 401.
+- **Never tap/run the uploader without a photo** as a "test". Until you confirm the guard is present on
+  the phone, a no-image run **wipes `C.jpg` to 0 bytes**. Recovery: restore from the previous good commit
+  (e.g. `b8ac561c`, 635,029 bytes) via the Contents API.
+- **ROTATE the `gh` OAuth token AND the photo PAT.** Both were used in plaintext during testing, and the
+  PAT is **baked into `UploadPhoto.shortcut`** (readable by anyone who obtains the file).
 - **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
   `~/Documents/a-shell/` and `iOS/sync_celebration.sh` (now dead code — the API path replaces it).
 - **Investigate the unidentified 0-byte writer (open, evidence-only).** Commits `22b8c91` (emptied
