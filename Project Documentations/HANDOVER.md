@@ -138,6 +138,13 @@
   **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
+- 2026-10-31 — **HEIC input verified working; verification matrix closed.** Running the uploader with a
+  **HEIC** source (what the Photos share sheet can hand over) → **HTTP 200, 502,227 bytes, commit
+  `a2a1a8ac`**. So both JPEG and HEIC work; input format is not a failure mode. Failure modes ruled out by
+  direct test: missing `Bearer` (fixed), no-input run (guard added), rapid repeat runs 4 s apart (3/3
+  succeeded — stale-sha theory refuted), large payload 1.88 MB base64 (HTTP 200), HEIC (HTTP 200), and
+  token health (HTTP 200, 4,297+ calls remaining). The remaining unknown is the **error text of the
+  failures**, which the new `Show Result` action surfaces.
 - 2026-10-31 — **⚠️ The Contents API omits `content` for files over ~1 MB — a data-loss trap.**
   `GET /contents/...` returns `encoding: "none"` and **`content: ""`** for a 1,480,820-byte file, while
   the **blobs** endpoint returns full `encoding: "base64"` (2,007,336 chars) for the same blob. Anyone
