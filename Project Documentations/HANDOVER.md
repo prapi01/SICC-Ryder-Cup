@@ -83,12 +83,31 @@
   empty, so a real file named `C.jpg` is written; and turn OFF *Keep going after an error* on the
   a-Shell "Execute Command" action so a failure is no longer masked by a trailing
   `--- Sync Complete! ---`. Script logic is unchanged and correct for a single file.
+- **2026-10-30 — ⚠️ a-Shell upload path ABANDONED; replaced by direct GitHub API upload.**
+  After the folder defect persisted through three more attempts (the 21:50 attempt again created
+  `Documents/a-shell/C.jpg/IMG_4341.jpeg`), the a-Shell chain was abandoned by decision: it depends on
+  a fragile multi-hop chain (Save action → correct filename → a GitHub clone at
+  `~/Documents/SICC-Ryder-Cup` → `lg2` auth → script wording). Rationale: the chain is unrelated to the
+  app's purpose, and every attempt today wrote a *folder* named `C.jpg` instead of the file.
+  **New design: the Shortcut uploads the JPEG straight to GitHub via the Contents API — no a-Shell,
+  no local clone, no `lg2`, no sync script.** Flow stays one-tap: Photos → Share → "Upload to Github"
+  → resized to 1920 wide → PUT `images/celebration/C.jpg` on `main`. Because nothing writes to the
+  device filesystem, the folder defect cannot recur.
+  **Verified end-to-end 2026-10-30:** a real `PUT /repos/prapi01/SICC-Ryder-Cup/contents/images/celebration/C.jpg`
+  via the Contents API committed the photo (commit `842b7bc8`, 506,871 bytes) on a scratch branch
+  (`test/photo-api`, since deleted) — proving the mechanism, the token scope, and the payload size
+  all work. Repo is **public**, `ADMIN` permission, token used had `repo` scope.
+  Credential: a **fine-grained PAT** restricted to this repo with **Contents: Read and write** only,
+  entered directly into the shortcut on the user's device (never shared with the AI, never stored in
+  the repo). Size note: a 1920-wide JPEG is ~500–900 KB raw = ~670 KB–1.2 MB base64; the Contents API
+  tree endpoint requires ≤ 1 MB base64, so a full-res photo *could* exceed it — acceptable for this
+  1920-wide pipeline but the resize step is what keeps it safe.
 - 2026-10-30 — **Manual upload used as a workaround: celebration photo updated.**
   The user's chosen image `IMG_4343.jpeg` (iPhone 14 Pro, 1920×1080, taken 2026-10-29) was copied
   verbatim from the a-Shell Documents folder to `images/celebration/C.jpg` and pushed (`f15e2ee`).
   **Verified live:** `https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg` now returns
-  sha256 `d927a485…` (506,871 bytes), matching the repo file (first poll still served the old
-  `b45ed281…`; it switched on the second poll).
+  sha256 `d927a485...` (506,871 bytes), matching the repo file (first poll still served the old
+  `b45ed281...`; it switched on the second poll).
 - 2026-10-30 — **The iPhone's script vs the Mac mirror.** The phone copy of
   `sync_celebration.sh` (v1.2, obtained from the user) is **byte-identical to the Mac mirror**
   `~/Documents/a-shell/sync_celebration.sh` (md5 `b12b6bb0…`), but **differs from the repo copy**
@@ -174,13 +193,13 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Fix the iPhone shortcut (user-side, 2026-10-30):** in "Upload to Github" — (1) delete the stale
-  `Documents/C.jpg/` folder in a-Shell (Files app → On My iPhone → a-Shell) **before** the next run;
-  (2) add a **Rename File** action (to `C.jpg`) after "Convert Image" and clear the Save action's
-  `Subpath`, so a real file named `C.jpg` is written; (3) optionally turn off *Keep going after an
-  error* on the a-Shell "Execute Command" action so failures are visible. Then verify: share one
-  photo → expect a new `Update celebration photo` commit and the site
-  `images/celebration/C.jpg` updating.
+- **Build the new one-tap uploader (2026-10-30, Route A — Pure Shortcut):** create the fine-grained
+  PAT (this repo only, Contents: Read and write), then rebuild the "Upload to Github" shortcut to
+  resize to 1920 wide and PUT straight to the GitHub Contents API — dropping a-Shell, the local clone,
+  `lg2`, and `sync_celebration.sh` entirely. Verify by tapping once and confirming a new commit plus
+  the live URL changing. Build recipe + step-by-step token instructions are in the session record.
+- **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
+  `Documents/a-shell/` and the old `sync_celebration.sh` / `iOS/sync_celebration.sh` copies.
 - Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
   verified green 2026-10-29 on v4.00.
 - Decide whether to mitigate the scorer tab-close write risk (see Open questions).

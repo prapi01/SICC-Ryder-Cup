@@ -56,6 +56,18 @@
   **1920** (the "1280" in the full design doc §10.7.11 is stale). `iOS/sync_celebration.sh` now holds
   the **canonical v1.2** script taken from the phone/Mac copy (previously the repo shipped a
   different, incomplete variant that lacked the `C.jpg` move).
+- **2026-10-30 — ⚠️ Upload pipeline REDESIGNED: direct GitHub API upload (a-Shell path dropped).**
+  The folder defect persisted (the 21:50 attempt created `C.jpg/IMG_4341.jpeg` again), so the a-Shell
+  chain — Save action → filename → local clone at `~/Documents/SICC-Ryder-Cup` → `lg2` auth → script —
+  was **abandoned by decision**. New design: the Shortcut resizes to **1920 px wide** and PUTs the JPEG
+  **straight to GitHub** via the Contents API (`PUT /repos/prapi01/SICC-Ryder-Cup/contents/images/celebration/C.jpg`
+  on `main`) — no a-Shell, no local clone, no `lg2`, no sync script, and nothing written to the device
+  filesystem, so the folder defect **cannot recur**. It stays one-tap:
+  Photos → Share → "Upload to Github" → done. Credential is a **fine-grained PAT** limited to this repo
+  with **Contents: Read and write**, entered on the device only (never stored in the repo).
+  Verified 2026-10-30 by a real Contents-API PUT (commit `842b7bc8`, 506,871 bytes) on a scratch branch.
+  ⚠️ Constraint: the Contents API tree endpoint requires **≤ 1 MB base64**, so the 1920-wide resize is
+  what keeps payloads legal; a full-resolution photo (e.g. 4 MB) would be rejected.
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs
