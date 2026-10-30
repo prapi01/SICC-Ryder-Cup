@@ -182,12 +182,16 @@
   the **JSON body**. This is what put 8 API test artifacts on `main` (removed in commit `a28bf39`; the
   scratch branch `test/branchcheck` was also deleted). The older `test/sign-submit-prognosis` branch is
   from August 2026 — **not** created this session and left untouched.
-- 2026-10-30 — **Unidentified 0-byte commit to `main` (open).** `22b8c91` emptied
-  `images/celebration/C.jpg` to 0 bytes and `c2fe67e` was an empty commit (22:30/22:36). Author is
-  `Piti Pramotedham <piti@pramotedham.com>`, `gh-author=prapi01`, **no `Co-authored-by` trailer**, and
-  the AI did not create them. No `.github/workflows/` exists, so it is not GitHub Actions. Cause
-  **not established** — recorded as evidence, not a conclusion. Worth chasing: a process that can
-  zero out `C.jpg` on `main` degrades the celebration screen on every device.
+- 2026-10-30 — **✅ RESOLVED 2026-10-31: the "unidentified 0-byte writer" was the uploader shortcut
+  itself.** `22b8c91` emptied `images/celebration/C.jpg` to 0 bytes and `c2fe67e` was an empty commit
+  (22:30/22:36). Both were previously recorded as unexplained because the AI "did not create them" —
+  that reasoning was **wrong**: they were not made by the AI, they were made by **the user's phone
+  running the uploader shortcut**, which is why the author is `Piti Pramotedham` with no
+  `Co-authored-by` trailer and no GitHub workflow involved. Both carry the shortcut's exact PUT message
+  **"Update celebration photo"** — the same message produced by every later uploader commit
+  (`6ee5c2a4`, `a6e3f2d9`, `67a5483f`, `b8ac561c`). The cause was the **missing no-input guard** (see the
+  2026-10-31 finding): a run with no image sends `content: ""` and GitHub happily commits a 0-byte file.
+  No rogue automation was involved; the LaunchAgent leads were a dead end and can be dropped.
 - 2026-10-30 — **Manual upload used as a workaround: celebration photo updated.**
   The user's chosen image `IMG_4343.jpeg` (iPhone 14 Pro, 1920×1080, taken 2026-10-29) was copied
   verbatim from the a-Shell Documents folder to `images/celebration/C.jpg` and pushed (`f15e2ee`).
@@ -297,13 +301,6 @@
   PAT is **baked into `UploadPhoto.shortcut`** (readable by anyone who obtains the file).
 - **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
   `~/Documents/a-shell/` and `iOS/sync_celebration.sh` (now dead code — the API path replaces it).
-- **Investigate the unidentified 0-byte writer (open, evidence-only).** Commits `22b8c91` (emptied
-  `C.jpg` to 0 bytes) and `c2fe67e` (empty commit) at 22:30/22:36 carry author
-  `Piti Pramotedham <piti@pramotedham.com>`, no `Co-authored-by` trailer, `gh-author=prapi01`, and were
-  **not made by the AI**. `.github/workflows/` does not exist, so it is not GitHub Actions. Candidate
-  leads (NOT verified — do not assert): LaunchAgents such as "Image Converter Agent" / "NAS Monitor
-  Agent" on this Mac. A process that can silently zero out `C.jpg` on `main` would break the celebration
-  screen on every device (`js/celebration-photo.js:33`, `js/util-photo.js:49`).
 - Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
   verified green 2026-10-29 on v4.00.
 - Decide whether to mitigate the scorer tab-close write risk (see Open questions).
