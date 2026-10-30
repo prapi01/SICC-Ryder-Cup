@@ -138,6 +138,21 @@
   **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
+- 2026-10-31 — **⚠️ THIRD issue: the added `Show Result` action had the WRONG serialization shape.**
+  Appending `Show Result` directly to the stored actions blob used
+  `Text: {"Value": {OutputUUID…}, "WFSerializationType": "WFTextTokenAttachment"}`. The library's own
+  working shortcuts (e.g. `pk=34 Make GIF`, `pk=4 Music Quiz`) use
+  `Text: {"Value": {"string": "\ufffc", "attachmentsByRange": {"{0, 1}": {…}}}, "WFSerializationType":
+  "WFTextTokenString"}`. Corrected on `pk=129` and in the shipped file (rebuild from source with the
+  right shape). **Lesson: when hand-editing an actions blob, copy the parameter shape from a known-good
+  action of the same type in the library — do not invent it.**
+- 2026-10-31 — **Broken shortcut no longer appears in the Photos share sheet (hard guarantee).** As well
+  as renaming `pk=106`, its accepted input was changed from `['WFImageContentItem']` to
+  `['WFStringContentItem']`, so iOS can no longer offer it for an image. Verified: the **only**
+  live shortcut accepting images *and* targeting the C.jpg API is `pk=129 UploadPhoto`.
+  (Checked and ruled out first: `ZRECEIVESONSCREENCONTENT`, `ZHIDDENFROMLIBRARYANDSYNC`,
+  `ZSHOWINSEARCH`, `ZDISABLEDONLOCKSCREEN`, `ZHASOUTPUTACTION` are identical between old and new, so no
+  flag difference explained the behaviour.)
 - 2026-10-31 — **⚠️ SECOND CAUSE OF "first one works then the rest fail": TWO upload shortcuts compete in
   the Photos share sheet.** `pk=106 "Upload to Github"` (the **old a-Shell** shortcut:
   `image.resize → image.convert → documentpicker.save → a-Shell.ExecuteCommandIntent`) **also accepts
