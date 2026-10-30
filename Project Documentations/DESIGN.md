@@ -1,6 +1,6 @@
 # sicc-ryder-cup — Main Design (DESIGN.md)
 
-**Status:** Active (Firebase web app) · **Latest release:** Version 4.0.0 (2026-08-10) · **Updated:** 2026-10-29
+**Status:** Active (Firebase web app) · **Latest release:** Version 4.0.0 (2026-08-10) · **Updated:** 2026-10-30
 **Full design:** `Design Documents/SICC Ryder Cup Complete Design Documentation.md`.
 
 ## Stack
@@ -43,6 +43,15 @@
   archive. Recorded nuance: Firestore runs **online-only** (no offline persistence), so a scorer
   tab closed mid-save can lose a not-yet-ACKed write (open question in HANDOVER). **No app logic
   changed.**
+- **2026-10-30 — Celebration-photo upload pipeline (iPhone Shortcut + a-Shell): root cause found.**
+  The shortcut's `Receive Images` action accepted **multiple** images; the "Save File → a-Shell,
+  Subpath `C.jpg`" action then wrote them **into a folder named `C.jpg`** instead of a single file, so
+  the sync script's `[ -f ~/Documents/C.jpg ]` test failed, the script aborted before
+  `add`/`commit`/`push`, and nothing reached GitHub (last celebration commit `777fdc9`, 2026-08-09).
+  **Rule: share ONE image per run.** Fix is shortcut-side only — script logic unchanged.
+  Corrected facts: the shortcut saves into **a-Shell's `Documents`** folder (iCloud-synced; on the Mac
+  it appears as `~/Documents/a-shell/`), not `~/Documents/SICC-Ryder-Cup/`; and the resize width is
+  **1920** (the "1280" in the full design doc §10.7.11 is stale).
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs
