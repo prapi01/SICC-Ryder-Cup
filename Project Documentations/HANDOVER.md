@@ -99,9 +99,28 @@
   all work. Repo is **public**, `ADMIN` permission, token used had `repo` scope.
   Credential: a **fine-grained PAT** restricted to this repo with **Contents: Read and write** only,
   entered directly into the shortcut on the user's device (never shared with the AI, never stored in
-  the repo). Size note: a 1920-wide JPEG is ~500–900 KB raw = ~670 KB–1.2 MB base64; the Contents API
-  tree endpoint requires ≤ 1 MB base64, so a full-res photo *could* exceed it — acceptable for this
-  1920-wide pipeline but the resize step is what keeps it safe.
+  the repo).
+  **Size limit — corrected by measurement 2026-10-30:** the often-quoted "≤ 1 MB base64" applies to the
+  **Git tree** endpoint, **not** the Contents PUT. A 3.96 MB base64 body was accepted by the PUT and
+  4.5 MB by the blobs endpoint, so the 1920-wide resize is a size/quality choice rather than a hard
+  requirement.
+  **Re-verified on the live `C.jpg` before delivery:** GET sha `9d48e7a2` → PUT with 1,028,384 base64
+  chars returned **HTTP 200**, `main` left byte-identical (`9d48e7a2`), scratch branch deleted after.
+- 2026-10-30 — **Signed `.shortcut` artifacts are AEA1 encrypted archives.** `shortcuts sign` writes an
+  `AEA1` container wrapping a plist; the action graph is **not** readable back out of it (neither
+  `plistlib` at the `bplist00` offsets nor a zlib scan recovers the payload). Consequence: validate the
+  **source** `.shortcut` plist (pre-sign) — that is the only point where the graph can be inspected.
+- 2026-10-30 — **`?branch=` is silently ignored by the GitHub Contents API.** A PUT carrying
+  `?branch=test/branchcheck` landed on **`main`** instead. The branch must be sent as a `branch` key in
+  the **JSON body**. This is what put 8 API test artifacts on `main` (removed in commit `a28bf39`; the
+  scratch branch `test/branchcheck` was also deleted). The older `test/sign-submit-prognosis` branch is
+  from August 2026 — **not** created this session and left untouched.
+- 2026-10-30 — **Unidentified 0-byte commit to `main` (open).** `22b8c91` emptied
+  `images/celebration/C.jpg` to 0 bytes and `c2fe67e` was an empty commit (22:30/22:36). Author is
+  `Piti Pramotedham <piti@pramotedham.com>`, `gh-author=prapi01`, **no `Co-authored-by` trailer**, and
+  the AI did not create them. No `.github/workflows/` exists, so it is not GitHub Actions. Cause
+  **not established** — recorded as evidence, not a conclusion. Worth chasing: a process that can
+  zero out `C.jpg` on `main` degrades the celebration screen on every device.
 - 2026-10-30 — **Manual upload used as a workaround: celebration photo updated.**
   The user's chosen image `IMG_4343.jpeg` (iPhone 14 Pro, 1920×1080, taken 2026-10-29) was copied
   verbatim from the a-Shell Documents folder to `images/celebration/C.jpg` and pushed (`f15e2ee`).
@@ -193,13 +212,24 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Build the new one-tap uploader (2026-10-30, Route A — Pure Shortcut):** create the fine-grained
-  PAT (this repo only, Contents: Read and write), then rebuild the "Upload to Github" shortcut to
-  resize to 1920 wide and PUT straight to the GitHub Contents API — dropping a-Shell, the local clone,
-  `lg2`, and `sync_celebration.sh` entirely. Verify by tapping once and confirming a new commit plus
-  the live URL changing. Build recipe + step-by-step token instructions are in the session record.
+- **Install and test the new one-tap uploader (2026-10-30, Route A — Pure Shortcut).** The signed
+  shortcut is already delivered to `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/`
+  (`CelebrationPhotoUpload.shortcut`, copy in `~/Downloads/`). Remaining user steps on the iPhone:
+  1. Create a **fine-grained PAT** (repo `prapi01/SICC-Ryder-Cup` only, **Contents: Read and write**).
+  2. Open the shortcut → it prompts for the token (the `Text` action at step 1) → paste it.
+  3. Photos → Share → **CelebrationPhotoUpload** → confirm a new commit on `main` and a changed live URL.
+- **ROTATE the `gh` OAuth token (`gho_...`).** It was used during API verification and its bytes remain
+  in freed pages of `~/Library/Shortcuts/Shortcuts.sqlite` (verified: **0 live rows** contain it, but
+  free-page residue is not guaranteed unrecoverable). Rotating is a 1-minute precaution.
 - **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
-  `Documents/a-shell/` and the old `sync_celebration.sh` / `iOS/sync_celebration.sh` copies.
+  `~/Documents/a-shell/` and `iOS/sync_celebration.sh` (now dead code — the API path replaces it).
+- **Investigate the unidentified 0-byte writer (open, evidence-only).** Commits `22b8c91` (emptied
+  `C.jpg` to 0 bytes) and `c2fe67e` (empty commit) at 22:30/22:36 carry author
+  `Piti Pramotedham <piti@pramotedham.com>`, no `Co-authored-by` trailer, `gh-author=prapi01`, and were
+  **not made by the AI**. `.github/workflows/` does not exist, so it is not GitHub Actions. Candidate
+  leads (NOT verified — do not assert): LaunchAgents such as "Image Converter Agent" / "NAS Monitor
+  Agent" on this Mac. A process that can silently zero out `C.jpg` on `main` would break the celebration
+  screen on every device (`js/celebration-photo.js:33`, `js/util-photo.js:49`).
 - Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
   verified green 2026-10-29 on v4.00.
 - Decide whether to mitigate the scorer tab-close write risk (see Open questions).

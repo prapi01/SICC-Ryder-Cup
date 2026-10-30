@@ -49,8 +49,10 @@
   file of that name, so the sync script's `[ -f ~/Documents/C.jpg ]` test fails, the script aborts
   before `add`/`commit`/`push`, and nothing reaches GitHub (last celebration commit `777fdc9`,
   2026-08-09). Confirmed on the 21:26 attempt: `IMG_4343.jpeg` was re-written *inside* the folder.
-  **Rule: the `Receive Images` action must have Select Multiple OFF, and any stale `C.jpg` folder
-  must be deleted before a run.** Fix is shortcut-side only — script logic unchanged.
+  **Superseded 2026-10-30 — the whole a-Shell path was abandoned (see the redesign entry below).** The
+  `Select Multiple OFF` rule only ever masked the defect; the true cause is that the Save action's
+  `WFFileDestinationPath` is always interpreted as a **folder**, so `C.jpg` was created as a directory.
+  No shortcut-side toggle can fix that.
   Corrected facts: the shortcut saves into **a-Shell's `Documents`** folder (iCloud-synced; on the Mac
   it appears as `~/Documents/a-shell/`), not `~/Documents/SICC-Ryder-Cup/`; and the resize width is
   **1920** (the "1280" in the full design doc §10.7.11 is stale). `iOS/sync_celebration.sh` now holds
@@ -65,9 +67,21 @@
   filesystem, so the folder defect **cannot recur**. It stays one-tap:
   Photos → Share → "Upload to Github" → done. Credential is a **fine-grained PAT** limited to this repo
   with **Contents: Read and write**, entered on the device only (never stored in the repo).
-  Verified 2026-10-30 by a real Contents-API PUT (commit `842b7bc8`, 506,871 bytes) on a scratch branch.
-  ⚠️ Constraint: the Contents API tree endpoint requires **≤ 1 MB base64**, so the 1920-wide resize is
-  what keeps payloads legal; a full-resolution photo (e.g. 4 MB) would be rejected.
+  Verified 2026-10-30 by a real Contents-API PUT (commit `842b7bc8`, 506,871 bytes) on a scratch branch,
+  and re-verified end-to-end on the live `C.jpg` pipeline before delivery (GET sha `9d48e7a2` → PUT of
+  1,028,384 base64 chars = **HTTP 200**).
+  **Corrected constraint (measured, 2026-10-30):** the widely-documented **≤ 1 MB base64 limit does NOT
+  apply to the Contents API PUT**. The PUT accepted a 3.96 MB base64 body, and the sibling blobs endpoint
+  accepted 4.5 MB. The 1920-wide resize is therefore a **quality/size choice, not a hard requirement** —
+  a full-resolution photo would also be accepted. `WFImageCompressionQuality = 0.9` keeps a 1536×1024
+  source at ~771 KB (1,028,384 base64 chars), which is comfortably under GitHub's ~100 MB hard file cap.
+  ⚠️ **`?branch=` is IGNORED on the Contents API** — a PUT with `?branch=x` commits to the **default
+  branch**. The branch must be a `branch` key in the **JSON body**. This silently put 8 test files on
+  `main` during verification (removed in `a28bf39`); always pass the branch in the body.
+  **Shortcut delivery (2026-10-30):** the signed `.shortcut` is delivered to
+  `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/CelebrationPhotoUpload.shortcut` (iCloud Drive)
+  with a copy in `~/Downloads/`. Signed artifacts are **AEA1 encrypted archives** — the action graph
+  cannot be read back out of a signed file, so verify the **source** plist before signing.
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs
