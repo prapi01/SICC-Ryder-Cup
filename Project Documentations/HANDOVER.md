@@ -138,6 +138,23 @@
   **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
+- 2026-10-31 — **⚠️ ROOT CAUSE OF THE SILENT "tapped but nothing happened": the shortcut became
+  QUARANTINED and HIDDEN (imported via the Files app).** `pk=129 UploadPhoto` was found with
+  **`ZQUARANTINE = 2`**, **`ZSHOWINSEARCH = 0`**, and a `ZSHORTCUTQUARANTINE` row
+  (`ZSOURCEAPPIDENTIFIER = 'com.apple.DocumentsApp'`, i.e. an import through **Files**, not the share
+  sheet). It was the **only** quarantined/hidden shortcut in the library. A shortcut that is quarantined
+  and hidden does not appear in the **share sheet**, so tapping Share → UploadPhoto on the phone did
+  nothing at all — no error, no commit — which is exactly the reported symptom and why every run produced
+  no evidence. **Fixed** by clearing `ZQUARANTINE`, restoring `ZSHOWINSEARCH = 1` and deleting the
+  quarantine row; verified the whole library is now free of quarantined/hidden entries.
+  **Note on the earlier "quarantine does not block running" test:** that test used a *CLI* run
+  (`shortcuts run <name>`) on an otherwise-visible shortcut, so it only showed that the flag does not stop
+  a direct invocation — it did **not** test share-sheet visibility, which is the real gate here. The two
+  findings are compatible; the earlier note was over-generalised.
+  **Consequence for delivery:** a Files-app import is the risky path (it quarantines; applied values can
+  differ from the file — see the `ZSHOWINSEARCH=0` on this record, which the file never requested).
+  Prefer opening the file so Shortcuts' own importer handles it, and **verify afterwards that the
+  shortcut is visible in the share sheet**.
 - 2026-10-31 — **HEIC input verified working; verification matrix closed.** Running the uploader with a
   **HEIC** source (what the Photos share sheet can hand over) → **HTTP 200, 502,227 bytes, commit
   `a2a1a8ac`**. So both JPEG and HEIC work; input format is not a failure mode. Failure modes ruled out by
