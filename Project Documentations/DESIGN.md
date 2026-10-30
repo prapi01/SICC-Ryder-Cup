@@ -53,9 +53,9 @@
   must be deleted before a run.** Fix is shortcut-side only — script logic unchanged.
   Corrected facts: the shortcut saves into **a-Shell's `Documents`** folder (iCloud-synced; on the Mac
   it appears as `~/Documents/a-shell/`), not `~/Documents/SICC-Ryder-Cup/`; and the resize width is
-  **1920** (the "1280" in the full design doc §10.7.11 is stale). Note the repo copy
-  `iOS/sync_celebration.sh` is **not canonical** — it differs from the phone/Mac copy and lacks the
-  `C.jpg` move entirely.
+  **1920** (the "1280" in the full design doc §10.7.11 is stale). `iOS/sync_celebration.sh` now holds
+  the **canonical v1.2** script taken from the phone/Mac copy (previously the repo shipped a
+  different, incomplete variant that lacked the `C.jpg` move).
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs

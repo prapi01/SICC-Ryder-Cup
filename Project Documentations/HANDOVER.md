@@ -85,10 +85,13 @@
   `fetch`+`merge`. It has `lg2 add`/`commit`/`push` but no `mv` of `~/Documents/C.jpg` into
   `images/celebration/C.jpg`, so it could not upload the photo even if it ran.
   ⚠️ The phone's output text `ERROR: C.jpg missing` is **not produced by either script copy**
-  (the shared v1.2 prints `ERROR: C.jpg not found in Documents folder!`; the repo copy has no check
-  at all) — so the script actually executing on the phone is a **third, newer revision not present
-  on the Mac**, or the script was edited on the phone since the Mac copy last synced.
-  The repo's `iOS/sync_celebration.sh` should therefore be treated as **not canonical**.
+  (the shared v1.2 prints `ERROR: C.jpg not found in Documents folder!`; the old repo copy had no
+  check at all) — so the script actually executing on the phone may be a **newer revision not
+  present on the Mac**, or the phone's script is edited independently of the Mac mirror.
+  **Resolved for the repo:** the user supplied the phone's script, and `iOS/sync_celebration.sh` was
+  **replaced with it** (md5 `b12b6bb0…`) so all three known copies are byte-identical. The copy is
+  kept **verbatim** (no added header) on purpose — adding a comment header would recreate the drift
+  this finding is about. The script's own `# Version: 1.2` line remains the version marker.
 - 2026-10-30 — **Two doc facts corrected** (both wrong before): the shortcut saves into
   **a-Shell's `Documents`** folder — iCloud-synced, and visible on the Mac at `~/Documents/a-shell/`
   (same inode) — **not** `~/Documents/SICC-Ryder-Cup/` as DESIGN §10.7.11 claimed; and the resize
