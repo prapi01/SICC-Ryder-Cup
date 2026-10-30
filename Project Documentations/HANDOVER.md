@@ -138,6 +138,18 @@
   **Consequence:** pinning an exact graph by hand-editing the local Shortcuts DB is not a reliable
   delivery mechanism — iCloud can resurrect an older payload beside it. Prefer shipping a file with the
   graph already correct and **user-initiated** import.
+- 2026-10-31 — **⚠️ The Contents API omits `content` for files over ~1 MB — a data-loss trap.**
+  `GET /contents/...` returns `encoding: "none"` and **`content: ""`** for a 1,480,820-byte file, while
+  the **blobs** endpoint returns full `encoding: "base64"` (2,007,336 chars) for the same blob. Anyone
+  (or any script) that reads `content` from the Contents API and PUTs it back **silently writes a 0-byte
+  file**. This is what produced commit `196db416` during this session's restore attempt and it is
+  indistinguishable in effect from the missing-no-input guard. **Rule: to copy/restore any image over
+  1 MB, use `GET /git/blobs/<sha>`, never the Contents API `content` field.** (This also refines the
+  earlier note: the Contents API *PUT* accepts large bodies fine — it is the *GET* that omits content.)
+- 2026-10-31 — **Rapid repeat runs are NOT a failure mode (a theory tested and disproved).** Three runs
+  4 s apart at 07:21:08/12/16 SGT all succeeded (`60aa0b97`, `e4fd7a41`, `fe2d31c0`). Combined with
+  three successes 18–40 s apart from the iPhone earlier, the "Contents API `max-age=60` stale sha → 409"
+  hypothesis is **refuted** — do not pursue it.
 - 2026-10-30 — **The delivered uploader is end-to-end proven.** Artifact `UploadPhoto.shortcut`
   (iCloud `.../CloudDocs/Upload/`, copy in `~/Downloads/`, sha256 `06d35668...`): **8 actions**,
   `Authorization` = literal **`"Bearer \ufffc"`** with the token attached at **`{7, 1}`**, and the token
@@ -308,8 +320,17 @@
   **Sanity check first:** step 1 of the shortcut must show a token starting `github_pat_` (not the word
   `PASTE_YOUR_GITHUB_TOKEN_HERE`) — if it shows the placeholder, it is the stale copy and will 401.
 - **Never tap/run the uploader without a photo** as a "test". Until you confirm the guard is present on
-  the phone, a no-image run **wipes `C.jpg` to 0 bytes**. Recovery: restore from the previous good commit
-  (e.g. `b8ac561c`, 635,029 bytes) via the Contents API.
+  the phone, a no-image run **wipes `C.jpg` to 0 bytes**.
+  **⚠️ CORRECT recovery recipe — you MUST use the blobs API, not the Contents API:**
+  `GET /repos/prapi01/SICC-Ryder-Cup/contents/images/celebration/C.jpg?ref=<good-commit>` returns
+  **`content: ""` with `encoding: "none"` for any file over ~1 MB** (usually `encoding: "base64"` for
+  smaller files). Writing that empty string back via PUT therefore **writes a 0-byte file** — exactly the
+  mistake made on 2026-10-31 (`196db416`), which deepened the damage instead of repairing it.
+  Instead: take the good commit's **blob sha**, then
+  `GET /repos/prapi01/SICC-Ryder-Cup/git/blobs/<blob-sha>` → returns full `encoding: base64` content
+  regardless of size (verified: 2,007,336 base64 chars for the 1,480,820-byte photo), and PUT that back
+  with the current contents `sha`. Preferred good commits for `C.jpg`: **`8597b4f5`** (1,480,820 bytes,
+  blob `f844b46b…`, restored as `16bfeec6`) or `b8ac561c` (635,029 bytes).
 - **ROTATE the `gh` OAuth token AND the photo PAT.** Both were used in plaintext during testing, and the
   PAT is **baked into `UploadPhoto.shortcut`** (readable by anyone who obtains the file).
 - **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
