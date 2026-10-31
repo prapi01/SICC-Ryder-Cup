@@ -1,8 +1,9 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - BUMPED: VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - BUMPED: VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
+   - v1.05: BUMPED VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
    - NOTE: this constant must be bumped EVERY time js/versions.json changes.
      The manifest is fetched as `js/versions.json?v=<this value>`, so without a bump
      the browser serves the CACHED manifest and keeps loading the OLD script versions
@@ -17,14 +18,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.05";
+window.LOAD_GAME_VERSION = "1.06";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
-var VERSIONS_JSON_VERSION = "1.02";
+var VERSIONS_JSON_VERSION = "1.03";
 
-console.log("[LOAD-GAME] Initializing v1.05");
+console.log("[LOAD-GAME] Initializing v1.06");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -264,9 +265,10 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - BUMPED: VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - BUMPED: VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
+   - v1.05: BUMPED VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
    - NOTE: this constant must be bumped EVERY time js/versions.json changes.
      The manifest is fetched as `js/versions.json?v=<this value>`, so without a bump
      the browser serves the CACHED manifest and keeps loading the OLD script versions
