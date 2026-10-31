@@ -205,6 +205,27 @@ defeated within one deploy because the manifest changed again);
   - **`DELETE FROM ZSHORTCUT` works via plain SQL** *for a row whose actions are already gone*
     (`ZSHORTCUTACTIONS` empty) — the failure seen earlier was a CoreData trigger firing on a row that
     still had actions, not a general block. Quitting Shortcuts first, then deleting, was reliable.
+- 2026-10-31 — **✅ Library cleanup done: 57 shortcuts, ZERO orphans, exactly ONE uploader; uploader
+  re-verified AFTER the DB surgery.** The import churn above left rows behind that the Shortcuts UI does
+  not show. Removed **18 orphaned `ZSHORTCUTACTIONS` blobs, 29 orphaned `ZSHORTCUTRUNEVENT` rows and 20
+  orphaned `ZSHORTCUTICON` rows** (four stray shortcuts had already been deleted from the UI earlier).
+  Final state, re-checked on a **WAL-aware `.backup`**: **57 / 57 / 57** rows for
+  `ZSHORTCUT` / `ZSHORTCUTACTIONS` / `ZSHORTCUTICON`, **923** run events, **0 orphans in all three
+  tables**, `PRAGMA integrity_check` = `ok`, all four `Z_DA_*` CoreData triggers present, and the app
+  and CLI both list **57**.
+  - **"Image-accepting uploaders" must not be judged by name.** Four shortcuts match `%Photo%`/`%Upload%`
+    — `Resize Photo`, `2840ResizePhotoShortcut`, a NAS-monitor shortcut and `UploadPhoto` — but only
+    **`pk=147 UploadPhoto`** takes share-sheet input. `Resize Photo` / `2840ResizePhotoShortcut` are
+    **long-standing** (`2025-11-04`, `ZSHORTCUTRUNEVENT` history) and were **left untouched**; the NAS
+    one (`pk=76`) is unrelated. Only `pk=147` was created by this work (`2026-10-31 21:20:47`).
+  - **⚠️ A plain `cp` of `Shortcuts.sqlite` under-reports.** The first integrity check ran against a
+    `cp`'d copy and claimed **59 shortcuts and 14 orphan action blobs** — purely because the **2.2 MB
+    `-wal` was not copied**, so the copy showed pre-cleanup state. **Always take a consistent snapshot
+    with `sqlite3 <db> ".backup <dest>"`** before drawing a conclusion about this database.
+  - The uploader was then **run for real** (`shortcuts run "UploadPhoto" -i …`): it committed a new blob
+    (`978,367` B — a re-encode at q0.9, so a new sha is expected) → the PUT round-trip is intact after
+    the surgery. `C.jpg` was restored immediately and is back at blob
+    `4709b6e5d31b6c099d5a91944fe6fbddc76905a4`, `1,015,556` B.
 - 2026-10-31 — **✅ The `128 tools` warning root cause: a HARD-CODED cap in VS Code's agent host, hit by
   BYOK models.** The UI shows *"The model only supports 128 tools, 3 tools were not provided to the
   model."*; the backing log line is
