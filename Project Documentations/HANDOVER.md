@@ -347,10 +347,41 @@ indefinitely** — the scorer keeps entering scores locally and believing it is 
 devices never see them. There is no timeout, no watchdog, and no UI indicator that the listener has
 stopped applying updates.
 
-**D. What IS in place (the actual defences today):** WRV's verify-after-write plus **unlimited**
+**D. ⚠️ CORRECTION (found 2026-10-31, later): WRV's connection-loss recovery is wired up but
+ORPHANED — it has not run since 2026-06-26.** The earlier note here that WRV "was built for this"
+is right about the *design* and wrong about the *runtime*. Verified by reading the call graph:
+
+- `WRV.recover()` is a genuine lost-connection reconciliation loop: read Firestore → compare against
+  local in-memory truth → write local truth back → re-read and verify → retry every
+  `RECOVER_RETRY_DELAY` (10 s) until in sync. It was built exactly for this scenario.
+- Its **only** caller is `startWRVVerification()` in `game-data.js`.
+- `startWRVVerification` is **defined (line 985) and exported (line 1152) but NEVER CALLED** — the
+  only other references are its own comment and those two lines. So `WRV.recover()` is **dead code
+  at runtime** and lost-connection recovery has not executed for **four months**.
+- **It did work, briefly.** `game-data.js` v4.01 (**2026-06-26 13:46**) added the function and wired
+  it to **both** outcomes of the hole write in `saveCurrentHole()` — verify after success, recover
+  after failure. v4.02 (same day) added tracing to it. Then **v4.03 (`297f6bd`, 2026-06-26 15:31 —
+  the same day)** removed `saveCurrentHole()`'s own Firestore write entirely ("CHANGED:
+  `saveCurrentHole()` now uses WRV for ALL Firestore writes / REMOVED: Unmanaged Firestore write").
+  Removing that write also removed **both** `startWRVVerification()` call sites, because they lived
+  in its `.then()` / `.catch()`. The function was left behind, still exported "kept for debugging".
+- **Consequence:** the app kept `WRV.update()` (write + retry-on-error + verify), but silently lost
+  the *reconciliation* half — the part that detects "Firestore does not match my local truth" and
+  heals it. So the design intent ("WRV handles lost connection") is **only half true today**: it
+  retries on error, but it no longer reconciles. Together with (B)/(C) above — where a hung write
+  sets `WRVInProgress` and that flag makes the device drop all incoming updates — the losing scorer
+  has **no mechanism at all** to detect that its data never reached the other flight.
+- **Recommended fix:** re-wire `startWRVVerification()` after the WRV write in `saveCurrentHole()`
+  (i.e. restore the v4.01 call, now attached to the WRV callback). Cheap: the function and
+  `WRV.recover()` are both already correct and intact. Prefer calling it on a **timer/verification
+  tick**, not only at save time, so a device that has been silently out of sync also heals while
+  idle. **Not applied** — it is a change to the live scoring path.
+
+**E. What IS in place (the actual defences today):** WRV's verify-after-write plus **unlimited**
 exponential-backoff retries (1 s → 60 s cap) on *error*; a **pending-writes queue** persisted in
 `localStorage` per game that is resumed on re-entry (this is what the cascade uses); and Firestore's
-own in-memory SDK queue for Brief drops **within one page session**.
+own in-memory SDK queue for brief drops **within one page session**. The **reconciliation** half
+(`WRV.recover()`) is present but orphaned (see D).
 
 **Answer to "what do we have for lost connection?" — summary:**
 | Concern | Status |
@@ -359,6 +390,7 @@ own in-memory SDK queue for Brief drops **within one page session**.
 | Scorer-to-scorer visibility | ❌ a hung write can suspend the realtime listener forever |
 | Offline write detection | ❌ `set()` never times out; WRV retry never engages |
 | Write retry on error | ✅ WRV, unlimited backoff (1–60 s) |
+| Lost-connection **reconciliation** | ⚠️ built (`WRV.recover()`) but **orphaned since 2026-06-26** |
 | Resumé across reloads | ✅ `localStorage` pending-writes queue |
 | Connectivity UI / status | ❌ none |
 
