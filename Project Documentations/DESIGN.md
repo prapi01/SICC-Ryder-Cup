@@ -131,9 +131,18 @@
   `globalStorage/agent-host-storage.json` → `customizationEnablement.global["mcpServers#<name>"] = false`
   (that is how `supabase` shows as `disabled (stopped)`, and it is what the warning's **"Configure
   Tools"** link writes). Failing that, the decisive lever is **`.mcp.json`**: `firebase` alone supplies
-  **66 of 131** tools — about **half the entire budget** — so removing it alone clears the cap with
+  **65 of 131** tools — about **half the entire budget** — so removing it alone clears the cap with
   large margin. **Acceptance test: the `sending N of M tools` count must fall below 128 — never the
   setting being written.**
+  **✅ RESOLVED 2026-10-31 22:55 — via the "Configure Tools" UI, by disabling `firebase`.** Verified:
+  14 drop lines before the toggle, **0** after. **Standing rule: manage VS Code tool/MCP enablement
+  through Configure Tools only.** Settings keys do not control it (the two `...githubMcpServer.enabled`
+  variants are red herrings for this purpose), and hand-editing storage fails because the host
+  **prunes any enablement key it does not already know**. The authoritative store is
+  `globalStorage/state.vscdb` → `ItemTable.mcp.enablement`, a JSON array of `[key, enabled]` pairs whose
+  keys encode the **config-source path** (e.g. `workspace-dot-mcp.0.firebase`), **not** the server name —
+  which is why the key cannot be guessed. The agent host is also **app-scoped**: config changes need a
+  full quit-and-reopen, not a window reload.
 - **2026-10-31 — Celebration pipeline: three game-day defects fixed (photo + today's-game access).**
   Both reported symptoms were **not** code regressions — no `js/`/HTML commit since 2026-08-14 —
   but older defects that only surface **on game day** (a real photo broadcast + a completed game).
