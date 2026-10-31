@@ -118,9 +118,14 @@
   (`ByokLmProxyService`, `vs/platform/agentHost/node/agentHostMain.js`) that **silently drops** tools
   beyond 128 when routing to a BYOK model (every request went to `deepseek-v4-flash`). It is **not**
   configurable: `chat.virtualTools.threshold` is a different mechanism (virtual toolsets) and does not
-  raise the ceiling. **Fix: reduce the tool count below 128** — applied by disabling the redundant
-  built-in **GitHub MCP server** (`chat.githubMcpServer.enabled=false`), since the **`gh` CLI** already
-  covers PRs/issues. See HANDOVER for the full evidence.
+  raise the ceiling. **Fix: reduce the tool count below 128.** Disabling the built-in **GitHub MCP
+  server** is the intended lever (the **`gh` CLI** already covers PRs/issues) — but note the two
+  same-named settings: the agent host reads **`chat.agentHost.githubMcpServer.enabled`**, *not* the
+  Copilot extension's `github.copilot.chat.githubMcpServer.enabled`. Setting the wrong one changes
+  nothing at all. Also measured: the **agent host is an app-level process**, so it only picks up config
+  on a **full VS Code restart** — a window reload restarts the extension host only, and leaves the
+  agent host (and its stale MCP state) untouched. Counted budget: core **38**, `firebase` **65**,
+  `github-mcp-server` **18**, `cloudflare` **4**, Pylance **6** = **131**. See HANDOVER for the evidence.
 - **2026-10-31 — Celebration pipeline: three game-day defects fixed (photo + today's-game access).**
   Both reported symptoms were **not** code regressions — no `js/`/HTML commit since 2026-08-14 —
   but older defects that only surface **on game day** (a real photo broadcast + a completed game).

@@ -236,15 +236,36 @@ defeated within one deploy because the manifest changed again);
   - It is **not a setting** — `chat.virtualTools.threshold` (default 128) is a *different* mechanism
     (grouping tools into virtual toolsets) and **does not raise this ceiling**. The only fix is to get
     the tool count **below 128**.
-  - **Fix applied:** `"github.copilot.chat.githubMcpServer.enabled": false` in user `settings.json`
-    (also removed the now-redundant `…readonly: true`). The built-in GitHub MCP server is the single
-    largest reducible block and is **largely redundant here** because the **`gh` CLI** is used for
-    PRs/issues. Backup kept beside it as `settings.json.bak-githubmcp-<timestamp>`. **Requires a window
-    reload**; the warning persists in a running session that started with the old config.
-  - The session also loads `firebase` (workspace MCP), a `cloudflare` connector, `pylance mcp server`
-    (observed **failing** — `mcpState: error`), and `supabase` (disabled). If the count is still ≥ 128
-    after the reload, `pylance mcp server` failing is the next thing to investigate, since a failing
-    server still occupies its slot.
+  - **⚠️ SELF-CORRECTION (2026-10-31 22:20) — the first "fix" was the WRONG SETTING and could never
+    have worked.** VS Code ships **two** independently-gated GitHub MCP servers whose names differ by
+    three characters:
+    | Setting | Read by | Effect on the tool count |
+    |---|---|---|
+    | `github.copilot.chat.githubMcpServer.enabled` (default `false`) | the **Copilot extension** | **none** — the agent host never reads it |
+    | **`chat.agentHost.githubMcpServer.enabled`** (default **`true`**) | the **agent host** | **this is the one that matters** |
+    Evidence: the host's constant is literally `"chat.agentHost.githubMcpServer.enabled"`, its gate is
+    `_isGitHubMcpServerEnabled(){ return getRootValue(...,"githubMcpServerEnabled") !== false }`, the
+    registration carries `agentHost:{key:"githubMcpServerEnabled"}, default:true`, and the host bundle
+    contains **zero** references to `chat.githubMcpServer`. The tell that was missed: the tool count
+    stayed at exactly **131** — impossible if 18 tools had really been removed. The fix was reported off
+    the setting being *written*, not off the count *falling*.
+  - **Correct setting now applied:** `"chat.agentHost.githubMcpServer.enabled": false`, with the
+    extension setting and `...readonly` **restored to their original `true`**. Confirmed propagated this
+    time — the host's own persisted `globalStorage/agent-host-config.json` reads
+    `githubMcpServerEnabled = false`.
+  - **⚠️ A WINDOW RELOAD CANNOT APPLY IT — the agent host is an APP-LEVEL process, not per-window.**
+    Measured: VS Code main `PID 39835` and the agent host `PID 40873` have both been alive since
+    **Oct 30 11:30** (~35 h) while the extension host restarted **17 times**. The host is therefore
+    still holding its in-memory "GitHub MCP = on" from Oct 30, and `github-mcp-server` still reached
+    `connected` at **22:11:10**, *after* the config write. **This needs a full quit-and-reopen of
+    VS Code**, not a reload. It is **not yet verified** that a restart suffices — if the server arrives
+    via the *connectors* path rather than the built-in path, it will survive the restart.
+  - **Tool budget, counted (total 131):** core agent-host **38** · **`firebase` MCP 65** ·
+    `github-mcp-server` **18** · `cloudflare` **4** · Python/Pylance extension **6**. **`firebase` alone
+    is half the budget** — dropping it is a far bigger lever (−65) than the GitHub server (−18).
+  - Also loaded: `cloudflare` connector, `pylance mcp server` (observed **failing** — `mcpState: error`,
+    `transport failure … http://localhost:52747/stream`), `supabase` (disabled). A failing server
+    probably contributes **0** tools, so it was ranked below the above rather than blamed first.
 - 2026-10-31 — **✅ The delivered shortcut is now 19 actions and run-verified end-to-end.** Structure:
   token (step 1) → resize 1920/JPEG 0.9/base64 → `GET` current `sha` → `PUT` (with **`branch: main` in
   the JSON body**, never `?branch=`) → `output` → read back `content.sha` → **IF sha has a value** →
@@ -915,9 +936,12 @@ game is mid-day.
   lacked the `Show Result` action and the no-input guard, while the Mac's install had both. This is the
   leading explanation for "silent failure after a first success", but it is **not yet confirmed from the
   device** — the phone's shortcut action count is the check that would settle it.
-- **Tool cap: is the count now under 128?** The fix (`githubMcpServer.enabled=false`) needs a window
-  reload to take effect, so it is **not yet verified**. If the warning persists, the failing
-  `pylance mcp server` is the next suspect (it sat in `mcpState: error` while still holding a slot).
+- **Tool cap: is the count now under 128?** The correct setting
+  (`chat.agentHost.githubMcpServer.enabled=false`) is applied and has reached the host's persisted
+  config, but it is **not yet verified** — the agent host only picks up config on a **full app restart**
+  (a window reload does not restart it). Pending a quit-and-reopen. If the count is still 131
+  afterwards, the server is arriving via the **connectors** path rather than the built-in path, and the
+  next lever is `firebase` (**65 tools** — half the budget).
 - **VIEW feature, in-app half — deferred by the user.** The shortcut half is done. If/when the in-app
   view is built (e.g. on `admin.html` next to the other diagnostics), it **must** read through the
   Contents API with `Accept: application/vnd.github.raw`; the CDN and `raw.githubusercontent.com` are
