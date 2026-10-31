@@ -281,6 +281,12 @@ defeated within one deploy because the manifest changed again);
   - **Tool budget by component (total 131):** `firebase` **66**, core agent-host **38**,
     `github-mcp-server` **18**, Python/Pylance **6**, `cloudflare` **4**. **`firebase` alone is ~50 % of
     the budget** — the single biggest lever by a wide margin.
+  - **Action taken (2026-10-31 22:45) — both servers disabled via the PROVEN gate.** Added
+    `"mcpServers#github-mcp-server": false` and `"mcpServers#firebase": false` to
+    `globalStorage/agent-host-storage.json` → `customizationEnablement.global` (backup at
+    `/tmp/agent-host-storage.json.bak`). Chosen over editing `.mcp.json` (which **is** git-tracked)
+    because the gate is identical in effect but **reversible and touches no repo file**.
+    **Expected after restart: 131 − 18 − 65 = 48.** Re-enabling is one edit of the same key to `true`.
 - 2026-10-31 — **✅ The delivered shortcut is now 19 actions and run-verified end-to-end.** Structure:
   token (step 1) → resize 1920/JPEG 0.9/base64 → `GET` current `sha` → `PUT` (with **`branch: main` in
   the JSON body**, never `?branch=`) → `output` → read back `content.sha` → **IF sha has a value** →
