@@ -266,6 +266,21 @@ defeated within one deploy because the manifest changed again);
   - Also loaded: `cloudflare` connector, `pylance mcp server` (observed **failing** — `mcpState: error`,
     `transport failure … http://localhost:52747/stream`), `supabase` (disabled). A failing server
     probably contributes **0** tools, so it was ranked below the above rather than blamed first.
+  - **⚠️ SECOND FAILURE (2026-10-31 22:37) — the setting is STILL not the lever, even after a FULL app
+    restart.** Verified a real restart happened (new PIDs `40135`/`41141` at 22:33:50; new log dir
+    `logs/20261031T223350`) and the host's persisted config reads `githubMcpServerEnabled = false` —
+    yet the count is **still exactly 131** (14 drop lines, 22:35–22:37) and
+    `MCP server 'github-mcp-server' connected` at **22:34:11** with `mcpSource: "builtin"`.
+    So `chat.agentHost.githubMcpServer.enabled=false` reaches the config file but does **not** stop the
+    server. Next mechanism found, and it is the one that is **already proven on this machine**:
+    `globalStorage/agent-host-storage.json` → `customizationEnablement.global` holds
+    **`"mcpServers#supabase": false`**, and the log correspondingly shows
+    `MCP server 'supabase' disabled (stopped)`. The gate is
+    `_isMcpServerEnabledForSdk(){ let n = customizationEnablementService.resolve(...); return n.kind==="resolved" && n.enabled }`,
+    keyed by `Wve(name) => "mcpServers#" + name`. This is what the warning's **"Configure Tools"** link writes.
+  - **Tool budget by component (total 131):** `firebase` **66**, core agent-host **38**,
+    `github-mcp-server` **18**, Python/Pylance **6**, `cloudflare` **4**. **`firebase` alone is ~50 % of
+    the budget** — the single biggest lever by a wide margin.
 - 2026-10-31 — **✅ The delivered shortcut is now 19 actions and run-verified end-to-end.** Structure:
   token (step 1) → resize 1920/JPEG 0.9/base64 → `GET` current `sha` → `PUT` (with **`branch: main` in
   the JSON body**, never `?branch=`) → `output` → read back `content.sha` → **IF sha has a value** →
@@ -936,12 +951,16 @@ game is mid-day.
   lacked the `Show Result` action and the no-input guard, while the Mac's install had both. This is the
   leading explanation for "silent failure after a first success", but it is **not yet confirmed from the
   device** — the phone's shortcut action count is the check that would settle it.
-- **Tool cap: is the count now under 128?** The correct setting
-  (`chat.agentHost.githubMcpServer.enabled=false`) is applied and has reached the host's persisted
-  config, but it is **not yet verified** — the agent host only picks up config on a **full app restart**
-  (a window reload does not restart it). Pending a quit-and-reopen. If the count is still 131
-  afterwards, the server is arriving via the **connectors** path rather than the built-in path, and the
-  next lever is `firebase` (**65 tools** — half the budget).
+- **Tool cap: is the count now under 128? NO — still 131 after a full app restart.** Two settings
+  fixes have failed (`github.copilot.chat.githubMcpServer.enabled`, then
+  `chat.agentHost.githubMcpServer.enabled`). The setting does reach the host's persisted config, so the
+  remaining suspects are (a) the `customizationEnablement` gate (`mcpServers#<name>`) — proven to work
+  on this machine via `supabase` — which is what the warning's **"Configure Tools"** link writes, or
+  (b) simply dropping `firebase` from `.mcp.json` (**66 tools, ~50 % of the budget**).
+
+  **Process note — do not repeat:** both attempts were reported as fixed off the *setting being written*
+  rather than off the *tool count falling*. The count is the only valid acceptance test, and it has
+  stayed at 131 through every change so far.
 - **VIEW feature, in-app half — deferred by the user.** The shortcut half is done. If/when the in-app
   view is built (e.g. on `admin.html` next to the other diagnostics), it **must** read through the
   Contents API with `Accept: application/vnd.github.raw`; the CDN and `raw.githubusercontent.com` are
