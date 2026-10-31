@@ -194,6 +194,52 @@ defeated within one deploy because the manifest changed again);
   an explicit check a bad upload "completes" normally.
   Note: a passing action is not evidence the earlier one succeeded — only the **returned `content.sha`**
   distinguishes a real upload from a no-op.
+- 2026-10-31 23:3x — **✅ REPRODUCED THE UPLOAD FAILURE ON THE MAC: the trigger is the SAME PHOTO
+  SENT TWICE.** This is the first time the user's exact symptom has been reproduced off-device.
+  Method: watch the **commit count** on `images/celebration/C.jpg` (NOT the blob sha — identical bytes
+  produce an identical blob sha, which made an earlier test of mine look like 8 failures when it was
+  actually 8 *efficacies*).
+  | Test | Result |
+  |---|---|
+  | SAME photo, 3 consecutive runs | **NO new commits** — `a1c4e23f` before and after all three |
+  | 3 DIFFERENT photos, consecutive | **every one committed** — `661688e4` → `41faf5c3` → `926236b3` |
+  | Direct API, identical bytes ×3 | HTTP 201/200/200, **`content.sha` present every time** |
+  So the **PUT path and the token are fine**; the failure is specific to a **repeat of identical
+  content**, which is precisely "first upload OK, then failed after that".
+  - **Measured GET/PUT asymmetry that explains a silent failure:** `PUT` responses are **~1.9 KB**
+    (no inline content), but `GET /contents/...` **inlines the whole file as base64** — **~1.4 MB**
+    at a 1 MB photo — and the moment the file exceeds **~1 MB** the `content` field becomes **`""`**
+    with `"encoding":"none"` (measured: 1000 KB → 1.38 MB inline; 1100 KB → 0.8 KB, content empty).
+  - **Caveat on my own testing:** two of my earlier experiments were **invalid** and their conclusions
+    were withdrawn — (a) "8 runs, 1 success" used the *same* photo, so unchanged sha proved nothing
+    about failure; (b) a "stale GET" theory (Contents API `cache-control: max-age=60`) was **not**
+    reproducible: in 12 controlled write-then-read cycles the Contents GET and the git tree agreed
+    **12/12**, and `?cb=`/`Cache-Control: no-cache` made no difference.
+- 2026-10-31 — **⚠️ CORRECTION: the "shortcut cleanup" was NOT complete — test shortcuts were still on
+  the iPhone.** Earlier this session the cleanup was reported as done (`4 stray shortcuts deleted + 18
+  orphaned action blobs, 29 orphaned run events, 20 orphaned icons`). That was true **of the Mac only**.
+  The user then photographed the **iPhone's Shortcuts app** showing **11 of those test shortcuts still
+  present**, plus a redundant `Upload-Photo 2` in the Photos share sheet:
+  `After404S`, `ErrOutS`, `OkTestS`, `ErrTestS`, `FailTestS`, `ReadbackTestS`, `UploadPhoto 3`,
+  `UploadPhoto 4`, `UploadPhoto_signed`, `UploadPhotoFinal`, `Upload-Photo 2`.
+  **Root cause: iOS Shortcuts are synced per-device.** Deleting a row from the Mac's
+  `Shortcuts.sqlite` does **not** delete it from the phone, and the Mac has **no interface to delete a
+  shortcut on the device**. The Mac library was verified clean (`57` shortcuts, exactly one
+  `UploadPhoto`) while the device was not — the check and the claim were about the wrong machine.
+  **Why it matters:** every one of those variants writes the **same `C.jpg`**, so choosing the wrong
+  one in the share sheet is **indistinguishable from a broken shortcut** — the precise confusion that
+  has dogged this feature.
+  **Corrected facts on the device:** the genuine **`UploadPhoto`** is present and healthy — **19
+  actions**, no-input guard present (`ZNOINPUTBEHAVIORDATA` set), accepts images, `ZSHOWINSEARCH=1`.
+  **`Rename To C.jpg`** (pk=104) is the **user's own** shortcut (created **2026-05-15**, 3 run events)
+  and must **not** be deleted. `C.jpg` on `main` verified intact
+  (`4709b6e5d31b6c099d5a91944fe6fbddc76905a4`, `1,015,556` B) and both delivered `.shortcut` files are
+  byte-identical (sha256 `37d8a8b7…`), so nothing stale is being re-synced.
+  **Standing rule added to DESIGN:** never leave a test shortcut where it can sync to the phone; prefer
+  `curl` + plist inspection over creating Shortcuts at all; and **cleanup is not complete until the
+  iPhone's share sheet is checked** — never report it done from the Mac library alone.
+  **OUTSTANDING (user-side, Mac cannot do it):** delete the 11 test shortcuts on the iPhone via
+  Shortcuts → Select → Delete, keeping `UploadPhoto` and `Rename To C.jpg`.
 - 2026-10-31 — **⚠️ Mac Shortcuts GUI import is UNRELIABLE AND LATE — the source of duplicate installs.**
   `open -a Shortcuts <file>.shortcut` repeatedly appeared to do nothing, then imported **12–25 s later**
   (sometimes several queued imports landing together). This created five stray `UploadPhoto*` rows in one
