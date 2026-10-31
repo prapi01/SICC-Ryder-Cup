@@ -157,9 +157,14 @@
   own flight's** `f<n>.d`/`f<n>.se` with **local truth**, so one scorer can never overwrite the
   other's holes, and it stops once in sync. `wrv.js` v1.15 also fixes `recover()` never calling
   `options.onComplete`.
-  Fixes recommended (timeout the write + clear the flag
-  in a `finally` + defer rather than drop updates while in progress + enable persistence + surface
-  connection state) are **not applied** — they change live scoring behaviour.
+  **Delivery hardening applied 2026-10-31** (`wrv.js` 1.16 / `real-game-save.js` 1.44 /
+  `real-game-init.js` 1.17): (a) background writes pass `timeoutMs: 20000` so a hung offline write
+  fails and WRV's backoff retry engages instead of blocking for ever; (b) `WRVInProgress` is now an
+  outstanding-*counter* with a **120 s watchdog**, so it can never stay set and mute the device;
+  (c) a snapshot arriving mid-write is **deferred and replayed**, not dropped (re-entrancy-guarded
+  because the replay re-enters the handler). **Still open:** enabling Firestore offline persistence
+  (needs testing against the T-2 fix — reconnect-flushed out-of-order writes would change save
+  ordering) and surfacing connection state in the UI.
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had

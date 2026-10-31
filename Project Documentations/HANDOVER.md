@@ -417,20 +417,51 @@ own in-memory SDK queue for brief drops **within one page session**. The **recon
 | Resumé across reloads | ✅ `localStorage` pending-writes queue |
 | Connectivity UI / status | ❌ none |
 
-**⬜ NOT FIXED — needs the user's decision** (scoring behaviour, so not changed unilaterally).
-Recommended, in priority order:
-1. **Timeout the write** — race `docRef.set()` against e.g. 10–15 s; on timeout treat it as a
-   failure so WRV's existing retry loop engages, and **always clear the WRV flag in a `finally`**,
-   plus add a watchdog so a stuck flag auto-clears (the 30–60 s background queue makes a short
-   timeout safe).
-2. **Stop ignoring updates while "WRV in progress"** — instead of `return`, defer and re-apply once
-   the flag clears, so a background write cannot mute the listener.
-3. **Enable Firestore offline persistence** so reads/writes survive a dip and a hole is never
-   permanently blank.
-4. **Surface connection state in the UI** (offline / "n not synced"), so a scorer knows.
-⚠️ Note on (4): the app requires exactly one F1 and one F2 writer, and F2 owns the
-`saveGameToHistory` trigger (`sign-card.js` v1.43). Offline writes that flush **out of order** on
-reconnect would change save ordering, so (3) needs testing against the T-2 fix before enabling.
+**✅ ITEMS 1 AND 2 FIXED (2026-10-31).** Both were the same underlying hang, and both are small,
+contained changes to the *delivery* of updates — no scoring logic touched.
+
+**Fix 1 — a hung write can no longer sit pending for ever.**
+`wrv.js` **1.15 → 1.16**, `real-game-save.js` **1.43 → 1.44**:
+- `WRV.write()/update()` accept `options.timeoutMs`, and the **whole attempt** (`set` + verify read)
+  is raced against it. Default **0 = unchanged** for every other caller.
+- `wruBackground()` now passes **`timeoutMs: 20000`**, so an offline write fails instead of hanging
+  and the existing exponential-backoff retry (1 s → 60 s, unlimited) actually engages.
+- The `WRVInProgress` flag is now managed by `beginWRVWrite()`/`endWRVWrite()` with an
+  **outstanding-write counter** (cascade + consolidated writes overlap, so a single boolean was
+  wrong), and a **watchdog** force-clears the flag after **`WRV_STALE_MS` 120 s**. The direct-write
+  fallback path uses the same helpers.
+- **Proven by running the real code against a never-settling stub:** with no timeout the callback
+  never fires (the reported hang); with `timeoutMs=1500` the retry loop engages (2+ attempts in 5 s).
+
+**Fix 2 — realtime updates are DEFERRED, not dropped.**
+`real-game-init.js` **1.16 → 1.17**:
+- The `onSnapshot` handler is extracted to `handleSnapshot(doc)` and keeps the latest snapshot.
+- `if (isWRVInProgress()) return;` (which discarded the update) is replaced by
+  `deferredUpdate = true` + a 1 s re-check interval, and `applyDeferredUpdate()` **replays** the held
+  snapshot once the write settles. It is called at every flag-clear site plus from the interval, so
+  a deferred update can never be stranded.
+- **A re-entrancy guard (`applyingDeferred`) was required:** the replay re-enters `handleSnapshot()`,
+  which itself calls `applyDeferredUpdate()` at its clear sites; without the guard that path recursed
+  into itself until the stack blew.
+- **Verified by simulating the exact logic:** a snapshot arriving mid-write stays deferred and is
+  then **applied automatically** when the write settles (not dropped), and the guard yields exactly
+  one apply with no runaway recursion.
+
+**PROD verification after deploy** (all three surfaces, no page errors):
+| Check | Result |
+|---|---|
+| `real-game` (scorer) | `WRV` loaded, `recover`/`write` functions, watchdog + reconcile hooks exported, `WRVInProgress` false at idle ✅ |
+| Scorecard | T-2 `A10 A10 A9 A10 A10`, **0 squares**, gold 14; T-1 gold 16; Strk gold 18 — unchanged ✅ |
+| Celebration | Team A 10–9, correct per-game photo ✅ |
+
+⬜ **Still open from the same audit:**
+3. **Enable Firestore offline persistence** so reads survive a dip (a bad read is still a permanent
+   cache miss today). ⚠️ Must be tested against the T-2 fix — reconnect-flushed writes arriving
+   **out of order** would change save ordering, and F2 owns the `saveGameToHistory` trigger.
+4. **Surface connection state in the UI** (offline / "n not synced") so a scorer knows.
+5. Pre-existing cosmetic: `real-game.html` logs `WRV loaded: false` because it checks the global
+   from an inline script that runs **before** `load-game.js` loads the modules. Harmless but
+   misleading during debugging.
 
 ### ⚠️ SECURITY (raised 2026-10-31, NOT fixed): Firestore is world-writable
 A plain unauthenticated `PATCH` to `scheduledGames/<id>` returned **HTTP 200** — no auth of any
@@ -738,12 +769,12 @@ game is mid-day.
 - **Connection-loss hardening — reconciliation DONE, these remain** (audit 2026-10-31):
   ✅ **done:** `WRV.recover()` reconciliation re-wired (save-time + 60 s idle tick) and
   `onComplete` firing fixed.
-  ⬜ **still open:** (a) timeout the write so a hung `set()` cannot sit pending for ever, and clear
-  `WRVInProgress` in a `finally` + watchdog; (b) **defer rather than drop** realtime updates while
-  `WRVInProgress` is set (today `real-game-init.js` silently `return`s, so a stuck flag hides the
-  other flight indefinitely); (c) enable Firestore offline persistence; (d) surface connection
-  state in the UI. (a) and (b) are small and address the same hang; (c) needs testing against the
-  T-2 fix because reconnect-flushed writes arriving out of order would change save ordering.
+  ✅ **items 1 and 2 DONE (2026-10-31):** write timeout (`timeoutMs` 20 s on background writes) +
+  `WRVInProgress` counter + 120 s watchdog (`wrv.js` 1.16 / `real-game-save.js` 1.44), and
+  **defer instead of drop** with a re-entrancy-guarded replay (`real-game-init.js` 1.17).
+  ⬜ **still open:** (c) Firestore offline persistence so a dropped read is not permanent, needs
+  testing against the T-2 fix because reconnect-flushed out-of-order writes would change save
+  ordering; (d) surface connection state in the UI.
 - **Firestore has NO write protection** (found 2026-10-31, unauthenticated `PATCH` → HTTP 200).
   Should writes require auth while reads stay public? Not changed — needs the user's decision.
 - Cause A's fix was verified against the **live** flag shape; the next real game is the true
