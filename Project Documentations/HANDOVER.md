@@ -306,6 +306,11 @@ defeated within one deploy because the manifest changed again);
   - **Lesson / rule:** for VS Code's own tool + MCP enablement, **use the "Configure Tools" UI.** No
     settings key and no hand-edited storage file reliably works. Three separate setting/file attempts
     failed; the single UI toggle worked.
+  - **Cleanup done:** both test settings I added (`chat.agentHost.githubMcpServer.enabled`,
+    `github.copilot.chat.agentDebugLog.fileLogging.enabled`) were **removed**, and `settings.json` is
+    now **identical to the pre-session backup** (`...bak-githubmcp-20261031-203831`) — verified by
+    deep-comparing the two JSON documents. No residue from the failed attempts remains in the user
+    settings.
 - 2026-10-31 — **✅ The delivered shortcut is now 19 actions and run-verified end-to-end.** Structure:
   token (step 1) → resize 1920/JPEG 0.9/base64 → `GET` current `sha` → `PUT` (with **`branch: main` in
   the JSON body**, never `?branch=`) → `output` → read back `content.sha` → **IF sha has a value** →
