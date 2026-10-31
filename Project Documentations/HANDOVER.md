@@ -30,11 +30,27 @@
   `celebration.photo G__H.jpg` (the real photo, created 12:56 SGT) was overwritten at 13:35 SGT.
   **Fix (v1.22):** read `scheduledGames/<gameId>.photo` first; if `newPhotoAvailable === true`
   a real photo owns the flags — pull it into sessionStorage and leave the flags alone.
+- **2026-10-31 (later) — the game-day photo was the WRONG SHOT; replaced with the user's
+  correct one.** The user supplied the correct photo (a desktop `C.jpg`, 18,150,700 bytes,
+  6421×3612, EXIF `2026:10:31 08:40:58`). Pixel comparison proved it is genuinely a **different
+  frame** from what was live (mean diff 48, 63 % of pixels) — the live image was a burst sibling
+  (EXIF `08:41:00`, 2 s later), even though all devices were internally *consistent*. Replaced the
+  photo in **all three stores** so the game-day evidence is correct:
+  `images/celebration/C.jpg` (GitHub → Cloudflare CDN) and the Firebase Storage copy
+  `celebration/GM_260914_1342_52_H.jpg`. Re-encoded to **1920×1080, quality 95, EXIF preserved**
+  (1,015,556 bytes) to match the established pipeline and the previous file's size class.
+  Verified: GitHub raw = CDN = Storage = **sha256 `ef50d6ea5bd8daf5…`**, and the app's celebration
+  modal now serves it.
 - **Damage repaired in the live data (not code):** `historyGames/GM_260914_1342_52_H` had **no**
   `celebration` field (cause B). Backfilled with the Storage URL of
-  `celebration/GM_260914_1342_52_H.jpg`. Verified by pixel comparison (RMSE 1.5 %, mean diff
-  1.16) that this file **is** the user's `C.jpg`, re-encoded by canvas — so the correct photo was
-  always in Storage; only the pointer was missing.
+  `celebration/GM_260914_1342_52_H.jpg`. (At the time this *was* believed correct: the Storage copy
+  matched the then-live `C.jpg` to RMSE 1.5 % / mean diff 1.16 — both turned out to be the wrong
+  burst frame; superseded by the replacement above.)
+  Also repaired **`scheduledGames/GM_260914_1342_52.photo`**, which cause A had left pointing at
+  `SRC_Default_Photo.jpg` with `viewDownloaded: false` — a viewer re-joining would have pulled the
+  default again. Now points at the per-game photo with all three flags `true`. This pointer is used
+  **only** for the in-game F2/VIEW sync; the celebration display reads
+  `historyGames/_H.celebration.imageUrl`.
 - **2026-10-30 — iPhone celebration-photo upload pipeline: ROOT CAUSE FOUND + worked around.**
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
   v3.0.0 regression fixes, automated QA harness). Verified on production.

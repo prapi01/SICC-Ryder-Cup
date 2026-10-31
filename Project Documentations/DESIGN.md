@@ -112,8 +112,15 @@
   `GITHUB_PHOTO_URL` (shared `C.jpg`). The `localStorage` link is populated per game by
   `storePhotoUrlForHistory()` (not by the default-photo path).
   **Repair:** the live `historyGames/GM_260914_1342_52_H` record was backfilled with its
-  `celebration` pointer; pixel comparison (RMSE 1.5 %) proved the Storage copy **is** the user's
-  `C.jpg` (canvas re-encode only).
+  `celebration` pointer, and `scheduledGames/GM_260914_1342_52.photo` (left pointing at
+  `SRC_Default_Photo.jpg` by cause A, with `viewDownloaded: false`) was repointed at the per-game
+  photo with all flags `true`.
+  **Photo history is a shared, single slot:** `celebration/C.jpg` is **one** file standing in for
+  "the latest celebration photo", and `copyCelebrationPhoto()` snapshots it into Storage as
+  `celebration/<gameId>_H.jpg`. Both the CDN copy and the Storage snapshot therefore have to be
+  **replaced together or a historical game silently keeps the wrong photo** — the archive only holds
+  a pointer, never the image. (Done once on 2026-10-31 when the uploaded shot turned out to be the
+  wrong frame of the burst.)
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had
