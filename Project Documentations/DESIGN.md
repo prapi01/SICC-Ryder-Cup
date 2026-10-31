@@ -124,8 +124,16 @@
   Copilot extension's `github.copilot.chat.githubMcpServer.enabled`. Setting the wrong one changes
   nothing at all. Also measured: the **agent host is an app-level process**, so it only picks up config
   on a **full VS Code restart** — a window reload restarts the extension host only, and leaves the
-  agent host (and its stale MCP state) untouched. Counted budget: core **38**, `firebase` **65**,
+  agent host (and its stale MCP state) untouched. Counted budget: core **38**, `firebase` **66**,
   `github-mcp-server` **18**, `cloudflare` **4**, Pylance **6** = **131**. See HANDOVER for the evidence.
+  **⚠️ Neither GitHub setting actually works (verified 2026-10-31 22:37, after a full app restart —
+  count still 131).** The mechanism that *is* proven on this machine is the per-server enablement gate:
+  `globalStorage/agent-host-storage.json` → `customizationEnablement.global["mcpServers#<name>"] = false`
+  (that is how `supabase` shows as `disabled (stopped)`, and it is what the warning's **"Configure
+  Tools"** link writes). Failing that, the decisive lever is **`.mcp.json`**: `firebase` alone supplies
+  **66 of 131** tools — about **half the entire budget** — so removing it alone clears the cap with
+  large margin. **Acceptance test: the `sending N of M tools` count must fall below 128 — never the
+  setting being written.**
 - **2026-10-31 — Celebration pipeline: three game-day defects fixed (photo + today's-game access).**
   Both reported symptoms were **not** code regressions — no `js/`/HTML commit since 2026-08-14 —
   but older defects that only surface **on game day** (a real photo broadcast + a completed game).
