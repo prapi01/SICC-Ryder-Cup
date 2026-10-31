@@ -1,8 +1,9 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - BUMPED: VERSIONS_JSON_VERSION 1.03 -> 1.04 (js/versions.json changed again).
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - BUMPED: VERSIONS_JSON_VERSION 1.04 -> 1.05 (js/versions.json changed again).
+   - v1.07: BUMPED VERSIONS_JSON_VERSION 1.03 -> 1.04 (js/versions.json changed again).
    - v1.06: BUMPED VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
    - v1.05: BUMPED VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
    - NOTE: this constant must be bumped EVERY time js/versions.json changes.
@@ -19,14 +20,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.07";
+window.LOAD_GAME_VERSION = "1.08";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
-var VERSIONS_JSON_VERSION = "1.04";
+var VERSIONS_JSON_VERSION = "1.05";
 
-console.log("[LOAD-GAME] Initializing v1.07");
+console.log("[LOAD-GAME] Initializing v1.08");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -266,9 +267,10 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - BUMPED: VERSIONS_JSON_VERSION 1.03 -> 1.04 (js/versions.json changed again).
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - BUMPED: VERSIONS_JSON_VERSION 1.04 -> 1.05 (js/versions.json changed again).
+   - v1.07: BUMPED VERSIONS_JSON_VERSION 1.03 -> 1.04 (js/versions.json changed again).
    - v1.06: BUMPED VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
    - v1.05: BUMPED VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
    - NOTE: this constant must be bumped EVERY time js/versions.json changes.

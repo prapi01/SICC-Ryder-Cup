@@ -1,7 +1,13 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: optional options.timeoutMs on WRV.write()/update(). The whole attempt
+     (set + verify read) is raced against it so a hung write cannot block the retry
+     loop for ever. An offline Firestore set() NEVER settles and never errors, so the
+     retry loop - which only runs on .catch - previously never engaged at all.
+   - DEFAULT: 0 = no timeout, so existing callers are unchanged.
+   - v1.15: recover() now calls options.onComplete (via finishRecovery()).
    - FIXED: recover() now actually CALLS options.onComplete when recovery finishes.
      It accepted the callback but never invoked it, so js/game-data.js's dedupe key
      (wrvRecoveryKeys) was never released - the guard could suppress a repeat once.
@@ -13,7 +19,7 @@ DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.15";
+window.WRV_VERSION = "1.16";
 
 var WRV = (function() {
     
@@ -211,6 +217,9 @@ var WRV = (function() {
         var db = firebase.firestore();
         var docRef = db.collection(collection).doc(docId);
         var skipVerify = (options && options.skipVerify) || [];
+        // v1.16: 0 = legacy behaviour (no timeout). Callers that write during a live
+        // game pass a timeout so a hung attempt cannot block the retry loop for ever.
+        var timeoutMs = (options && options.timeoutMs) || 0;
         
         function doWrite() {
             attempt++;
@@ -219,7 +228,16 @@ var WRV = (function() {
             // v1.14: RESTORED merge: true to preserve existing fields
             // For scheduledGames: preserves setup fields (players, course, startingHole, etc.)
             // For historyGames: full payload overwrites all fields (merge with all fields = complete overwrite)
-            docRef.set(data, { merge: true })
+            //
+            // v1.16: The WHOLE attempt (set + verify-read) is raced against timeoutMs.
+            // A write issued while offline NEVER settles - Firebase has no timeout of its
+            // own, so previously it stayed pending for ever and this retry loop (which only
+            // runs on .catch) never engaged. Measured 2026-10-31: still pending after 12s,
+            // an unbounded run hung past 2.5 minutes. A timeout now turns that hang into a
+            // failure so the existing backoff retry can do its job.
+            // The timeout promise is intentionally not cancelled: losing the race is a
+            // no-op, and clearing it would only add bookkeeping for no benefit.
+            var attemptPromise = docRef.set(data, { merge: true })
                 .then(function() {
                     return docRef.get();
                 })
@@ -231,12 +249,24 @@ var WRV = (function() {
                     var writtenData = doc.data();
                     var verified = verifyData(data, writtenData, skipVerify);
                     
-                    if (verified) {
-                        console.log('[WRV] ✅ Verified on attempt', attempt);
-                        if (callback) callback(null, writtenData);
-                    } else {
+                    if (!verified) {
                         throw new Error('Verification failed - data mismatch');
                     }
+                    return writtenData;
+                });
+            
+            var guarded = (timeoutMs > 0)
+                ? Promise.race([attemptPromise, new Promise(function(resolve, reject) {
+                      setTimeout(function() {
+                          reject(new Error('attempt timed out after ' + timeoutMs + 'ms (set/verify did not settle - connection lost?)'));
+                      }, timeoutMs);
+                  })])
+                : attemptPromise;
+            
+            guarded
+                .then(function(writtenData) {
+                    console.log('[WRV] ✅ Verified on attempt', attempt);
+                    if (callback) callback(null, writtenData);
                 })
                 .catch(function(err) {
                     // v1.11: Log warning but NEVER give up
@@ -490,8 +520,14 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: optional options.timeoutMs on WRV.write()/update(). The whole attempt
+     (set + verify read) is raced against it so a hung write cannot block the retry
+     loop for ever. An offline Firestore set() NEVER settles and never errors, so the
+     retry loop - which only runs on .catch - previously never engaged at all.
+   - DEFAULT: 0 = no timeout, so existing callers are unchanged.
+   - v1.15: recover() now calls options.onComplete (via finishRecovery()).
    - FIXED: recover() now actually CALLS options.onComplete when recovery finishes.
      It accepted the callback but never invoked it, so js/game-data.js's dedupe key
      (wrvRecoveryKeys) was never released - the guard could suppress a repeat once.

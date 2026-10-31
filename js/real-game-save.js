@@ -1,7 +1,18 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.43
-KEY CHANGES from v1.42:
+VERSION: 1.44
+KEY CHANGES from v1.43:
+   - FIXED (audit item 1): background writes can no longer sit pending for ever.
+     WRV.update() is now called with timeoutMs=20s, so a write issued while offline
+     fails and the existing backoff retry engages, instead of the attempt never
+     settling (offline set() neither resolves nor rejects - measured 2026-10-31).
+   - FIXED (watchdog): the WRVInProgress flag is set BEFORE the write and was cleared
+     only in its callback, so a stuck write left it set for ever and
+     real-game-init.js then silently ignored ALL incoming updates. A counter tracks
+     outstanding writes and a watchdog force-clears the flag after WRV_STALE_MS (120s).
+   - ADDED: beginWRVWrite()/endWRVWrite()/startWRVWatchdog()/stopWRVWatchdog()/
+     isWRVWriteInProgress(); the direct-write fallback path uses them too.
+   - PRESERVED: ALL other functionality from v1.43 unchanged
    - FIXED: T-2 row could show GREEN SQUARES (value "AS") at holes whose data was
      saved out of order.
    - CAUSE: results.game2.<flight>.<field>[position] was assigned per position only,
@@ -21,7 +32,7 @@ STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.43";
+window.REAL_GAME_SAVE_VERSION = "1.44";
 
 var RealGameSave = (function() {
     
@@ -39,16 +50,83 @@ var RealGameSave = (function() {
     // Does NOT block the calling function
     // NO CACHE REFRESH - IMR is the source of truth for this device
     // ============================================================
+    // ============================================================
+    // v1.44: guards so a hung background write can never mute this device for ever
+    //   - WRITE_ATTEMPT_TIMEOUT_MS: gives WRV.write() a timeout so a write issued while
+    //     offline fails (and retries) instead of sitting pending for ever. Offline
+    //     Firestore set() never settles and never errors (measured 2026-10-31), which
+    //     meant the retry loop - which only runs on .catch - never engaged.
+    //   - WRV_STALE_MS: watchdog. The WRVInProgress flag is dropped in the callback,
+    //     so if WRV never completes the flag used to stay set for ever and
+    //     real-game-init.js then silently ignored ALL incoming updates. forceClear
+    //     releases it if any write has been outstanding too long.
+    //   - a counter (not a single flag) because cascade/consolidated writes overlap.
+    // ============================================================
+    var WRITE_ATTEMPT_TIMEOUT_MS = 20000;
+    var WRV_STALE_MS = 120000;
+    var _wrvOutstanding = 0;
+    var _wrvFirstInProgressAt = null;
+    var _wrvWatchdogId = null;
+    
+    function beginWRVWrite(logLabel) {
+        _wrvOutstanding++;
+        if (_wrvOutstanding === 1) {
+            _wrvFirstInProgressAt = Date.now();
+        }
+        RealGameState.setWRVInProgress(true);
+        startWRVWatchdog();
+        console.log('[RealGameSave] WRV in progress (outstanding=' + _wrvOutstanding + ')' + (logLabel ? ' (' + logLabel + ')' : ''));
+    }
+    
+    function endWRVWrite(logLabel) {
+        _wrvOutstanding = Math.max(0, _wrvOutstanding - 1);
+        if (_wrvOutstanding === 0) {
+            _wrvFirstInProgressAt = null;
+            RealGameState.setWRVInProgress(false);
+            stopWRVWatchdog();
+            console.log('[RealGameSave] WRV idle (outstanding=0, flag cleared)' + (logLabel ? ' (' + logLabel + ')' : ''));
+        } else {
+            console.log('[RealGameSave] WRV still in progress (outstanding=' + _wrvOutstanding + ')' + (logLabel ? ' (' + logLabel + ')' : ''));
+        }
+    }
+    
+    function startWRVWatchdog() {
+        if (_wrvWatchdogId !== null) return;
+        if (typeof setInterval !== 'function') return;
+        _wrvWatchdogId = setInterval(function() {
+            if (_wrvOutstanding === 0 || _wrvFirstInProgressAt === null) return;
+            var stuckMs = Date.now() - _wrvFirstInProgressAt;
+            if (stuckMs > WRV_STALE_MS) {
+                console.warn('[RealGameSave] ⚠️ WRV stuck for ' + Math.round(stuckMs / 1000) + 's (outstanding=' +
+                             _wrvOutstanding + ') - watchdog forcing the flag clear so realtime updates resume');
+                _wrvOutstanding = 0;
+                _wrvFirstInProgressAt = null;
+                RealGameState.setWRVInProgress(false);
+                stopWRVWatchdog();
+            }
+        }, 15000);
+    }
+    
+    function stopWRVWatchdog() {
+        if (_wrvWatchdogId !== null) {
+            clearInterval(_wrvWatchdogId);
+            _wrvWatchdogId = null;
+        }
+    }
+    
+    function isWRVWriteInProgress() {
+        return _wrvOutstanding > 0;
+    }
+    
     function wruBackground(collection, docId, data, logLabel, callback) {
         // Set WRV flag to prevent real-time listener from processing
-        RealGameState.setWRVInProgress(true);
-        console.log('[RealGameSave] WRV flag set: true' + (logLabel ? ' (' + logLabel + ')' : ''));
+        beginWRVWrite(logLabel);
         
         if (typeof WRV !== 'undefined' && WRV.update) {
+            // v1.44: pass the attempt timeout so a hung write cannot block for ever
             WRV.update(collection, docId, data, function(err, result) {
                 // Clear WRV flag when WRV completes
-                RealGameState.setWRVInProgress(false);
-                console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                endWRVWrite(logLabel);
                 
                 if (err) {
                     console.warn('[RealGameSave] BACKGROUND WRV failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
@@ -57,21 +135,19 @@ var RealGameSave = (function() {
                 }
                 
                 if (callback) callback(err, result);
-            });
+            }, { timeoutMs: WRITE_ATTEMPT_TIMEOUT_MS });
         } else {
             // Fallback: direct update in background
             console.warn('[RealGameSave] WRV not available, using direct background update');
             var db = getDb();
             db.collection(collection).doc(docId).update(data)
                 .then(function() {
-                    RealGameState.setWRVInProgress(false);
-                    console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    endWRVWrite(logLabel);
                     console.log('[RealGameSave] BACKGROUND direct update success' + (logLabel ? ' (' + logLabel + ')' : ''));
                     if (callback) callback(null, true);
                 })
                 .catch(function(err) {
-                    RealGameState.setWRVInProgress(false);
-                    console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    endWRVWrite(logLabel);
                     console.warn('[RealGameSave] BACKGROUND direct update failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
                     if (callback) callback(err, false);
                 });
@@ -1633,8 +1709,19 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.43
-KEY CHANGES from v1.42:
+VERSION: 1.44
+KEY CHANGES from v1.43:
+   - FIXED (audit item 1): background writes can no longer sit pending for ever.
+     WRV.update() is now called with timeoutMs=20s, so a write issued while offline
+     fails and the existing backoff retry engages, instead of the attempt never
+     settling (offline set() neither resolves nor rejects - measured 2026-10-31).
+   - FIXED (watchdog): the WRVInProgress flag is set BEFORE the write and was cleared
+     only in its callback, so a stuck write left it set for ever and
+     real-game-init.js then silently ignored ALL incoming updates. A counter tracks
+     outstanding writes and a watchdog force-clears the flag after WRV_STALE_MS (120s).
+   - ADDED: beginWRVWrite()/endWRVWrite()/startWRVWatchdog()/stopWRVWatchdog()/
+     isWRVWriteInProgress(); the direct-write fallback path uses them too.
+   - PRESERVED: ALL other functionality from v1.43 unchanged
    - FIXED: T-2 row could show GREEN SQUARES (value "AS") at holes whose data was
      saved out of order.
    - CAUSE: results.game2.<flight>.<field>[position] was assigned per position only,
