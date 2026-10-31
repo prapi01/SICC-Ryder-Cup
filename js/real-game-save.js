@@ -1698,6 +1698,8 @@ var RealGameSave = (function() {
         loadPendingWrites: loadPendingWrites,
         processPendingWrites: processPendingWrites,
         calculateLastSyncedPosition: calculateLastSyncedPosition,
+        // v1.44: expose the write-in-progress diagnostic for the realtime listener
+        isWRVWriteInProgress: isWRVWriteInProgress,
         // v1.37: Expose initialization verification
         ensureGameDataInitialized: ensureGameDataInitialized
     };
