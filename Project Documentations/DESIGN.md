@@ -129,8 +129,11 @@
   the green `as-square` (`getAsSquareHtml()`, whose CSS background is hard-coded `#4caf50`, so it
   ignores the `score-grey` class). Reproduced exactly with the app's own `GameTeam.
   calculateWithClinched()` on the 2026-10-31 game: only F2 positions 15/16 were stale (`0`/`'AS'`
-  instead of `9`/`10`). The live documents were repaired with the app-computed values; **the save
-  path is still open** (see HANDOVER).
+  instead of `9`/`10`). The live documents were repaired with the app-computed values, **and the
+  code was fixed**: `real-game-save.js` **v1.43** now republishes `results.game2` for all 18
+  positions before serializing the payload (the same invariant `game3`/Strk already had), so a
+  stale position cannot be published again. Clinch computation is unchanged, so the gold cell does
+  not move; the cascade guard was deliberately left alone to avoid changing live save behaviour.
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had

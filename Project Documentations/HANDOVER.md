@@ -279,13 +279,29 @@ flat, which is why they never showed the fault. Verified in a real browser after
 T-2 `A10 A10 A9 A10 A10`, **0 squares**, class counts green 13 / gold 1 (hole 14) / grey 4;
 T-1 green 15 / gold 1 (hole 16) / grey 2.
 
-⚠️ **OPEN — the code path is NOT fixed.** This is a recurrence risk: an out-of-order save by the
-two flights can leave a T-2 position stale again. Proposed fixes (needs the user's call, since
-this is the live, signed-off scoring pipeline):
-(a) change the cascade guard `currentPosition < lastSyncedPos` → `<=` so the current position is
-also recomputed; or (b) recompute the T-1/T-2/T-3 arrays from the data strings at game
-completion. (b) is the safer, capability-preserving option; (a) is a smaller diff but sits in the
-live save path.
+**CODE FIX APPLIED — `js/real-game-save.js` v1.42 → v1.43 (option b).**
+`writeNewHoleData()` now **republishes `results.game2` for all 18 positions** from
+`teamGameResults` (which the function already computes over all positions) **before** the payload
+is serialized. A stale position can therefore no longer be published. Clinch computation is
+untouched, so the gold cell does not move.
+
+- **Why this shape:** `game3` (Strk) was never affected because it *is* recomputed across all 18
+  positions in that same function — `game2` was the only **per-position-only** row. The fix simply
+  gives T-1/T-2 the invariant Strk already had, which is the least invasive way to close the hole
+  without touching the live per-hole save path.
+- **The cascade guard was deliberately NOT changed** (`<` → `<=`): the guard is correct for its
+  purpose, and the real fault is that the *published* document did not guarantee internal
+  consistency. Recomputing before publish fixes the publish; widening the guard would have
+  altered cascade behaviour (extra writes) with more blast radius.
+- **Verified by extracting the real v1.43 block and executing it** against the live game's data
+  through the real `game-team.js`: a stale cache (`displayT2` = `A10 A10 AS AS A10`, F2 cumulative
+  15/16 = `0,0`) becomes `A10 A10 A9 A10 A10`, cumulative `9,10`, gold still at hole 14.
+- **Re-verified on PROD after deploy:** T-2 squares **0**, gold hole **14**, values
+  `A10 A10 A9 A10 A10`; T-1 squares 1 (the legitimate all-square at hole 2, matching the
+  recomputed `displayT1[1] = 'AS'`), gold hole 16; Strk squares 0. No page errors.
+- Version plumbing: `real-game-save.js` 1.43, `load-game.js` 1.06, `versions.json` META 1.05,
+  `VERSIONS_JSON_VERSION` 1.03, `real-game.html` → `load-game.js?v=1.06`. Full audit: **0
+  mismatches** across HTML `?v=` ↔ manifest ↔ JS header/footer VERSION.
 
 ### ⚠️ SECURITY (raised 2026-10-31, NOT fixed): Firestore is world-writable
 A plain unauthenticated `PATCH` to `scheduledGames/<id>` returned **HTTP 200** — no auth of any
@@ -590,9 +606,6 @@ game is mid-day.
   and force-pushed.
 
 ## Open questions
-- **T-2 stale-position bug: code fix not applied** (see Technical findings 2026-10-31). Data was
-  repaired; the live save path can reproduce it. Decide between fixing the cascade guard
-  (`<` → `<=`) or adding a completion-time recompute.
 - **Firestore has NO write protection** (found 2026-10-31, unauthenticated `PATCH` → HTTP 200).
   Should writes require auth while reads stay public? Not changed — needs the user's decision.
 - Cause A's fix was verified against the **live** flag shape; the next real game is the true
@@ -611,13 +624,17 @@ game is mid-day.
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **Commit + push `main`** — the fixes are untracked/uncommitted at the time of writing
-  (`js/celebration-data.js`, `js/celebration-photo.js`, `js/sign-card.js`, `js/load-game.js`,
-  `js/versions.json`, `post-game.html`, `hcp-adjust.html`, `view-game.html`, `view-history.html`,
-  `test-wrv.html`). Cloudflare Pages deploys on push to `main`, so nothing is live until then.
-- **After the push — user-side smoke test (iPhone, PROD):** Main Menu → **GAME DAY** should open
-  TODAY's celebration (Team A 10–9) with the **real** photo, without going through
-  "View Previous Game".
+- **All 2026-10-31 fixes are committed, pushed and live on PROD** (Cloudflare Pages deploys on push
+  to `main`): celebration-data.js 1.01, celebration-photo.js 1.22, sign-card.js 1.43,
+  load-game.js 1.06, post-game.html 1.14, hcp-adjust.html 1.41, **real-game-save.js 1.43**,
+  versions.json META 1.05. Verified in a browser on PROD after deploy.
+- **User-side smoke test (iPhone, PROD):**
+  1. Main Menu → **GAME DAY** opens TODAY's celebration (Team A 10–9) with the **real** photo,
+     without going through "View Previous Game".
+  2. The scorecard's **T-2 row** reads `A10 A10 A9 A10 A10` at holes 14–18, with **no green
+     squares** and the gold still on hole 14.
+  3. The **next real game** is the true end-to-end confirmation of the T-2 code fix
+     (`real-game-save.js` v1.43) — it only exercises when two scorers save holes out of order.
 - Decide the Firestore write-auth question above before the next game day.
 - **Confirm the uploader on the iPhone (2026-10-31).** Fixes in place and each verified by running:
   missing `Bearer ` prefix, missing no-input guard, and the **quarantine/hidden state that stopped it
