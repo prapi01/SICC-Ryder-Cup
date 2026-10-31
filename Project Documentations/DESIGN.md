@@ -82,6 +82,9 @@
   `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/UploadPhoto.shortcut` (iCloud Drive)
   with a copy in `~/Downloads/`. Signed artifacts are **AEA1 encrypted archives** — the action graph
   cannot be read back out of a signed file, so verify the **source** plist before signing.
+  **2026-11-01 delivery:** the v3 (13-action) file is sha256 **`c1803ef9...`** / 23,881 B in **both**
+  locations (byte-identical, verified), signed with `--mode anyone`; the previous `37d8a8b7...` is
+  backed up. Always re-verify both copies match the built artifact — the device may sync from either.
   **⚠️ 2026-10-31 — verify the DELIVERED ARTIFACT, not just the local install.** The delivered copies
   had drifted into an **older 8-action graph** (no `Show Result`, no no-input guard) while the Mac held a
   working **10-action** graph. Because a signed file's graph is unreadable, that drift went unnoticed
@@ -94,10 +97,16 @@
   **stale counts**; (b) quit the Shortcuts app before any surgery, and beware the `AFTER DELETE` CoreData
   trigger on `ZSHORTCUTRUNEVENT` (see the HANDOVER finding for the verified workaround). After any such
   surgery, **run the uploader for real** — DB cleanliness is not evidence the graph still works.
-- **2026-10-31 — Uploader v2: the run now SHOWS the uploaded photo (the requested VIEW).** The shortcut
-  is **19 actions**: token → resize 1920 / JPEG 0.9 / base64 → `GET` current `sha` → `PUT`
-  (**`branch: main` in the JSON body**) → read back `content.sha` → **IF** a new sha came back →
-  **read the file back from GitHub and display it** (**ELSE** → fetch GitHub's `message` and display it).
+- **2026-11-01 — Uploader v3 (current): NO comparison at all; the run SHOWS the uploaded photo.**
+  **13 actions** (was 19): token → resize 1920 / JPEG 0.9 / base64 → `GET` current `sha` → `PUT`
+  (**`branch: main` in the JSON body**) → read `content.sha` **from the PUT's own response** →
+  **read the file back from GitHub and display it**. The `IF`/`ELSE` block is **deleted**.
+  **Hard rule — never compare anything in the shortcut.** The Contents API `PUT` is **idempotent and
+  always returns HTTP 200 + `content.sha`**; a sha/"did it change" comparison therefore **cannot
+  prevent a failure and can only invent one**, which is exactly what v2 did (a fully successful upload
+  took the `Else` branch and printed "⚠️ UPLOAD FAILED"). The user's own rule — *"why compare anything?
+  when the user uploads, just make sure it lands"* — is now the design. The displayed photo **is** the
+  proof, so no separate success test is needed or wanted.
   **Design decisions, each measured:**
   - **The read-back MUST use the Contents API with `Accept: application/vnd.github.raw`.** It is the
     only immediately-fresh, byte-exact source: it returns the current bytes, its `etag` **is** the blob
@@ -106,13 +115,30 @@
     (`sicc-ryder-cup.pages.dev`, what the app itself reads) are BOTH stale right after an upload** — a
     view built on either would confidently show the *previous* photo. This is also why the app's own
     celebration can lag behind an upload.
-  - **The success test is the returned `content.sha`, not "the action ran".** Verified: Shortcuts
-    **continues past an HTTP error** (a 404 download did not stop the next action), so a failed upload
-    still "completes" — the same mechanism that made the old silent failure possible.
-  - **The failure branch prints GitHub's own `message`**, so a phone-side failure is diagnosable instead
-    of opaque. A passing action is not evidence the earlier one succeeded.
-  - A **`IF`/`ELSE`/`END IF`** triple (`WFControlFlowMode` 0/1/2 sharing one `GroupingIdentifier`) guards
-    the read-back, so no image is requested when the upload did not land.
+  - **The `?cb=<sha>` cache-buster on the read-back is bound to the sha from the PUT response**, so the
+    URL is unique on every upload and the previous `GET`'s copy is never reused. (The wiring is
+    unchanged from v2 — only the sha's source moved.)
+  - **The pre-upload `GET sha` must stay** — the Contents API rejects an update to an existing file
+    without it (verified: `422 Invalid request. "sha" wasn't supplied.`). It is a *requirement*, not a
+    check.
+  - **How to build/rebuild it:** assemble the actions as a **binary plist** and sign with
+    `shortcuts sign --mode anyone` (**`--mode anyone` is the mode that worked on the device**; the CLI
+    default was never used for a successful delivery). Feed the signer a **plist**, not JSON — JSON is
+    rejected outright. A signed file is an **AEA1 encrypted archive**, so its graph is unreadable
+    afterwards: validate the **unsigned** plist (action count + zero dangling `ActionOutput` refs)
+    before signing.
+  - **⚠️ There is exactly ONE photo slot: `C.jpg`.** The app hardcodes it
+    (`js/celebration-photo.js`, `js/util-photo.js`, `util-record-management.html`) and
+    `images/celebration/` holds only `C.jpg`. The multiple "Upload Photo" entries seen in the iPhone
+    share sheet were **leftover test shortcuts**, not slots — do not design a slot picker.
+- **2026-10-31 — Uploader v2 (superseded 2026-11-01; kept for the evidence it produced).** The shortcut
+  was **19 actions**: token → resize 1920 / JPEG 0.9 / base64 → `GET` current `sha` → `PUT`
+  (**`branch: main` in the JSON body**) → read back `content.sha` → **IF** a new sha came back →
+  **read the file back from GitHub and display it** (**ELSE** → fetch GitHub's `message` and display it).
+  **What v2 got right (kept in v3):** the raw read-back; the discovery that Shortcuts **continues past
+  an HTTP error** (a 404 download did not stop the next action), so a failed upload still "completes";
+  and the `IF`/`ELSE`/`END IF` encoding (`WFControlFlowMode` 0/1/2 sharing one `GroupingIdentifier`).
+  **What v2 got wrong:** the sha comparison itself — see the v3 hard rule above.
 - **2026-10-31 — VS Code tool cap (`"only supports 128 tools"`).** Not app code, but it was degrading
   this project's own AI workflow. Root cause: a **hard-coded** `var lJ=128` in VS Code's agent host
   (`ByokLmProxyService`, `vs/platform/agentHost/node/agentHostMain.js`) that **silently drops** tools
