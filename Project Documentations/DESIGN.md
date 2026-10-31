@@ -79,9 +79,40 @@
   branch**. The branch must be a `branch` key in the **JSON body**. This silently put 8 test files on
   `main` during verification (removed in `a28bf39`); always pass the branch in the body.
   **Shortcut delivery (2026-10-30):** the signed `.shortcut` is delivered to
-  `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/CelebrationPhotoUpload.shortcut` (iCloud Drive)
+  `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/UploadPhoto.shortcut` (iCloud Drive)
   with a copy in `~/Downloads/`. Signed artifacts are **AEA1 encrypted archives** — the action graph
   cannot be read back out of a signed file, so verify the **source** plist before signing.
+  **⚠️ 2026-10-31 — verify the DELIVERED ARTIFACT, not just the local install.** The delivered copies
+  had drifted into an **older 8-action graph** (no `Show Result`, no no-input guard) while the Mac held a
+  working **10-action** graph. Because a signed file's graph is unreadable, that drift went unnoticed
+  across several rounds. Always check the action count/graph of the artifact the device will actually run.
+- **2026-10-31 — Uploader v2: the run now SHOWS the uploaded photo (the requested VIEW).** The shortcut
+  is **19 actions**: token → resize 1920 / JPEG 0.9 / base64 → `GET` current `sha` → `PUT`
+  (**`branch: main` in the JSON body**) → read back `content.sha` → **IF** a new sha came back →
+  **read the file back from GitHub and display it** (**ELSE** → fetch GitHub's `message` and display it).
+  **Design decisions, each measured:**
+  - **The read-back MUST use the Contents API with `Accept: application/vnd.github.raw`.** It is the
+    only immediately-fresh, byte-exact source: it returns the current bytes, its `etag` **is** the blob
+    sha, and Shortcuts renders the response as an image whose bytes are **identical** to `main`.
+    **`raw.githubusercontent.com` (`max-age=300`, and it IGNORES cache-busters) and the Cloudflare CDN
+    (`sicc-ryder-cup.pages.dev`, what the app itself reads) are BOTH stale right after an upload** — a
+    view built on either would confidently show the *previous* photo. This is also why the app's own
+    celebration can lag behind an upload.
+  - **The success test is the returned `content.sha`, not "the action ran".** Verified: Shortcuts
+    **continues past an HTTP error** (a 404 download did not stop the next action), so a failed upload
+    still "completes" — the same mechanism that made the old silent failure possible.
+  - **The failure branch prints GitHub's own `message`**, so a phone-side failure is diagnosable instead
+    of opaque. A passing action is not evidence the earlier one succeeded.
+  - A **`IF`/`ELSE`/`END IF`** triple (`WFControlFlowMode` 0/1/2 sharing one `GroupingIdentifier`) guards
+    the read-back, so no image is requested when the upload did not land.
+- **2026-10-31 — VS Code tool cap (`"only supports 128 tools"`).** Not app code, but it was degrading
+  this project's own AI workflow. Root cause: a **hard-coded** `var lJ=128` in VS Code's agent host
+  (`ByokLmProxyService`, `vs/platform/agentHost/node/agentHostMain.js`) that **silently drops** tools
+  beyond 128 when routing to a BYOK model (every request went to `deepseek-v4-flash`). It is **not**
+  configurable: `chat.virtualTools.threshold` is a different mechanism (virtual toolsets) and does not
+  raise the ceiling. **Fix: reduce the tool count below 128** — applied by disabling the redundant
+  built-in **GitHub MCP server** (`chat.githubMcpServer.enabled=false`), since the **`gh` CLI** already
+  covers PRs/issues. See HANDOVER for the full evidence.
 - **2026-10-31 — Celebration pipeline: three game-day defects fixed (photo + today's-game access).**
   Both reported symptoms were **not** code regressions — no `js/`/HTML commit since 2026-08-14 —
   but older defects that only surface **on game day** (a real photo broadcast + a completed game).
