@@ -1,22 +1,27 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - ADDED: F2 stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
-   - ADDED: VIEW stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
-   - REASON: All devices must compare the SAME ETag for sync
-   - REASON: F1, F2, and VIEW now all use the shared key
-   - PRESERVED: ALL other functionality from v1.15 unchanged
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED (audit item 2): a snapshot arriving while a background write was in flight
+     was DISCARDED ("WRV in progress - ignoring Firestore data update"). Combined
+     with a stuck WRV flag that silently hid the other flight's scores for ever - the
+     2026-10-31 incident where F1 never saw F2's H16/H17.
+   - CHANGED: DEFER instead of drop. The latest snapshot is kept (lastUpdate) and
+     applied as soon as the write settles, via applyDeferredUpdate() at each
+     flag-clear site plus a 1s re-check interval that waits for the flag.
+   - ADDED: re-entrancy guard (applyingDeferred) because the replay re-enters
+     handleSnapshot(), which itself calls applyDeferredUpdate() at its flag-clear sites.
+   - PRESERVED: ALL other functionality from v1.16 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.16";
+window.REAL_GAME_INIT_VERSION = "1.17";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.16 - Shared Firebase Storage ETag");
+    console.log("[REAL-GAME-INIT] Initializing v1.17 - defer realtime updates during writes");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -445,8 +450,21 @@ var RealGameInit = (function() {
         
         console.log("Setting up realtime Firestore listener for game:", gameId);
         
-        var unsubscribe = db.collection("scheduledGames").doc(gameId)
-            .onSnapshot(function(doc) {
+        // ============================================================
+        // v1.17: lastUpdate + deferred-apply state.
+        // A snapshot arriving while a background write is in flight used to be
+        // DISCARDED outright ("WRV in progress - ignoring Firestore data update"),
+        // so a stuck flag silently hid the other flight's scores indefinitely - the
+        // 2026-10-31 incident where F1 never saw F2's H16/H17. Now the latest snapshot
+        // is kept and applied as soon as the write settles.
+        // ============================================================
+        var deferredUpdate = false;      // an update arrived while a write was in flight
+        var deferredCheckId = null;      // interval that waits for the write to settle
+        var lastUpdate = null;           // the most recent snapshot, so it can be replayed
+        var applyingDeferred = false;    // re-entrancy guard for the deferred replay
+        
+        function handleSnapshot(doc) {
+                lastUpdate = { doc: doc };
                 // Set flag that Firestore changed
                 RealGameState.setFirestoreChanged(true);
                 console.log('[REALTIME] Firestore changed - flag set');
@@ -566,11 +584,56 @@ var RealGameInit = (function() {
                 // ============================================================
                 
                 // ============================================================
+                // v1.17: Apply a DEFERRED update as soon as no write is in flight.
+                // Called from the snapshot path (when the flag happens to be clear) and
+                // from the re-check interval started when an update is deferred.
+                // ============================================================
+                function applyDeferredUpdate() {
+                    if (!deferredUpdate) return;
+                    // Re-entrancy guard: handleSnapshot() calls applyDeferredUpdate() at each
+                    // flag-clear site, and the replay below re-enters handleSnapshot(). Without
+                    // this guard that path would recurse into itself (the deferred flag is
+                    // cleared just before the replay) until the call stack blew.
+                    if (applyingDeferred) return;
+                    if (RealGameState.isWRVInProgress()) return;
+                    deferredUpdate = false;
+                    stopDeferredCheck();
+                    if (!lastUpdate || !lastUpdate.doc) return;
+                    applyingDeferred = true;
+                    try {
+                        console.log('[REALTIME] Applying in-write update that arrived while a write was in flight');
+                        handleSnapshot(lastUpdate.doc);
+                    } finally {
+                        applyingDeferred = false;
+                    }
+                }
+                
+                function startDeferredCheck() {
+                    if (deferredCheckId !== null) return;
+                    deferredCheckId = setInterval(function() {
+                        if (!deferredUpdate) { stopDeferredCheck(); return; }
+                        if (!RealGameState.isWRVInProgress()) applyDeferredUpdate();
+                    }, 1000);
+                }
+                
+                function stopDeferredCheck() {
+                    if (deferredCheckId !== null) {
+                        clearInterval(deferredCheckId);
+                        deferredCheckId = null;
+                    }
+                }
+                
+                // ============================================================
                 // v1.14: NOW check WRV flag for DATA updates only
                 // Photo flags have already been processed above
                 // ============================================================
                 if (RealGameState.isWRVInProgress()) {
-                    console.log('[REALTIME] WRV in progress - ignoring Firestore data update');
+                    // v1.17: DEFER, do not drop. Previously this returned and the update
+                    // was lost for ever. The snapshot is already saved in lastUpdate, so
+                    // we mark it pending and apply it as soon as the write settles.
+                    console.log('[REALTIME] WRV in progress - DEFERRING Firestore data update (will apply when the write settles)');
+                    deferredUpdate = true;
+                    startDeferredCheck();
                     return;
                 }
                 
@@ -620,6 +683,8 @@ var RealGameInit = (function() {
                             // Clear flag after processing
                             RealGameState.setFirestoreChanged(false);
                             console.log('[REALTIME] Firestore changed flag cleared (signatures completion)');
+                            // v1.17: resolve the deferred update on the way out
+                            applyDeferredUpdate();
                             return;
                         }
                     }
@@ -655,6 +720,8 @@ var RealGameInit = (function() {
                                     // Clear flag after processing
                                     RealGameState.setFirestoreChanged(false);
                                     console.log('[REALTIME] Firestore changed flag cleared');
+                                    // v1.17: resolve the deferred update on the way out
+                                    applyDeferredUpdate();
                                 } else {
                                     console.warn("Failed to refresh cache from realtime update:", result.error);
                                 }
@@ -665,19 +732,28 @@ var RealGameInit = (function() {
                         // Cache already has correct data from local save
                         console.log('[REALTIME] My flight changed - skipping cache refresh (cache already correct)');
                         RealGameState.setFirestoreChanged(false);
+                        // v1.17: resolve the deferred update on the way out
+                        applyDeferredUpdate();
                         
                     } else if (resultsChanged) {
                         // v1.06: Results changed - SKIP cache refresh
                         // Cache already has correct data from our write
                         console.log('[REALTIME] Results changed - skipping cache refresh (cache already correct)');
                         RealGameState.setFirestoreChanged(false);
+                        // v1.17: resolve the deferred update on the way out
+                        applyDeferredUpdate();
                     }
                 } else {
                     // No actual changes detected, clear flag
                     RealGameState.setFirestoreChanged(false);
                     console.log('[REALTIME] No changes detected - flag cleared');
+                    // v1.17: resolve the deferred update on the way out
+                    applyDeferredUpdate();
                 }
-            }, function(error) {
+        }
+        
+        var unsubscribe = db.collection("scheduledGames").doc(gameId)
+            .onSnapshot(handleSnapshot, function(error) {
                 console.warn("Firestore realtime listener error:", error);
             });
         
@@ -1114,13 +1190,18 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - ADDED: F2 stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
-   - ADDED: VIEW stores Firebase Storage ETag using shared key 'celebration_photo_etag_firebase'
-   - REASON: All devices must compare the SAME ETag for sync
-   - REASON: F1, F2, and VIEW now all use the shared key
-   - PRESERVED: ALL other functionality from v1.15 unchanged
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED (audit item 2): a snapshot arriving while a background write was in flight
+     was DISCARDED ("WRV in progress - ignoring Firestore data update"). Combined
+     with a stuck WRV flag that silently hid the other flight's scores for ever - the
+     2026-10-31 incident where F1 never saw F2's H16/H17.
+   - CHANGED: DEFER instead of drop. The latest snapshot is kept (lastUpdate) and
+     applied as soon as the write settles, via applyDeferredUpdate() at each
+     flag-clear site plus a 1s re-check interval that waits for the flag.
+   - ADDED: re-entrancy guard (applyingDeferred) because the replay re-enters
+     handleSnapshot(), which itself calls applyDeferredUpdate() at its flag-clear sites.
+   - PRESERVED: ALL other functionality from v1.16 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
