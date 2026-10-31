@@ -1,16 +1,19 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - CHANGED: docRef.set(data) → docRef.set(data, { merge: true })
-   - REASON: Preserve existing fields in scheduledGames (setup data) while updating runtime fields
-   - REASON: merge: true works correctly for historyGames (full payload) and scheduledGames (partial payload)
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: recover() now actually CALLS options.onComplete when recovery finishes.
+     It accepted the callback but never invoked it, so js/game-data.js's dedupe key
+     (wrvRecoveryKeys) was never released - the guard could suppress a repeat once.
+   - ADDED: finishRecovery() helper - releases the activeRecoveries key and fires
+     onComplete exactly once per completed recovery.
+   - PRESERVED: write/verify semantics, retry/backoff, and all v1.14 behaviour unchanged
+   - v1.14: docRef.set(data, { merge: true }) to preserve existing scheduledGames fields
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.14";
+window.WRV_VERSION = "1.15";
 
 var WRV = (function() {
     
@@ -266,6 +269,23 @@ var WRV = (function() {
     var RECOVER_RETRY_DELAY = 10000;
     var activeRecoveries = {};
     
+    // ============================================================
+    // v1.15: Fire the caller's onComplete exactly once, and release the
+    // recovery key. Previously recover() accepted options.onComplete but never
+    // called it, so the caller's dedupe key (js/game-data.js wrvRecoveryKeys)
+    // was never released and could only ever suppress a repeat once.
+    // ============================================================
+    function finishRecovery(options, recoveryKey) {
+        delete activeRecoveries[recoveryKey];
+        if (typeof options.onComplete === 'function') {
+            try {
+                options.onComplete();
+            } catch (cbErr) {
+                console.warn('[WRV] ⚠️ onComplete threw:', cbErr.message);
+            }
+        }
+    }
+    
     function recover(options) {
         if (!options) {
             console.error('[WRV] ❌ recover() called with no options');
@@ -339,7 +359,7 @@ var WRV = (function() {
                     if (dataMatches && saveEventMatches && crossEventMatches) {
                         console.log('[WRV] ✅ FS already in sync - stopping recovery');
                         isComplete = true;
-                        delete activeRecoveries[recoveryKey];
+                        finishRecovery(options, recoveryKey);
                         console.log('[WRV] 🛑 Stopped - FS in sync (key:', recoveryKey, ')');
                         return;
                     }
@@ -390,7 +410,7 @@ var WRV = (function() {
                     if (dataMatches && saveEventMatches && crossEventMatches) {
                         console.log('[WRV] ✅ Verification SUCCESS - FS sync\'d');
                         isComplete = true;
-                        delete activeRecoveries[recoveryKey];
+                        finishRecovery(options, recoveryKey);
                         console.log('[WRV] 🛑 Stopped - FS in sync (key:', recoveryKey, ')');
                         return;
                     } else {
@@ -470,12 +490,15 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - CHANGED: docRef.set(data) → docRef.set(data, { merge: true })
-   - REASON: Preserve existing fields in scheduledGames (setup data) while updating runtime fields
-   - REASON: merge: true works correctly for historyGames (full payload) and scheduledGames (partial payload)
-   - PRESERVED: ALL other functionality from v1.13 unchanged
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: recover() now actually CALLS options.onComplete when recovery finishes.
+     It accepted the callback but never invoked it, so js/game-data.js's dedupe key
+     (wrvRecoveryKeys) was never released - the guard could suppress a repeat once.
+   - ADDED: finishRecovery() helper - releases the activeRecoveries key and fires
+     onComplete exactly once per completed recovery.
+   - PRESERVED: write/verify semantics, retry/backoff, and all v1.14 behaviour unchanged
+   - v1.14: docRef.set(data, { merge: true }) to preserve existing scheduledGames fields
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
