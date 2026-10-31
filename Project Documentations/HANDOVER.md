@@ -287,6 +287,25 @@ defeated within one deploy because the manifest changed again);
     `/tmp/agent-host-storage.json.bak`). Chosen over editing `.mcp.json` (which **is** git-tracked)
     because the gate is identical in effect but **reversible and touches no repo file**.
     **Expected after restart: 131 − 18 − 65 = 48.** Re-enabling is one edit of the same key to `true`.
+  - **⚠️ THAT APPROACH FAILED TOO (2026-10-31 22:51) — VS Code PRUNES hand-written enablement keys.**
+    After a genuine restart (new log dir `20261031T225014`), the count was still **131**. Cause: the
+    host **deleted both of my hand-added keys on startup**, leaving only `mcpServers#supabase` — i.e.
+    the **one** entry it already had in its own catalog (`customizationEnablementLru`). The
+    `agent-host-storage.json` file is **not** the authoritative store, and only keys the host already
+    knows about survive. Do not hand-edit it.
+  - **✅ RESOLVED — and the working path was the UI, not any setting (2026-10-31 22:55).** The user
+    toggled **firebase** off in **Configure Tools → Connected Sources**. The host logged
+    `Reconciling MCP server 'firebase' enablement: disable` → `MCP server 'firebase' disabled (stopped)`,
+    and the warning **stopped immediately**: **14 drop lines before** the toggle (22:35–22:54:13),
+    **0 after** (22:54:46 → 22:57:45, with completed turns in between, so it is not an activity gap).
+  - **The authoritative enablement store is `globalStorage/state.vscdb` → `ItemTable` key
+    `mcp.enablement`** — a JSON array of `[key, enabled]` pairs. The working entry is
+    **`["workspace-dot-mcp.0.firebase", false]`**. Note the key format: it encodes the **config source
+    path** (`workspace-dot-mcp.0.<server>`), *not* the server name — which is exactly why guessing it
+    was futile. `chat.agentHost.toolSetEnablement` (tool sets) lives in the same table.
+  - **Lesson / rule:** for VS Code's own tool + MCP enablement, **use the "Configure Tools" UI.** No
+    settings key and no hand-edited storage file reliably works. Three separate setting/file attempts
+    failed; the single UI toggle worked.
 - 2026-10-31 — **✅ The delivered shortcut is now 19 actions and run-verified end-to-end.** Structure:
   token (step 1) → resize 1920/JPEG 0.9/base64 → `GET` current `sha` → `PUT` (with **`branch: main` in
   the JSON body**, never `?branch=`) → `output` → read back `content.sha` → **IF sha has a value** →
@@ -957,16 +976,15 @@ game is mid-day.
   lacked the `Show Result` action and the no-input guard, while the Mac's install had both. This is the
   leading explanation for "silent failure after a first success", but it is **not yet confirmed from the
   device** — the phone's shortcut action count is the check that would settle it.
-- **Tool cap: is the count now under 128? NO — still 131 after a full app restart.** Two settings
-  fixes have failed (`github.copilot.chat.githubMcpServer.enabled`, then
-  `chat.agentHost.githubMcpServer.enabled`). The setting does reach the host's persisted config, so the
-  remaining suspects are (a) the `customizationEnablement` gate (`mcpServers#<name>`) — proven to work
-  on this machine via `supabase` — which is what the warning's **"Configure Tools"** link writes, or
-  (b) simply dropping `firebase` from `.mcp.json` (**66 tools, ~50 % of the budget**).
+- ~~Tool cap: is the count now under 128?~~ **CLOSED 2026-10-31 22:55 — fixed by the user.** ✅
+  Disabling **firebase** via **Configure Tools** dropped the count below the 128 cap; **0 drop lines**
+  after the toggle (vs 14 before). Three setting/file-based attempts by the AI all failed — see the
+  Technical findings for the root cause (VS Code prunes hand-written enablement keys; the real store is
+  `state.vscdb` → `mcp.enablement`, keyed by config-source path, not server name).
 
-  **Process note — do not repeat:** both attempts were reported as fixed off the *setting being written*
-  rather than off the *tool count falling*. The count is the only valid acceptance test, and it has
-  stayed at 131 through every change so far.
+  **Process note — do not repeat:** each failed attempt was reported off the *setting being written*
+  rather than off the *tool count falling*. The `sending N of M tools` count is the only valid
+  acceptance test.
 - **VIEW feature, in-app half — deferred by the user.** The shortcut half is done. If/when the in-app
   view is built (e.g. on `admin.html` next to the other diagnostics), it **must** read through the
   Contents API with `Accept: application/vnd.github.raw`; the CDN and `raw.githubusercontent.com` are
