@@ -86,6 +86,14 @@
   had drifted into an **older 8-action graph** (no `Show Result`, no no-input guard) while the Mac held a
   working **10-action** graph. Because a signed file's graph is unreadable, that drift went unnoticed
   across several rounds. Always check the action count/graph of the artifact the device will actually run.
+  **⚠️ 2026-10-31 — keep the Shortcuts library audited, and snapshot its DB correctly.** Repeated signed-artifact
+  imports leave rows the Shortcuts UI does not show (orphaned action blobs, run events and icons). The
+  library must keep **exactly one image-accepting uploader**, and library hygiene must not be judged by
+  **name**: several unrelated shortcuts match `Photo`/`Upload`. Two hard rules: (a) take a consistent
+  snapshot with `sqlite3 <db> ".backup <dest>"` — a plain `cp` omits the `-wal` and therefore reports
+  **stale counts**; (b) quit the Shortcuts app before any surgery, and beware the `AFTER DELETE` CoreData
+  trigger on `ZSHORTCUTRUNEVENT` (see the HANDOVER finding for the verified workaround). After any such
+  surgery, **run the uploader for real** — DB cleanliness is not evidence the graph still works.
 - **2026-10-31 — Uploader v2: the run now SHOWS the uploaded photo (the requested VIEW).** The shortcut
   is **19 actions**: token → resize 1920 / JPEG 0.9 / base64 → `GET` current `sha` → `PUT`
   (**`branch: main` in the JSON body**) → read back `content.sha` → **IF** a new sha came back →
