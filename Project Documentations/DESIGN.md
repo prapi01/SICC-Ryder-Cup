@@ -144,7 +144,15 @@
   the write callback — so the flag stays set and `real-game-init.js` then **silently ignores all
   incoming realtime updates** (`if (RealGameState.isWRVInProgress()) return;`). What *is* in place:
   WRV verify-after-write + unlimited backoff retries (1–60 s) on error, and a `localStorage`
-  pending-writes queue resumed on re-entry. Fixes recommended (timeout the write + clear the flag
+  pending-writes queue resumed on re-entry.
+  **WRV's lost-connection RECONCILIATION (`WRV.recover()`: read → compare with local truth →
+  rewrite → verify → retry every 10 s) exists and is correct, but is ORPHANED.** Its only caller,
+  `startWRVVerification()` in `game-data.js`, is defined and exported but never invoked — because
+  `game-data.js` **v4.03 (2026-06-26 15:31)** removed `saveCurrentHole()`'s own Firestore write,
+  which also removed the v4.01 call sites that sat in that write's `.then()`/`.catch()`. So since
+  then the app retries writes on error but never detects or heals silently-lost data. Re-wiring it
+  is the recommended fix (see HANDOVER).
+  Fixes recommended (timeout the write + clear the flag
   in a `finally` + defer rather than drop updates while in progress + enable persistence + surface
   connection state) are **not applied** — they change live scoring behaviour.
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
