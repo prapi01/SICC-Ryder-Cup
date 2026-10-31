@@ -1,18 +1,27 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - ADDED: Clinch hole assignment to cache in writeNewHoleData()
-   - REASON: flight1ClinchedHole and flight2ClinchedHole were calculated but never stored
-   - REASON: game-scorecard.js reads cache.results.game2.flight1/2.clinchedHole for GOLD display
-   - REASON: Without this, T-x rows never show GOLD even when clinched
-   - PRESERVED: ALL other functionality from v1.41 unchanged
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - FIXED: T-2 row could show GREEN SQUARES (value "AS") at holes whose data was
+     saved out of order.
+   - CAUSE: results.game2.<flight>.<field>[position] was assigned per position only,
+     but the WHOLE results object is serialized and written by BOTH scorers as
+     BACKGROUND writes. If the last write to land came from a scorer that had saved
+     its own flight for a hole before the other flight's save reached it, that
+     position kept the incomplete value - 0 points / "AS" -> green square.
+     Real case 2026-10-31: T-2 squares at holes 16-17 with A10 neighbours.
+   - FIX: writeNewHoleData() now recomputes game2 (T-1 and T-2) ACROSS ALL 18
+     POSITIONS and publishes the complete arrays, so a stale position cannot be
+     published. game3 (Strk) was never affected because it IS recomputed over all
+     18 positions - game2 was the only per-position-only row.
+   - PRESERVED: clinch holes are still recomputed the same way (gold cell does not move)
+   - PRESERVED: ALL other functionality from v1.42 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.42";
+window.REAL_GAME_SAVE_VERSION = "1.43";
 
 var RealGameSave = (function() {
     
@@ -822,6 +831,46 @@ var RealGameSave = (function() {
         // ============================================================
         var updatePayload = {};
         
+        // ============================================================
+        // v1.43: RECOMPUTE game2 (T-1 / T-2) ACROSS ALL POSITIONS
+        // before publishing. The per-position assignment above only fills
+        // results.game2.<flight>.<field>[position], but the WHOLE results object is
+        // serialized and written by BOTH scorers as background writes. If the last
+        // write to land came from a scorer that had saved its own flight for a hole
+        // while the other flight's save had not yet reached it, that position kept
+        // the incomplete value - 0 points / "AS", which paints a GREEN SQUARE in the
+        // scorecard row. Real case 2026-10-31: T-2 showed squares at holes 16-17
+        // while every neighbour read A10.
+        // game3 (Strk) never showed this because it IS recomputed over all 18
+        // positions below; game2 was the only per-position-only row. Publishing the
+        // complete recomputation restores the same invariant for T-1 / T-2.
+        // ============================================================
+        try {
+            if (teamGameResults && cache.results && cache.results.game2) {
+                var g2f1 = cache.results.game2.flight1 || (cache.results.game2.flight1 = {});
+                var g2f2 = cache.results.game2.flight2 || (cache.results.game2.flight2 = {});
+                g2f1.cumulativePoints = teamGameResults.flight1Cumulative.slice();
+                g2f2.cumulativePoints = teamGameResults.flight2Cumulative.slice();
+                g2f1.leader = teamGameResults.flight1Leaders.slice();
+                g2f2.leader = teamGameResults.flight2Leaders.slice();
+                cache.results.game2.displayT1 = teamGameResults.displayT1.slice();
+                cache.results.game2.displayT2 = teamGameResults.displayT2.slice();
+                // GameComplete/Grey banding follows the clinch positions; preserve an
+                // already-known clinch if this recompute did not resolve one.
+                if (teamGameResults.flight1ClinchedHole !== null && teamGameResults.flight1ClinchedHole !== undefined) {
+                    g2f1.clinchedHole = teamGameResults.flight1ClinchedHole;
+                }
+                if (teamGameResults.flight2ClinchedHole !== null && teamGameResults.flight2ClinchedHole !== undefined) {
+                    g2f2.clinchedHole = teamGameResults.flight2ClinchedHole;
+                }
+                console.log(`[DEBUG-FLOW] --- v1.43 game2 recomputed across all 18 (T-2 display@15-17=${teamGameResults.displayT2[14]},${teamGameResults.displayT2[15]},${teamGameResults.displayT2[16]})`);
+            } else {
+                console.warn('[DEBUG-FLOW] --- v1.43 game2 recompute SKIPPED (no teamGameResults)');
+            }
+        } catch (g2err) {
+            console.warn('[DEBUG-FLOW] --- v1.43 game2 recompute failed:', g2err.message);
+        }
+        
         // v1.31: Write the COMPLETE results object - no more flattened fields
         updatePayload["results"] = cache.results;
         
@@ -1584,13 +1633,22 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - ADDED: Clinch hole assignment to cache in writeNewHoleData()
-   - REASON: flight1ClinchedHole and flight2ClinchedHole were calculated but never stored
-   - REASON: game-scorecard.js reads cache.results.game2.flight1/2.clinchedHole for GOLD display
-   - REASON: Without this, T-x rows never show GOLD even when clinched
-   - PRESERVED: ALL other functionality from v1.41 unchanged
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - FIXED: T-2 row could show GREEN SQUARES (value "AS") at holes whose data was
+     saved out of order.
+   - CAUSE: results.game2.<flight>.<field>[position] was assigned per position only,
+     but the WHOLE results object is serialized and written by BOTH scorers as
+     BACKGROUND writes. If the last write to land came from a scorer that had saved
+     its own flight for a hole before the other flight's save reached it, that
+     position kept the incomplete value - 0 points / "AS" -> green square.
+     Real case 2026-10-31: T-2 squares at holes 16-17 with A10 neighbours.
+   - FIX: writeNewHoleData() now recomputes game2 (T-1 and T-2) ACROSS ALL 18
+     POSITIONS and publishes the complete arrays, so a stale position cannot be
+     published. game3 (Strk) was never affected because it IS recomputed over all
+     18 positions - game2 was the only per-position-only row.
+   - PRESERVED: clinch holes are still recomputed the same way (gold cell does not move)
+   - PRESERVED: ALL other functionality from v1.42 unchanged
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js, celebration-photo.js
 STATUS: Ready for integration
 */
