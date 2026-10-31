@@ -87,9 +87,11 @@
   pages and `js/versions.json`):
   `js/celebration-photo.js` **1.21 → 1.22** (no default-photo clobber; `copyCelebrationPhoto()`
   also records the pointer when the photo file already exists);
-  `js/sign-card.js` **1.41 → 1.42** (`saveGameToHistory()` triggers `copyCelebrationPhoto()`);
-  `js/load-game.js` **1.03 → 1.04** (`VERSIONS_JSON_VERSION` 1.00 → 1.01 — the manifest fetch is
-  itself cached, so without this bump a new `versions.json` is never picked up);
+  `js/sign-card.js` **1.41 → 1.43** (`saveGameToHistory()` writes the archive record FIRST,
+  then triggers `copyCelebrationPhoto()` — see the ordering fix below);
+  `js/load-game.js` **1.03 → 1.05** (`VERSIONS_JSON_VERSION` 1.00 → 1.02 — the manifest fetch is
+  itself cached, so it must be bumped EVERY time `versions.json` changes; the first bump was
+defeated within one deploy because the manifest changed again);
   **NEW** `js/celebration-data.js` **1.01** (`CelebrationData.replayCelebration()` — rebuilds
   celebration data + photo from Firestore for a past game; isolated because `post-game.html`
   **and** `hcp-adjust.html` both need it);
@@ -184,6 +186,32 @@ be shown as this game's celebration. Fixed in v1.01: the revisit path clears
   (RMSE 1.5 %, mean diff 1.16 — canvas re-encode only, 1920×1080 both).
 - Deploy path confirmed: **Cloudflare Pages Git integration** — push `main` → prod, no build
   step, no workflows in `.github/`.
+
+### 2026-10-31 — Two ordering/caching bugs found while verifying the fix (both fixed)
+
+1. **Photo copy ran BEFORE the archive record existed.** The first attempt at cause B called
+   `copyCelebrationPhoto()` from the top of `saveGameToHistory()`, but that function writes its
+   pointer with Firestore `update()` and the archive record is only created a few lines later in
+   the `else` (create) branch. On a **fresh** game the update would fail with
+   "No document to update" and the archive would still get no `celebration` field — i.e. the bug
+   would have survived its own fix, and only for new games (invisible in testing against the
+   already-created 2026-10-31 record). **Fixed in `sign-card.js` v1.43:** all four success paths
+   now resolve through a `finish()` helper that runs the photo copy **after** the record write.
+   Verified executably (Firestore stub logs the real call order):
+   `READ doc → WRITE record → copyCelebrationPhoto()`.
+2. **The manifest cache-buster defeated itself.** `load-game.js` fetches the manifest as
+   `js/versions.json?v=<VERSIONS_JSON_VERSION>`, so that constant has to be bumped **every** time
+   `versions.json` changes. The 1.00 → 1.01 bump made the first deploy pick the manifest up, but
+   because `versions.json` then changed **again** in the same session (sign-card 1.42 → 1.43),
+   browsers holding `?v=1.01` would have kept the **stale** manifest and loaded sign-card **1.42**
+   — the mis-ordered version. **Fixed:** bumped to **1.02** and documented the rule inline.
+   `real-game.html` was still requesting `load-game.js?v=1.03` (stale), now `?v=1.05`.
+
+   Also corrected while auditing: `post-game.html` still advertised `APP_VERSION "1.13"` and
+   `hcp-adjust.html` `"1.40"` in their HTML cache-buster blocks after the pages became v1.14 /
+   v1.41 — the block is inlined in the page (so it worked), but it reported a stale version in the
+   `?v=` it appends. Both realigned, and a full audit now reports **0 mismatches** across
+   HTML `?v=` ↔ `js/versions.json` ↔ JS header/footer VERSION ↔ page header/`APP_VERSION`.
 
 ### ⚠️ SECURITY (raised 2026-10-31, NOT fixed): Firestore is world-writable
 A plain unauthenticated `PATCH` to `scheduledGames/<id>` returned **HTTP 200** — no auth of any

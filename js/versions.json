@@ -1,6 +1,6 @@
 {
   "META": {
-    "version": "1.03",
+    "version": "1.04",
     "updatedAt": "2026-10-31"
   },
   "auth-pin.js": "2.08",
@@ -21,7 +21,7 @@
   "hcp-adjust.js": "2.66",
   "history-record.js": "3.12",
   "index-hidden.js": "1.08",
-  "load-game.js": "1.03",
+  "load-game.js": "1.05",
   "modal.js": "1.03",
   "real-game-cascade.js": "1.02",
   "real-game-init.js": "1.16",
@@ -34,7 +34,7 @@
   "scorecard-viewer.js": "1.04",
   "session.js": "1.02",
   "settings.js": "1.00",
-  "sign-card.js": "1.42",
+  "sign-card.js": "1.43",
   "ticker.js": "1.03",
   "tutorial-postgame.js": "1.01",
   "tutorial-results.js": "1.01",

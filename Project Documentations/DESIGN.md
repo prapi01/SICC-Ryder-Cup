@@ -99,6 +99,9 @@
      documented last resort (design v1.07). The function also skipped the Firestore write entirely
      when the photo file already existed in Storage. Fixed: `sign-card.js` v1.42 calls it from
      `saveGameToHistory()`, and v1.22 always records the pointer.
+     **Ordering matters:** `copyCelebrationPhoto()` writes with Firestore `update()`, so it must run
+     **after** the archive record is created; `sign-card.js` v1.43 resolves its success paths through
+     a `finish()` helper that copies the photo only once the record exists.
   3. **`post-game.html` rendered the celebration from sessionStorage only** (v1.13), so TODAY's game
      dead-ended once the playing session ended — contradicting the design that keeps TODAY's game
      accessible until midnight. `hcp-adjust.html`'s 🎉 button had the same flaw. Fixed with the new
