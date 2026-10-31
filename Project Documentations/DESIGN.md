@@ -134,6 +134,19 @@
   positions before serializing the payload (the same invariant `game3`/Strk already had), so a
   stale position cannot be published again. Clinch computation is unchanged, so the gold cell does
   not move; the cascade guard was deliberately left alone to avoid changing live save behaviour.
+- **2026-10-31 — Connection-loss handling is minimal, and a hung write can mute the realtime
+  listener.** Firestore **offline persistence is not enabled anywhere**, and there is no
+  `online`/`offline` awareness, so a read taken during a network dip is a permanent cache miss — a
+  scorer can be left without another flight's hole data (observed 2026-10-31: F1 could not see F2's
+  H16/H17, which is also what produced the stale T-2 row). A write issued while offline **never
+  resolves or rejects** (measured, SDK 10.8.0), which defeats two defences: `writeWithWRV()`'s
+  retry loop only runs on `.catch`, and `wruBackground()`'s `WRVInProgress` flag is cleared only in
+  the write callback — so the flag stays set and `real-game-init.js` then **silently ignores all
+  incoming realtime updates** (`if (RealGameState.isWRVInProgress()) return;`). What *is* in place:
+  WRV verify-after-write + unlimited backoff retries (1–60 s) on error, and a `localStorage`
+  pending-writes queue resumed on re-entry. Fixes recommended (timeout the write + clear the flag
+  in a `finally` + defer rather than drop updates while in progress + enable persistence + surface
+  connection state) are **not applied** — they change live scoring behaviour.
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had

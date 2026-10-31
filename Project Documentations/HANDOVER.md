@@ -303,6 +303,80 @@ untouched, so the gold cell does not move.
   `VERSIONS_JSON_VERSION` 1.03, `real-game.html` → `load-game.js?v=1.06`. Full audit: **0
   mismatches** across HTML `?v=` ↔ manifest ↔ JS header/footer VERSION.
 
+### 2026-10-31 — "F1 could not see my score at H16/H17" — connectivity audit
+
+The F2 scorer entered holes 16/17 normally, but the F1 scorer **did not see** them. Because F1
+therefore had no F2 data for those holes, F1's own computation read F2 as all-square → the T-2
+**stale** values that surfaced as green squares at H16/H17 (see the T-2 entry above). The two
+reports are the **same event** seen from two devices. So yes — this is evidence of a lost /
+delayed data path between the scorers.
+
+**A. There is NO offline handling at all (verified in code).**
+- **Firestore offline persistence is NOT enabled.** `enablePersistence()` appears nowhere in the
+  codebase (nothing in `js/` or any page). Comment at `game-data.js:621` says Firestore
+  persistence is delegated to `real-game-save.js`, but that file never enables it. **So Firestore
+  runs online-only**, exactly as already noted on 2026-10-29 in the Open questions.
+- **No connectivity awareness whatsoever**: no `online`/`offline` listeners, no `navigator.onLine`,
+  no `enableNetwork`/`disableNetwork`, no `waitForPendingWrites`.
+- **Consequence — a bad-hole read is permanent.** Without persistence there is no local queue, so a
+  read that happens while offline is a **cache miss**, not "retry later". That is the most likely
+  mechanism for F1 not seeing H16/H17: if F1's read of those holes occurred during a network dip,
+  F1 simply never had them.
+
+**B. Writes can hang for ever without reporting anything (measured, SDK 10.8.0).**
+A write issued while offline **neither resolves nor rejects** — raced against a 12 s timer it was
+still `STILL-PENDING`, and an unbounded run hung past 2.5 minutes. Two levels of defence are
+defeated:
+- `writeWithWRV()` (`wrv.js` v1.14) has **no timeout around `docRef.set()`**. Its retry loop only
+  runs on `.catch`; while `set()` stays pending, `attempt` never increments and the "retry
+  indefinitely" logic **never engages**.
+- `wruBackground()` (`real-game-save.js`) sets `RealGameState.setWRVInProgress(true)` **before**
+  the write and clears it **only inside the WRV callback** (3 sites, all in the completion paths).
+  If the write never completes, the flag is **never cleared**.
+
+**C. That flag is exactly what would hide F1's data from the other device.**
+`real-game-init.js:576`:
+```js
+if (RealGameState.isWRVInProgress()) {
+    console.log('[REALTIME] WRV in progress - ignoring Firestore data update');
+    return;
+}
+```
+So one hung/background write on a device makes it **silently ignore incoming realtime updates
+indefinitely** — the scorer keeps entering scores locally and believing it is in sync, while other
+devices never see them. There is no timeout, no watchdog, and no UI indicator that the listener has
+stopped applying updates.
+
+**D. What IS in place (the actual defences today):** WRV's verify-after-write plus **unlimited**
+exponential-backoff retries (1 s → 60 s cap) on *error*; a **pending-writes queue** persisted in
+`localStorage` per game that is resumed on re-entry (this is what the cascade uses); and Firestore's
+own in-memory SDK queue for Brief drops **within one page session**.
+
+**Answer to "what do we have for lost connection?" — summary:**
+| Concern | Status |
+|---|---|
+| Offline read queue | ❌ none (no persistence → bad-hole read is permanent) |
+| Scorer-to-scorer visibility | ❌ a hung write can suspend the realtime listener forever |
+| Offline write detection | ❌ `set()` never times out; WRV retry never engages |
+| Write retry on error | ✅ WRV, unlimited backoff (1–60 s) |
+| Resumé across reloads | ✅ `localStorage` pending-writes queue |
+| Connectivity UI / status | ❌ none |
+
+**⬜ NOT FIXED — needs the user's decision** (scoring behaviour, so not changed unilaterally).
+Recommended, in priority order:
+1. **Timeout the write** — race `docRef.set()` against e.g. 10–15 s; on timeout treat it as a
+   failure so WRV's existing retry loop engages, and **always clear the WRV flag in a `finally`**,
+   plus add a watchdog so a stuck flag auto-clears (the 30–60 s background queue makes a short
+   timeout safe).
+2. **Stop ignoring updates while "WRV in progress"** — instead of `return`, defer and re-apply once
+   the flag clears, so a background write cannot mute the listener.
+3. **Enable Firestore offline persistence** so reads/writes survive a dip and a hole is never
+   permanently blank.
+4. **Surface connection state in the UI** (offline / "n not synced"), so a scorer knows.
+⚠️ Note on (4): the app requires exactly one F1 and one F2 writer, and F2 owns the
+`saveGameToHistory` trigger (`sign-card.js` v1.43). Offline writes that flush **out of order** on
+reconnect would change save ordering, so (3) needs testing against the T-2 fix before enabling.
+
 ### ⚠️ SECURITY (raised 2026-10-31, NOT fixed): Firestore is world-writable
 A plain unauthenticated `PATCH` to `scheduledGames/<id>` returned **HTTP 200** — no auth of any
 kind (confirmed with a harmless `probe` field, which was then removed). This is broader than the
@@ -606,6 +680,11 @@ game is mid-day.
   and force-pushed.
 
 ## Open questions
+- **Connection-loss hardening not applied** (audit 2026-10-31): write timeout + clear the
+  `WRVInProgress` flag in a `finally` + watchdog, defer (do not drop) realtime updates while the
+  flag is set, enable Firestore offline persistence, and surface connection state in the UI.
+  Recommend (1) and (2) first — they are small and stop a hung write from muting the listener.
+  Not done unilaterally: they change live scoring behaviour.
 - **Firestore has NO write protection** (found 2026-10-31, unauthenticated `PATCH` → HTTP 200).
   Should writes require auth while reads stay public? Not changed — needs the user's decision.
 - Cause A's fix was verified against the **live** flag shape; the next real game is the true
