@@ -1,9 +1,41 @@
 # sicc-ryder-cup — HANDOVER Log
 
 > Running project log. Updated after every milestone: new decisions, design changes,
-> new technical findings. Read at the start of every session. Updated 2026-10-30.
+> new technical findings. Read at the start of every session. Updated 2026-10-31.
 
-## Current status (2026-10-30)
+## Current status (2026-10-31)
+- **2026-10-31 — GAME DAY: the real game was played, and TWO game-day regressions were
+  root-caused and fixed.** Game `GM_260914_1342_52` (SICC Millennium-Peirce, 8 players)
+  completed **14:01 SGT**; **Team A won 10–9**. The user reported (a) the celebration modal
+  showed a photo **totally different** from the one on GitHub, and (b) TODAY's game was
+  reachable **only** via "View Previous Game" instead of the designed "accessible until
+  midnight" path.
+  **Neither was a regression of app code** — no JS/HTML under `js/` had changed since
+  **2026-08-14** (verified with git). Both defects are older and only surface **on game day**
+  (a real photo upload + a completed game), which is why they looked new.
+  Three root causes, all fixed and verified:
+
+  | # | Cause | Where |
+  |---|---|---|
+  | A | `loadDefaultCelebrationPhoto()` published the **default** photo over a **real** one | `js/celebration-photo.js` v1.13 → fixed v1.22 |
+  | B | `copyCelebrationPhoto()` was **orphaned** (its only caller removed), so the archive record got **no** `celebration` field | `post-game.html` v1.13 removed the call → fixed `js/sign-card.js` v1.42 |
+  | C | `post-game.html` v1.13 renders the celebration from **sessionStorage only** | new `js/celebration-data.js`, `post-game.html` v1.14, `hcp-adjust.html` v1.41 |
+
+  **Cause A is the "wrong photo".** `setPhotoFlags()` writes `photo.imageUrl`; `view-game.html`
+  (v8.16, since **2026-08-09**) calls `loadDefaultCelebrationPhoto()` at game start, which called
+  `setPhotoFlags()` with the **default** URL — overwriting the real photo's `imageUrl` and
+  resetting `f2Downloaded`/`viewDownloaded` to false. Every other device then re-downloaded the
+  **default** photo, so the celebration image was genuinely different from GitHub. Live evidence:
+  `scheduledGames.photo.imageUrl` = `SRC_Default_Photo.jpg` while
+  `celebration.photo G__H.jpg` (the real photo, created 12:56 SGT) was overwritten at 13:35 SGT.
+  **Fix (v1.22):** read `scheduledGames/<gameId>.photo` first; if `newPhotoAvailable === true`
+  a real photo owns the flags — pull it into sessionStorage and leave the flags alone.
+- **Damage repaired in the live data (not code):** `historyGames/GM_260914_1342_52_H` had **no**
+  `celebration` field (cause B). Backfilled with the Storage URL of
+  `celebration/GM_260914_1342_52_H.jpg`. Verified by pixel comparison (RMSE 1.5 %, mean diff
+  1.16) that this file **is** the user's `C.jpg`, re-encoded by canvas — so the correct photo was
+  always in Storage; only the pointer was missing.
+- **2026-10-30 — iPhone celebration-photo upload pipeline: ROOT CAUSE FOUND + worked around.**
 - SICC Ryder Cup Firebase web app — **Version 4.0.0** shipped 2026-08-10 (Team One rename,
   v3.0.0 regression fixes, automated QA harness). Verified on production.
 - **2026-10-30 — iPhone celebration-photo upload pipeline: ROOT CAUSE FOUND + worked around.**
@@ -30,6 +62,14 @@
   That folder's `HANDOVER.md` is the CANONICAL operating doc for backup/restore.
 
 ## Decisions
+- 2026-10-31 — **Keep the celebration photo display sessionStorage-only** (`js/sign-card.js`
+  v1.42 preserves the v1.41 behaviour) and fix the causes **upstream** instead: the photo
+  pointer on the archive record + the flag clobber. Re-plumbing `sign-card.js` to fetch the
+  photo was rejected — it adds a network dependency to the celebration and risks regressing the
+  scorer path that works today.
+- 2026-10-31 — **The archive photo copy runs inside `saveGameToHistory()`**, not in a page.
+  page. It is offline-safe (Storage metadata only, no GitHub fetch) so it cannot block the
+  history save. See cause B.
 - 2026-08-10 — Team One display rename (display-only; internal Team A/B kept — no migration).
 - 2026-08-10 — History record integrity fields (adjustedHandicaps / finalResults / version:3 /
   schema:"v3_strings" / archiveId).
@@ -43,6 +83,18 @@
   an open question to decide later; not blocking the 2026-10-31 game.
 
 ## Design changes
+- 2026-10-31 — Game-day regression fixes (versions bumped + cache-busters aligned across all
+  pages and `js/versions.json`):
+  `js/celebration-photo.js` **1.21 → 1.22** (no default-photo clobber; `copyCelebrationPhoto()`
+  also records the pointer when the photo file already exists);
+  `js/sign-card.js` **1.41 → 1.42** (`saveGameToHistory()` triggers `copyCelebrationPhoto()`);
+  `js/load-game.js` **1.03 → 1.04** (`VERSIONS_JSON_VERSION` 1.00 → 1.01 — the manifest fetch is
+  itself cached, so without this bump a new `versions.json` is never picked up);
+  **NEW** `js/celebration-data.js` **1.01** (`CelebrationData.replayCelebration()` — rebuilds
+  celebration data + photo from Firestore for a past game; isolated because `post-game.html`
+  **and** `hcp-adjust.html` both need it);
+  `post-game.html` **1.13 → 1.14** (`showCelebrationFromSessionOrRebuild()`);
+  `hcp-adjust.html` **1.40 → 1.41** (🎉 button rebuilds before alerting).
 - 2026-08-10 — v4.0.0: sign-card `submitSignature` restored, celebration photo restored + default
   photo at start, viewer back-link design compliance, storage rules fix. (Details: RELEASE_NOTES.md.)
 - 2026-08-12 — Docs reorganisation committed: `Documentations/` renamed → `Project Documentations/`
@@ -59,6 +111,90 @@
   no logic change. Also reset local + `origin/staging` to `main` (removed garbage commits).
 
 ## Technical findings
+
+### 2026-10-31 — Game-day regressions: three root causes (game `GM_260914_1342_52`)
+
+**Symptom 1 — "the photo on GitHub and the photo in the celebration modal are totally
+different".** Two independent defects combined:
+
+1. **The default photo overwrote the real photo's pointer (cause A).**
+   `setPhotoFlags(gameId, url)` writes `scheduledGames/<gameId>.photo`
+   = `{newPhotoAvailable:true, f2Downloaded:false, viewDownloaded:false, imageUrl}`.
+   `loadDefaultCelebrationPhoto()` called it with the **default** URL, and `view-game.html`
+   v8.16 (the viewer, added **2026-08-09**) calls `loadDefaultCelebrationPhoto()` at game
+   start. So opening the viewer **after** a real photo was broadcast replaced
+   `photo.imageUrl` with `SRC_Default_Photo.jpg` and reset both `*Downloaded` flags to false.
+   F2/VIEW then downloaded the **default** image (that is what the `*Downloaded` flags are
+   for) and the celebration showed it. F1 alone kept the real blob in sessionStorage, so the
+   scorers and everyone else disagreed about the photo.
+   **Live evidence:** `photo.imageUrl` = `SRC_Default_Photo.jpg` while
+   `celebration/GM_260914_1342_52_H.jpg` (the real photo, **created 12:56 SGT**) was
+   overwritten at **13:35 SGT**; the game completed 14:01 SGT.
+   **Fix:** `js/celebration-photo.js` v1.22 — if `newPhotoAvailable === true`, a real photo
+   owns the flags: download *that* URL into sessionStorage and **do not** call
+   `setPhotoFlags()`.
+   **Note:** the default-photo-at-start behaviour itself is fine and still works; only the
+   overwrite of an already-broadcast real photo was wrong.
+
+2. **The archive record never got a `celebration` field (cause B).**
+   `copyCelebrationPhoto()` is the only function that ever wrote
+   `historyGames/<gameId>_H.celebration` (`{imageRef,imageUrl,copiedAt}`).
+   Its **only caller was `post-game.html` v1.09**; **v1.13 (2026-07-08) removed that call**
+   when the page became display-only — orphaning the function. Nothing called it again
+   (verified: zero callers in the whole repo).
+   **Second bug inside it:** if the photo file already existed in Storage, v1.18 returned
+   early (`✅ Already exists`) **skipping the Firestore pointer write** — exactly today's
+   shape: the file was in Storage, the pointer was absent.
+   **Fix:** `js/sign-card.js` v1.42 calls `copyCelebrationPhoto()` from
+   `saveGameToHistory()` (offline-safe: Storage metadata only; the JPG path may fail
+   harmlessly when offline), **and** v1.22 always writes the pointer (using the existing
+   download URL when the file is already there).
+   **Reader fallback chain** (`getCelebrationPhoto()`, v1.22 unchanged):
+   `historyGames.celebration.imageUrl` → `localStorage['celebration_photo_url_<gameId>']` →
+   `GITHUB_PHOTO_URL` (`.../images/celebration/C.jpg`). With no pointer, everything fell
+   through to the *shared* `C.jpg` — a **stale** photo for any game that is not the latest one.
+
+**Symptom 2 — "TODAY's game only reachable via View Previous Game".**
+`post-game.html` v1.13 made the page render the celebration from **sessionStorage only**
+(`init()` → `showCelebrationFromSession()`). sessionStorage is per tab-session, so after a new
+tab / reload / re-opening today's game later that day it dead-ended with
+"No celebration data found." Confirmed by diffing v1.12 → v1.13: `restoreCacheFromSession()`,
+`showGameCompleteModal()` and `showCelebrationFromCache()` were **all removed** in v1.13.
+`hcp-adjust.html` had the same flaw in its 🎉 button.
+**Fix:** new shared `js/celebration-data.js` (`CelebrationData.replayCelebration()`) rebuilds
+data + photo from Firestore; `post-game.html` v1.14 and `hcp-adjust.html` v1.41 use it. It is
+a shared module per the GLOBAL "Isolation of Shared Codes" rule (two pages need it).
+**Note:** with cause A fixed the rebuild also returns the correct per-game photo, because
+`celebration/imageUrl` now exists.
+
+**Symptom 3 — a wrong photo could be shown even for a correct game.**
+`replayCelebration()` initially reused whatever was in `sessionStorage.celebrationPhoto`.
+sessionStorage **survives navigation inside a tab**, so a photo left by *another* game could
+be shown as this game's celebration. Fixed in v1.01: the revisit path clears
+`celebrationPhoto`/`celebrationPhotoUrl` and re-resolves for the requested `gameId`.
+
+**How these were verified (not assumed):**
+- App code unchanged since **2026-08-14** — `git log` shows no `js/*.js` or `*.html` commits for
+  3 weeks, so this was never a fresh code regression.
+- Firestore + Storage are publicly readable, so the live documents were inspected directly.
+- `js/celebration-data.js` was **executed for real** (Node `vm`, no browser mocks) against the
+  live record: modal shown, `A 10-9`, winner labels `ACH, KF, CKL, YHM` / `OCB, JG, JO, PP`,
+  and the per-game Storage photo resolved instead of `C.jpg`.
+- Pixel comparison proved `celebration/GM_260914_1342_52_H.jpg` **is** the user's `C.jpg`
+  (RMSE 1.5 %, mean diff 1.16 — canvas re-encode only, 1920×1080 both).
+- Deploy path confirmed: **Cloudflare Pages Git integration** — push `main` → prod, no build
+  step, no workflows in `.github/`.
+
+### ⚠️ SECURITY (raised 2026-10-31, NOT fixed): Firestore is world-writable
+A plain unauthenticated `PATCH` to `scheduledGames/<id>` returned **HTTP 200** — no auth of any
+kind (confirmed with a harmless `probe` field, which was then removed). This is broader than the
+`storage.rules` scoping already recorded (Storage is public **read/write for `/celebration/**`
+only**). Anyone who knows the project id can rewrite any game document — scores, signatures,
+`status`, and the celebration pointer. Combined with cause A this is also a **read** hazard: a
+stranger can point a celebration at any image.
+**Recommendation:** require auth on write for `scheduledGames` / `historyGames`, leaving reads
+public. **Not changed here** — it is an architecture decision for the user (GLOBAL §23), and the
+game is mid-day.
 - 2026-10-30 — **Celebration-photo upload (iPhone) root cause, verified from the Mac.**
   Symptom: iPhone shortcut "Upload to Github" runs and prints `ERROR: C.jpg missing`, then
   `--- Sync Complete! ---`; **no image uploaded** (repo `images/celebration/C.jpg` unchanged since
@@ -352,6 +488,15 @@
   and force-pushed.
 
 ## Open questions
+- **Firestore has NO write protection** (found 2026-10-31, unauthenticated `PATCH` → HTTP 200).
+  Should writes require auth while reads stay public? Not changed — needs the user's decision.
+- Cause A's fix was verified against the **live** flag shape; the next real game is the true
+  end-to-end confirmation (no PROD game from 2026-10-31 onward yet).
+- The 2026-10-31 game's `historyGames/_H` record was **repaired by hand** (backfilled
+  `celebration`). Decide whether any other archived record needs the same backfill — only the
+  latest game is affected in practice, because the `C.jpg` fallback happens to be correct for it.
+- Older archives (`GM_260606_1010_13_H`, `GM_260619_1148_78_H_R`) do have `celebration`; the
+  `GM_261029_*` celebration files in Storage have no matching archive record.
 - (2026-10-29) Track: real-time **tab-close data loss** risk on scorers (online-only Firestore).
   Mitigation options: enable offline persistence, or a small "saving… keep page open" guard on
   the scorer. Not blocking Saturday; needs a decision before any change.
@@ -361,6 +506,14 @@
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
+- **Commit + push `main`** — the fixes are untracked/uncommitted at the time of writing
+  (`js/celebration-data.js`, `js/celebration-photo.js`, `js/sign-card.js`, `js/load-game.js`,
+  `js/versions.json`, `post-game.html`, `hcp-adjust.html`, `view-game.html`, `view-history.html`,
+  `test-wrv.html`). Cloudflare Pages deploys on push to `main`, so nothing is live until then.
+- **After the push — user-side smoke test (iPhone, PROD):** Main Menu → **GAME DAY** should open
+  TODAY's celebration (Team A 10–9) with the **real** photo, without going through
+  "View Previous Game".
+- Decide the Firestore write-auth question above before the next game day.
 - **Confirm the uploader on the iPhone (2026-10-31).** Fixes in place and each verified by running:
   missing `Bearer ` prefix, missing no-input guard, and the **quarantine/hidden state that stopped it
   appearing in the share sheet**. The installed `pk=129 UploadPhoto` has been patched and is

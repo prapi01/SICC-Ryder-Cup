@@ -1,14 +1,17 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.40
-KEY CHANGES from v1.39:
-   - REMOVED: Auto-save block that called HistoryRecord.updateWithHandicap()
-   - REMOVED: js/history-record.js from script dependencies (no longer needed)
-   - REASON: hcp-adjust is now DISPLAY ONLY - no writes to Firestore
-   - REASON: ONE complete payload write at F2 signing time eliminates second write
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.39
-   - PRESERVED: All display logic, navigation, and celebration flow unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.63), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
+VERSION: 1.41
+KEY CHANGES from v1.40:
+   - FIXED: the celebration (🎉) button dead-ended with "Celebration data not available"
+     when sessionStorage.celebrationData was absent
+   - CHANGED: that branch now rebuilds data + photo from Firestore via
+     CelebrationData.replayCelebration() (js/celebration-data.js)
+   - WHY: sessionStorage does not survive a new tab / reload / re-opening TODAY's game
+     later the same day, but the design keeps TODAY's game accessible until midnight
+   - UNCHANGED: the live session path (sessionStorage first) - normal sign-off flow untouched
+   - UNCHANGED: page remains DISPLAY ONLY - no Firestore writes (v1.40 intent)
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.40
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.66), js/sign-card.js (v1.42), js/celebration-photo.js (v1.22), js/celebration-data.js (1.01), js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
 STATUS: Ready for integration
 -->
 
@@ -44,7 +47,9 @@ STATUS: Ready for integration
     <!-- v1.40: history-record.js REMOVED - no longer needed (display only) -->
     
     <script src="js/hcp-adjust.js?v=2.66"></script>
-    <script src="js/sign-card.js?v=1.41"></script>
+    <script src="js/sign-card.js?v=1.42"></script>
+    <script src="js/celebration-photo.js?v=1.22"></script>
+    <script src="js/celebration-data.js?v=1.01"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -316,7 +321,7 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.40";
+window.HCP_ADJUST_PAGE_VERSION = "1.41";
 console.log("[HCP-ADJUST-PAGE] Initializing v1.40 - Display only, no writes");
 
 // ============================================================
@@ -462,6 +467,14 @@ function renderButtons(anchorName) {
                             WaitingScreen.hide();
                         }
                     }
+                } else if (typeof CelebrationData !== 'undefined') {
+                    // v1.41: no live session - rebuild from Firestore so TODAY's game
+                    // still shows its celebration (design: accessible until midnight)
+                    console.log("[HCP-ADJUST] Rebuilding celebration from Firestore for:", gameId);
+                    CelebrationData.replayCelebration(gameId, function (msg) {
+                        console.error("[HCP-ADJUST] Could not rebuild celebration:", msg);
+                        alert('Celebration data not available: ' + msg);
+                    });
                 } else {
                     console.error("[HCP-ADJUST] No celebration data available");
                     alert('Celebration data not available');
@@ -642,14 +655,17 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.40
-KEY CHANGES from v1.39:
-   - REMOVED: Auto-save block that called HistoryRecord.updateWithHandicap()
-   - REMOVED: js/history-record.js from script dependencies (no longer needed)
-   - REASON: hcp-adjust is now DISPLAY ONLY - no writes to Firestore
-   - REASON: ONE complete payload write at F2 signing time eliminates second write
-   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.39
-   - PRESERVED: All display logic, navigation, and celebration flow unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.63), js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
+VERSION: 1.41
+KEY CHANGES from v1.40:
+   - FIXED: the celebration (🎉) button dead-ended with "Celebration data not available"
+     when sessionStorage.celebrationData was absent
+   - CHANGED: that branch now rebuilds data + photo from Firestore via
+     CelebrationData.replayCelebration() (js/celebration-data.js)
+   - WHY: sessionStorage does not survive a new tab / reload / re-opening TODAY's game
+     later the same day, but the design keeps TODAY's game accessible until midnight
+   - UNCHANGED: the live session path (sessionStorage first) - normal sign-off flow untouched
+   - UNCHANGED: page remains DISPLAY ONLY - no Firestore writes (v1.40 intent)
+   - PRESERVED: ALL UI design, layout, and functionality EXACTLY as v1.40
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js (v2.66), js/sign-card.js (v1.42), js/celebration-photo.js (v1.22), js/celebration-data.js (1.01), js/waiting-screen.js, js/modal.js, js/settings.js, js/wrv.js
 STATUS: Ready for integration
 -->

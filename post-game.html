@@ -1,17 +1,19 @@
 <!--
 FILE: post-game.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - REMOVED: restoreCacheFromSession() - no longer needed
-   - REMOVED: showGameCompleteModal() - no longer needed (SignCard handles this)
-   - REMOVED: showCelebrationFromCache() - no longer needed
-   - CHANGED: init() now reads from sessionStorage celebrationData
-   - ADDED: Direct display of celebration from sessionStorage
-   - REASON: post-game.html is now a simple display page
-   - REASON: SignCard already handles the celebration modal
-   - REASON: All data is in sessionStorage from sign-card.js
-   - PRESERVED: ALL UI styling from v1.12
-DEPENDS ON: js/firebase-config.js, js/session.js, js/sign-card.js (v1.38), js/settings.js, js/celebration-photo.js
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - FIXED: "No celebration data found." dead-end when sessionStorage.celebrationData
+     is absent (new tab / reload / reopening TODAY's game later the same day)
+   - CHANGED: init() now calls showCelebrationFromSessionOrRebuild(), which uses the live
+     sessionStorage path when present and otherwise rebuilds data + photo from Firestore
+     via CelebrationData.replayCelebration() (js/celebration-data.js)
+   - v1.13 regressions RESTORED, not re-implemented: the session-independent path that
+     v1.13 removed (restoreCacheFromSession/showCelebrationFromCache) is back, now via the
+     shared rebuild module instead of duplicated code
+   - UNCHANGED: the live session path (sessionStorage first) - normal sign-off flow untouched
+   - UNCHANGED: all UI styling and the post-game URL contract (?gameId=)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/sign-card.js (v1.42), js/settings.js,
+            js/celebration-photo.js (v1.22), js/celebration-data.js (1.01)
 STATUS: Ready for integration
 -->
 
@@ -36,8 +38,9 @@ STATUS: Ready for integration
     
     <!-- WRV Core -->
     <script src="js/wrv.js?v=1.14"></script>
-    <script src="js/celebration-photo.js?v=1.21"></script>
-    <script src="js/sign-card.js?v=1.41"></script>
+    <script src="js/celebration-photo.js?v=1.22"></script>
+    <script src="js/sign-card.js?v=1.42"></script>
+    <script src="js/celebration-data.js?v=1.01"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -150,8 +153,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.13";
-console.log("[POST-GAME] Initializing v1.13 - Simple display page");
+window.POST_GAME_PAGE_VERSION = "1.14";
+console.log("[POST-GAME] Initializing v1.14 - Simple display page");
 
 // ============================================================
 // Main Logic
@@ -163,6 +166,43 @@ function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
     gameId = params.get('gameId');
     console.log("[POST-GAME] gameId:", gameId);
+}
+
+// ============================================================
+// v1.14: Show celebration, falling back to a Firestore rebuild
+// Keeps TODAY's game reachable after the playing session ends
+// (design: accessible until midnight) instead of dead-ending.
+// ============================================================
+
+function showCelebrationFromSessionOrRebuild() {
+    if (sessionStorage.getItem('celebrationData')) {
+        console.log("[POST-GAME] celebrationData present - using live session path");
+        showCelebrationFromSession();
+        return;
+    }
+
+    console.log("[POST-GAME] No celebrationData - rebuilding from Firestore for:", gameId);
+
+    if (typeof CelebrationData === 'undefined') {
+        console.error("[POST-GAME] CelebrationData module not loaded");
+        showCelebrationFromSession();
+        return;
+    }
+
+    CelebrationData.replayCelebration(gameId, function (msg) {
+        console.error("[POST-GAME] ❌ Could not rebuild celebration:", msg);
+        var content = document.getElementById('content');
+        if (content) {
+            content.innerHTML = `
+                <div style="padding:40px 20px; text-align:center; color:#888;">
+                    <div style="font-size:3rem; margin-bottom:16px;">⛳</div>
+                    <div style="font-size:1rem; color:#666;">Could not load this game's celebration.</div>
+                    <div style="font-size:0.8rem; color:#444; margin-top:8px;">${msg}</div>
+                    <button onclick="window.location.href='index.html'" style="margin-top:20px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:30px; font-size:1rem; cursor:pointer;">🏠 Main Menu</button>
+                </div>
+            `;
+        }
+    });
 }
 
 // ============================================================
@@ -249,7 +289,6 @@ function showCelebrationFromSession() {
 // ============================================================
 // init - v1.13: Simple initialization
 // ============================================================
-
 function init() {
     console.log("[POST-GAME] Initializing...");
     
@@ -277,7 +316,9 @@ function init() {
     }
     
     // v1.13: Show celebration directly from sessionStorage
-    showCelebrationFromSession();
+    // v1.14: fall back to a Firestore rebuild so TODAY's game still opens after the
+    //        playing session ends (new tab / reload / same day) instead of dead-ending.
+    showCelebrationFromSessionOrRebuild();
 }
 
 if (document.readyState === 'loading') {
@@ -292,17 +333,19 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - REMOVED: restoreCacheFromSession() - no longer needed
-   - REMOVED: showGameCompleteModal() - no longer needed (SignCard handles this)
-   - REMOVED: showCelebrationFromCache() - no longer needed
-   - CHANGED: init() now reads from sessionStorage celebrationData
-   - ADDED: Direct display of celebration from sessionStorage
-   - REASON: post-game.html is now a simple display page
-   - REASON: SignCard already handles the celebration modal
-   - REASON: All data is in sessionStorage from sign-card.js
-   - PRESERVED: ALL UI styling from v1.12
-DEPENDS ON: js/firebase-config.js, js/session.js, js/sign-card.js (v1.38), js/settings.js, js/celebration-photo.js
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - FIXED: "No celebration data found." dead-end when sessionStorage.celebrationData
+     is absent (new tab / reload / reopening TODAY's game later the same day)
+   - CHANGED: init() now calls showCelebrationFromSessionOrRebuild(), which uses the live
+     sessionStorage path when present and otherwise rebuilds data + photo from Firestore
+     via CelebrationData.replayCelebration() (js/celebration-data.js)
+   - v1.13 regressions RESTORED, not re-implemented: the session-independent path that
+     v1.13 REMOVED (restoreCacheFromSession / showCelebrationFromCache) is back, now via
+     the shared rebuild module instead of duplicated code
+   - UNCHANGED: the live session path (sessionStorage first) - normal sign-off flow untouched
+   - UNCHANGED: all UI styling and the post-game URL contract (?gameId=)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/sign-card.js (v1.42), js/settings.js,
+            js/celebration-photo.js (v1.22), js/celebration-data.js (1.01)
 STATUS: Ready for integration
 -->

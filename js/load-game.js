@@ -1,13 +1,12 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - REMOVED: "load everything" fallback for unknown pages
-   - ADDED: Error logging when page is not recognized
-   - CHANGED: Unknown pages now load CORE SCRIPTS ONLY (no game modules)
-   - FIXED: Page detection now handles paths without .html extension
-   - REASON: Fallback was causing VIEW to load real-game-init.js
-   - REASON: Fallback masked the root cause (path detection mismatch)
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - BUMPED: VERSIONS_JSON_VERSION 1.00 -> 1.01 so the browser always re-fetches
+     js/versions.json instead of serving it from cache. Without this bump a version
+     change in versions.json (e.g. sign-card.js 1.41 -> 1.42) keeps loading the OLD
+     script version - the exact class of bug this file must prevent.
+   - PRESERVED: ALL loading behaviour from v1.03 unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */
@@ -15,14 +14,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.03";
+window.LOAD_GAME_VERSION = "1.04";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
-var VERSIONS_JSON_VERSION = "1.00";
+var VERSIONS_JSON_VERSION = "1.01";
 
-console.log("[LOAD-GAME] Initializing v1.03");
+console.log("[LOAD-GAME] Initializing v1.04");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -262,14 +261,13 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - REMOVED: "load everything" fallback for unknown pages
-   - ADDED: Error logging when page is not recognized
-   - CHANGED: Unknown pages now load CORE SCRIPTS ONLY (no game modules)
-   - FIXED: Page detection now handles paths without .html extension
-   - REASON: Fallback was causing VIEW to load real-game-init.js
-   - REASON: Fallback masked the root cause (path detection mismatch)
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - BUMPED: VERSIONS_JSON_VERSION 1.00 -> 1.01 so the browser always re-fetches
+     js/versions.json instead of serving it from cache. Without this bump a version
+     change in versions.json (e.g. sign-card.js 1.41 -> 1.42) keeps loading the OLD
+     script version - the exact class of bug this file must prevent.
+   - PRESERVED: ALL loading behaviour from v1.03 unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
 */

@@ -1,19 +1,26 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - FIXED: Firestore write target in checkAndRenameCelebrationPhoto() changed from historyGames to scheduledGames
-   - REASON: historyGames document does not exist during gameplay (only after game complete)
-   - REASON: Photo metadata should be stored in the game document during gameplay
-   - REASON: This eliminates "No document to update" error during photo check
-   - PRESERVED: ALL other functionality from v1.20 unchanged
-   - PRESERVED: setPhotoFlags(), resetPhotoFlags(), checkPhotoFlags() remain unchanged
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: loadDefaultCelebrationPhoto() no longer overwrites a REAL photo broadcast
+     with the default photo.
+   - BUG: setPhotoFlags() writes photo.imageUrl. Calling it with the DEFAULT url at
+     game start replaced a real photo's imageUrl and reset f2Downloaded/viewDownloaded,
+     so the other devices downloaded the DEFAULT photo and the celebration showed an
+     image totally different from the one on GitHub (reported 2026-10-31).
+   - FIX: before setting the default flags, read scheduledGames/<gameId>.photo. If
+     newPhotoAvailable === true a real photo is pending, so that photo is pulled into
+     sessionStorage and the flags are left untouched.
+   - PRESERVED: setPhotoFlags(), resetPhotoFlags(), checkPhotoFlags() unchanged
+   - PRESERVED: checkAndRenameCelebrationPhoto() writes scheduledGames (v1.21 target)
+   - PRESERVED: copyCelebrationPhoto() writes historyGames/<gameId>_H.celebration
    - PRESERVED: getCelebrationPhoto() still reads from historyGames for history records
+   - PRESERVED: ALL other functionality from v1.21 unchanged
 DEPENDS ON: Firebase Storage, Firestore, RealGameState
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.21";
+window.CELEBRATION_PHOTO_VERSION = "1.22";
 
 // ============================================================
 // CONSTANTS
@@ -197,7 +204,7 @@ function checkPhotoChanged(callback) {
 // ============================================================
 // v1.13: LOAD DEFAULT PHOTO WITH FLAGS
 // Loads default photo from FS, stores in SS, sets flags T/F/F
-// Called by F1 ONLY at game start
+// v1.22: Does NOT overwrite a real photo broadcast (see below)
 // ============================================================
 function loadDefaultCelebrationPhoto(callback) {
     // Check if already in sessionStorage
@@ -231,19 +238,45 @@ function loadDefaultCelebrationPhoto(callback) {
             
             // v1.13: SET FLAGS T/F/F for default photo
             var gameId = sessionStorage.getItem('currentGameId');
-            if (gameId) {
-                setPhotoFlags(gameId, result.url, function(flagErr) {
-                    if (flagErr) {
-                        console.warn('[CelebrationPhoto] Failed to set flags for default photo:', flagErr.message);
-                    } else {
-                        console.log('[CelebrationPhoto] ✅ Flags set for default photo: T/F/F');
-                    }
-                    if (callback) callback(null);
-                });
-            } else {
+            if (!gameId) {
                 console.warn('[CelebrationPhoto] No gameId found, skipping flag set');
                 if (callback) callback(null);
+                return;
             }
+            
+            // v1.22: setPhotoFlags() publishes photo.imageUrl. Publishing the DEFAULT
+            // url would destroy a real photo already broadcast for this game (and reset
+            // f2Downloaded/viewDownloaded), leaving the other devices showing the
+            // default photo at celebration time. A real photo owns the flags.
+            firebase.firestore().collection('scheduledGames').doc(gameId).get()
+                .then(function(doc) {
+                    var photo = (doc.exists && doc.data().photo) || {};
+                    if (photo.newPhotoAvailable === true && photo.imageUrl) {
+                        console.log('[CelebrationPhoto] Real photo broadcast in progress - keeping it, not setting default flags');
+                        if (typeof window.downloadPhotoToSessionStorage === 'function') {
+                            window.downloadPhotoToSessionStorage(photo.imageUrl, function(dlErr) {
+                                if (dlErr) console.warn('[CelebrationPhoto] Failed to download broadcast photo:', dlErr.message);
+                                else console.log('[CelebrationPhoto] ✅ Broadcast photo stored in sessionStorage');
+                                if (callback) callback(null);
+                            });
+                        } else {
+                            if (callback) callback(null);
+                        }
+                        return;
+                    }
+                    setPhotoFlags(gameId, result.url, function(flagErr) {
+                        if (flagErr) {
+                            console.warn('[CelebrationPhoto] Failed to set flags for default photo:', flagErr.message);
+                        } else {
+                            console.log('[CelebrationPhoto] ✅ Flags set for default photo: T/F/F');
+                        }
+                        if (callback) callback(null);
+                    });
+                })
+                .catch(function(readErr) {
+                    console.warn('[CelebrationPhoto] Could not read photo flags:', readErr.message);
+                    if (callback) callback(null);
+                });
         })
         .catch(function(err) {
             console.warn('[CelebrationPhoto] Failed to load default photo:', err.message);
@@ -383,6 +416,7 @@ function handleVerificationFailure(archiveId, blob, retryCount, callback) {
 // ============================================================
 // v1.18: Copy C.jpg from GitHub to Firebase Storage with game ID
 // FIXED: Uses nested celebration object + deletes flat fields + direct Firestore update
+// v1.22: Records the celebration pointer even when the photo file already exists
 // ============================================================
 function copyCelebrationPhoto(gameId, callback) {
     if (!gameId) {
@@ -398,10 +432,46 @@ function copyCelebrationPhoto(gameId, callback) {
     console.log('[CelebrationPhoto] 📸 Copying C.jpg to:', archiveId + '.jpg');
     console.log('[CelebrationPhoto] Source URL:', sourceUrl);
     
+    // v1.22: Writes celebration.imageUrl onto historyGames/<gameId>_H.
+    // v1.18 returned early when the photo file already existed, which left the
+    // archive record with NO celebration field even though the photo was in
+    // Storage - so every reader fell back to the default/GitHub photo.
+    // NOTE: the archive record only exists once the game is complete.
+    function writeCelebrationPointer(url, cb) {
+        var updateData = {
+            celebration: {
+                imageRef: 'celebration/' + archiveId + '.jpg',
+                imageUrl: url,
+                copiedAt: firebase.firestore.FieldValue.serverTimestamp()
+            },
+            // v1.17: Delete flat fields if they exist (cleanup from old dot notation writes)
+            'celebration.imageRef': firebase.firestore.FieldValue.delete(),
+            'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
+            'celebration.copiedAt': firebase.firestore.FieldValue.delete()
+        };
+        
+        // v1.18: Use direct Firestore update (no WRV verification needed)
+        // The photo file itself is already verified in Storage via verifyPhotoUpload()
+        var db = firebase.firestore();
+        db.collection('historyGames').doc(archiveId).update(updateData)
+            .then(function() {
+                console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
+                cb(null);
+            })
+            .catch(function(dbErr) {
+                console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', dbErr.message);
+                // Don't fail - photo is already uploaded and verified
+                cb(null);
+            });
+    }
+    
     destRef.getDownloadURL()
-        .then(function() {
-            console.log('[CelebrationPhoto] ✅ Already exists:', archiveId + '.jpg');
-            if (callback) callback(null);
+        .then(function(existingUrl) {
+            // v1.22: File already there (revisit, or an earlier upload) - still record it
+            console.log('[CelebrationPhoto] Photo already exists:', archiveId + '.jpg');
+            writeCelebrationPointer(existingUrl, function() {
+                if (callback) callback(null);
+            });
         })
         .catch(function() {
             loadAndCompressImage(sourceUrl, function(err, blob) {
@@ -419,33 +489,9 @@ function copyCelebrationPhoto(gameId, callback) {
                         if (callback) callback(err);
                         return;
                     }
-                    
-                    // v1.17: Use nested celebration object + delete flat fields (cleanup)
-                    var updateData = {
-                        celebration: {
-                            imageRef: 'celebration/' + archiveId + '.jpg',
-                            imageUrl: url,
-                            copiedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        },
-                        // v1.17: Delete flat fields if they exist (cleanup from old dot notation writes)
-                        'celebration.imageRef': firebase.firestore.FieldValue.delete(),
-                        'celebration.imageUrl': firebase.firestore.FieldValue.delete(),
-                        'celebration.copiedAt': firebase.firestore.FieldValue.delete()
-                    };
-                    
-                    // v1.18: Use direct Firestore update (no WRV verification needed)
-                    // The photo file itself is already verified in Storage via verifyPhotoUpload()
-                    var db = firebase.firestore();
-                    db.collection('historyGames').doc(archiveId).update(updateData)
-                        .then(function() {
-                            console.log('[CelebrationPhoto] ✅ Firestore updated for:', archiveId + '.jpg');
-                            if (callback) callback(null);
-                        })
-                        .catch(function(dbErr) {
-                            console.warn('[CelebrationPhoto] ⚠️ Firestore update failed:', dbErr.message);
-                            // Don't fail - photo is already uploaded and verified
-                            if (callback) callback(null);
-                        });
+                    writeCelebrationPointer(url, function() {
+                        if (callback) callback(null);
+                    });
                 });
             });
         });
@@ -858,13 +904,13 @@ window.PHOTO_URL_PREFIX = PHOTO_URL_PREFIX;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.21
+VERSION: 1.22
 KEY CHANGES from v1.20:
-   - FIXED: Firestore write target in checkAndRenameCelebrationPhoto() changed from historyGames to scheduledGames
-   - REASON: historyGames document does not exist during gameplay (only after game complete)
-   - REASON: Photo metadata should be stored in the game document during gameplay
-   - REASON: This eliminates "No document to update" error during photo check
-   - PRESERVED: ALL other functionality from v1.20 unchanged
+   - FIXED: loadDefaultCelebrationPhoto() no longer overwrites a REAL photo broadcast
+     with the default photo (setPhotoFlags() had replaced photo.imageUrl and reset
+     f2Downloaded/viewDownloaded -> other devices showed the default photo).
+   - PRESERVED: checkAndRenameCelebrationPhoto() writes scheduledGames (v1.21 target)
+   - PRESERVED: ALL other functionality from v1.21 unchanged
    - PRESERVED: setPhotoFlags(), resetPhotoFlags(), checkPhotoFlags() remain unchanged
    - PRESERVED: getCelebrationPhoto() still reads from historyGames for history records
 DEPENDS ON: Firebase Storage, Firestore, RealGameState
