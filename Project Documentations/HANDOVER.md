@@ -4,6 +4,18 @@
 > new technical findings. Read at the start of every session. Updated 2026-10-31.
 
 ## Current status (2026-10-31)
+- **⚠️ OPEN ITEM HANDED OFF: the iPhone photo-upload shortcut/feature is STILL NOT WORKING**
+  (user, 2026-10-31 ~19:42). The photo-upload pipeline is the ONE thing not resolved this session.
+  Everything else verified GREEN and live. **The detailed handoff is in `AD-HOC.md`** (gitignored,
+  private) so the next chat picks it up at start per GLOBAL §18. Summary of the trap to avoid
+  re-deriving: the uploader has been chased through **multiple successive causes** (a-Shell `C.jpg`
+  folder → missing `Bearer` prefix → orphaned edge-function target → missing no-input guard →
+  quarantine/hidden → TWO competing share-sheet shortcuts → an iCloud sync-conflict clone) and
+  **each fix was verified by running it**, yet the user still reports failure. The **signature
+  failure is "first upload works, the rest fail"**, which has repeatedly pointed at state that
+  diverges *after* success (0-byte/empty commits from a no-input run, a second competing shortcut,
+  the wrong shortcut being tapped). Please START from the artifact's identity + the last failure's
+  actual error text before touching the graph.
 - **2026-10-31 — GAME DAY: the real game was played, and TWO game-day regressions were
   root-caused and fixed.** Game `GM_260914_1342_52` (SICC Millennium-Peirce, 8 players)
   completed **14:01 SGT**; **Team A won 10–9**. The user reported (a) the celebration modal
@@ -793,7 +805,9 @@ game is mid-day.
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **All 2026-10-31 fixes are committed, pushed and live on PROD** (Cloudflare Pages deploys on push
+- **PRIORITY 1 — the iPhone photo-upload shortcut is NOT working (see `AD-HOC.md`).** Not started
+  from a clean state; a new chat should read `AD-HOC.md` first.
+- **All other 2026-10-31 fixes are committed, pushed and live on PROD** (Cloudflare Pages deploys on push
   to `main`): celebration-data.js 1.01, celebration-photo.js 1.22, sign-card.js 1.43,
   load-game.js 1.06, post-game.html 1.14, hcp-adjust.html 1.41, **real-game-save.js 1.43**,
   versions.json META 1.05. Verified in a browser on PROD after deploy.

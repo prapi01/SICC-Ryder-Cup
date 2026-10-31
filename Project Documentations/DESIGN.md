@@ -165,6 +165,20 @@
   because the replay re-enters the handler). **Still open:** enabling Firestore offline persistence
   (needs testing against the T-2 fix — reconnect-flushed out-of-order writes would change save
   ordering) and surfacing connection state in the UI.
+- **2026-10-31 — ⚠️ OPEN: iPhone photo-upload shortcut NOT working (handed off).** The one-click
+  Photos-share-sheet uploader (Shortcut → `PUT contents/images/celebration/C.jpg` on `main`) is the
+  only unresolved item from this session. It has been through **several successive distinct causes**
+  — a-Shell writing into a folder named `C.jpg`; a missing `Bearer ` prefix prefix (401); an orphaned
+  edge-function target removed from `wrangler.toml`; a missing `WFWorkflowNoInputBehavior` so a
+  no-input run committed a **0-byte** `C.jpg`; the shortcut becoming **quarantined/hidden** (invisible
+  in the share sheet) after a Files-app import; **two** competing image-accepting upload shortcuts;
+  and an **iCloud sync-conflict clone** carrying the stale graph. Each was fixed and verified by
+  running it, yet the user still reports failure, so the next step is to establish the **artifact
+  identity** and the **actual error text** rather than revisit the same graph. Handoff details live
+  in `AD-HOC.md` (gitignored). Standing rules that must not be forgotten: exactly ONE upload shortcut
+  may accept share-sheet images; never import via the **Files** app (it quarantines); `?branch=` is
+  ignored by the Contents API (branch must be in the JSON body); and to restore any image **> 1 MB**
+  use `GET /git/blobs/<sha>` because the Contents API GET returns `content: ""`.
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had
