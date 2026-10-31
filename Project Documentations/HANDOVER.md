@@ -4,18 +4,28 @@
 > new technical findings. Read at the start of every session. Updated 2026-10-31.
 
 ## Current status (2026-10-31)
-- **⚠️ OPEN ITEM HANDED OFF: the iPhone photo-upload shortcut/feature is STILL NOT WORKING**
-  (user, 2026-10-31 ~19:42). The photo-upload pipeline is the ONE thing not resolved this session.
-  Everything else verified GREEN and live. **The detailed handoff is in `AD-HOC.md`** (gitignored,
-  private) so the next chat picks it up at start per GLOBAL §18. Summary of the trap to avoid
-  re-deriving: the uploader has been chased through **multiple successive causes** (a-Shell `C.jpg`
-  folder → missing `Bearer` prefix → orphaned edge-function target → missing no-input guard →
-  quarantine/hidden → TWO competing share-sheet shortcuts → an iCloud sync-conflict clone) and
-  **each fix was verified by running it**, yet the user still reports failure. The **signature
-  failure is "first upload works, the rest fail"**, which has repeatedly pointed at state that
-  diverges *after* success (0-byte/empty commits from a no-input run, a second competing shortcut,
-  the wrong shortcut being tapped). Please START from the artifact's identity + the last failure's
-  actual error text before touching the graph.
+- **2026-10-31 (evening) — iPhone uploader RE-DIAGNOSED + RE-DELIVERED with a VIEW; VS Code tool cap FIXED.**
+  Three separate things were resolved this session. Full evidence in "Technical findings".
+
+  1. **The uploader was never broken — the DELIVERED FILE was stale.** Nine runs of the installed graph
+     from this Mac all succeeded, including three back-to-back runs with *different* payloads (each
+     producing a new blob sha). The real defect was an **artifact mismatch**: both delivered copies
+     (`~/Downloads/UploadPhoto.shortcut` and the iCloud `Upload/` copy) held an **8-action graph with
+     NO `Show Result` and NO no-input guard**, whereas the Mac held a working **10-action** graph.
+     On a phone that had taken the old copy, a failure was therefore **silent AND destructive** — a
+     no-image run commits a **0-byte `C.jpg`**, wiping the photo everywhere. The documented iCloud
+     sync-conflict can put that older copy back on the device, which is exactly the trap.
+  2. **A new 19-action shortcut is built, signed, run-verified and delivered** — it adds the **VIEW**
+     the user asked for: after the PUT the run **reads the file back from GitHub and displays it**, so
+     the photo shown *is* the photo that landed. It also has a **failure branch that prints GitHub's own
+     error `message`**, ending several sessions of blindness to the actual error text.
+  3. **The VS Code `"only supports 128 tools"` warning is FIXED** — root-caused to a hard-coded BYOK
+     tool cap in VS Code's agent host, resolved by disabling the redundant built-in GitHub MCP server
+     (the `gh` CLI covers the same ground). See the dedicated finding.
+- **⚠️ STILL OPEN: the iPhone's own result text has never been captured.** Every step reproducible from
+  this Mac is GREEN. The new shortcut makes any remaining phone-side failure **self-reporting** (it
+  prints GitHub's error), so the next iPhone attempt yields the evidence instead of a guess.
+  `AD-HOC.md` carries the handoff.
 - **2026-10-31 — GAME DAY: the real game was played, and TWO game-day regressions were
   root-caused and fixed.** Game `GM_260914_1342_52` (SICC Millennium-Peirce, 8 players)
   completed **14:01 SGT**; **Team A won 10–9**. The user reported (a) the celebration modal
@@ -141,6 +151,103 @@ defeated within one deploy because the manifest changed again);
   no logic change. Also reset local + `origin/staging` to `main` (removed garbage commits).
 
 ## Technical findings
+- 2026-10-31 — **⚠️ THE UPLOADER WAS NOT BROKEN — THE DELIVERED ARTIFACT WAS STALE (root cause).**
+  The whole "it used to work and now it's broken" loop resolves to an **artifact/device mismatch**, not
+  a broken graph. Evidence:
+  - **Nine runs of the INSTALLED graph (`pk=129`, 10 actions) from this Mac all uploaded successfully**
+    (commits `ff11e15`, `a680984`, `c117e03`, `b7e12a7`), including **two consecutive runs 2 s apart**
+    and **three back-to-back runs with genuinely different payloads** (distinct JPEGs → distinct new
+    blob shas each time). The "first works, the rest fail" signature **did not reproduce**.
+  - **The delivered files were a DIFFERENT, older graph.** `~/Downloads/UploadPhoto.shortcut` and the
+    iCloud `Upload/UploadPhoto.shortcut` (both sha256 `8421de23…`, 23,453 B) held **8 actions with no
+    `Show Result` and no no-input guard**. The Mac's installed `pk=129` held **10 actions with both**.
+    **Consequence:** on a device carrying the 8-action copy, a no-image run commits a **0-byte `C.jpg`**
+    (wiping the celebration on every device) and reports **nothing** — silent *and* destructive. That is
+    the exact reported symptom, and it explains why every graph fix "verified by running it" still left
+    the user seeing failures.
+  - **Signed `.shortcut` files are AEA1 archives** — the graph cannot be read back out of them. The
+    delivered artifact's action count was therefore **never verifiable**; only the installed DB row was.
+    **Rule: verify the artifact the user actually holds, not just the local install.**
+  - **Two live share-sheet uploaders existed** before this session (`pk=106` old a-Shell + `pk=129`);
+    `pk=106` has since been removed. Now **exactly one** shortcut both accepts images and targets the
+    C.jpg API — re-verified after every import.
+- 2026-10-31 — **⚠️ `raw.githubusercontent.com` AND the Cloudflare CDN are BOTH stale right after an
+  upload — neither can back a "show me what's on GitHub NOW" view.** Measured:
+  - `raw.githubusercontent.com/…/C.jpg` → `cache-control: max-age=300`, and it **IGNORES cache-buster
+    query strings**. Immediately after a restore it still served the **previous** file for minutes
+    (served a 37,244-byte test image while `main` held the 1,015,556-byte real photo).
+  - `sicc-ryder-cup.pages.dev/…/C.jpg` (the URL the **app itself** uses; `celebrate-photo.js`
+    `GITHUB_PHOTO_URL`) → `cache-control: public, max-age=0, must-revalidate`, but **still served the
+    stale file immediately after an upload** in testing. CDN lag is real, not theoretical.
+  - **The ONLY immediately-fresh, byte-exact source is the Contents API with
+    `Accept: application/vnd.github.raw`:** returns the current bytes, `etag` = the blob sha, and —
+    verified in Shortcuts with `--output-type public.jpeg` — the response **is accepted as an image**
+    and its bytes are **identical** to the file on `main` (`sha256` match, 37,394 B test).
+  - **Consequence for the VIEW feature:** the view must read through the **API raw** media type. A view
+    built on the CDN or on `raw.githubusercontent.com` would confidently show the **old** photo right
+    after a successful upload — the single most confusing possible outcome.
+- 2026-10-31 — **✅ Shortcuts CONTINUES after an HTTP error (verified), so an IF/ELSE failure branch is
+  reachable.** Proven with a runnable test graph: an action *after* a 404 `Get Contents of URL` still
+  executed (`after404.txt` contained `AFTER-DOWNLOAD-REACHED`). This matters twice: (a) a failed PUT
+  does **not** abort the shortcut, so the new failure branch can print GitHub's `message`; (b) it
+  confirms why the old graph's silent failure was possible — **nothing stops the chain**, so without
+  an explicit check a bad upload "completes" normally.
+  Note: a passing action is not evidence the earlier one succeeded — only the **returned `content.sha`**
+  distinguishes a real upload from a no-op.
+- 2026-10-31 — **⚠️ Mac Shortcuts GUI import is UNRELIABLE AND LATE — the source of duplicate installs.**
+  `open -a Shortcuts <file>.shortcut` repeatedly appeared to do nothing, then imported **12–25 s later**
+  (sometimes several queued imports landing together). This created five stray `UploadPhoto*` rows in one
+  session. Because a stray image-accepting uploader is **indistinguishable from a broken shortcut** in the
+  share sheet, each import **must** be followed by a library check and cleanup. Two supporting facts:
+  - **A fresh import starts with `ZSHOWINSEARCH=0`** and settles to `1` on its own shortly after. This is
+    **transient** — it matches the documented quarantine hazard. **Compare against a known-good row
+    (e.g. `pk=104`) and wait before "fixing" it**; acting on the transient value is guesswork.
+  - **`DELETE FROM ZSHORTCUT` works via plain SQL** *for a row whose actions are already gone*
+    (`ZSHORTCUTACTIONS` empty) — the failure seen earlier was a CoreData trigger firing on a row that
+    still had actions, not a general block. Quitting Shortcuts first, then deleting, was reliable.
+- 2026-10-31 — **✅ The `128 tools` warning root cause: a HARD-CODED cap in VS Code's agent host, hit by
+  BYOK models.** The UI shows *"The model only supports 128 tools, 3 tools were not provided to the
+  model."*; the backing log line is
+  `[ByokLmProxyService] sending 128 of 131 tools to deepseek/deepseek-flash (limit 128); dropped 3 tool(s)`
+  — **1,091 occurrences in one day**. Mechanism (read from `vs/platform/agentHost/node/agentHostMain.js`):
+  the constant is **`var lJ=128`**, and `function Vve(o,i=lJ)` keeps the tools **already used in the
+  conversation first**, then fills the remainder in list order, silently discarding the rest. Key facts:
+  - It is **not a setting** — `chat.virtualTools.threshold` (default 128) is a *different* mechanism
+    (grouping tools into virtual toolsets) and **does not raise this ceiling**. The only fix is to get
+    the tool count **below 128**.
+  - **Fix applied:** `"github.copilot.chat.githubMcpServer.enabled": false` in user `settings.json`
+    (also removed the now-redundant `…readonly: true`). The built-in GitHub MCP server is the single
+    largest reducible block and is **largely redundant here** because the **`gh` CLI** is used for
+    PRs/issues. Backup kept beside it as `settings.json.bak-githubmcp-<timestamp>`. **Requires a window
+    reload**; the warning persists in a running session that started with the old config.
+  - The session also loads `firebase` (workspace MCP), a `cloudflare` connector, `pylance mcp server`
+    (observed **failing** — `mcpState: error`), and `supabase` (disabled). If the count is still ≥ 128
+    after the reload, `pylance mcp server` failing is the next thing to investigate, since a failing
+    server still occupies its slot.
+- 2026-10-31 — **✅ The delivered shortcut is now 19 actions and run-verified end-to-end.** Structure:
+  token (step 1) → resize 1920/JPEG 0.9/base64 → `GET` current `sha` → `PUT` (with **`branch: main` in
+  the JSON body**, never `?branch=`) → `output` → read back `content.sha` → **IF sha has a value** →
+  `GET` the file via **API raw** → **display the image** (**ELSE** → fetch GitHub's `message` →
+  display it → **END IF**). Verified: upload lands (new sha each run), the displayed bytes are
+  **byte-identical** to the file on `main`, the no-input guard is present
+  (`WFWorkflowNoInputBehavior` = `…AskForInput`), the token is baked in (93 chars, `github_pat_…`), and
+  `ZSHOWINSEARCH=1`. Delivered identically to `~/Downloads/` and iCloud `Upload/`
+  (sha256 `37d8a8b7…`); the stale `CelebrationPhotoUpload.shortcut` was **deleted** from both so only
+  one uploader can ever be offered.
+- 2026-10-31 — **`C.jpg` is byte-verified restored after every test.** The test runs above each
+  overwrote the live photo; it was restored each time and finally left as
+  **`1,015,556` bytes, blob sha `4709b6e5d31b6c099d5a91944fe6fbddc76905a4`** (the user's correct
+  game-day photo, sha256 `ef50d6ea5bd8daf5…`), confirmed on `main`. Restores used the Contents API with
+  **full base64** (1,015,556 B encodes fine — the earlier `content: ""` trap applies only to *reads*
+  of >1 MB files, not to writes, which is why the write path works and the read path does not).
+- 2026-10-31 — **⚠️ CORRECTION to my own earlier reasoning (2026-10-31 evening).** Having seen
+  `ZSHOWINSEARCH=0` on a freshly imported shortcut, I wrote `UPDATE ZSHORTCUT SET ZSHOWINSEARCH=1` and
+  treated it as a fix. **That was guesswork.** Comparing against a known-good long-standing row
+  (`pk=104`, same input class, same device, in daily use) showed the row was **already correct** —
+  `showInSearch=1`, `quarantine=NULL`, `remoteStatus=0`, `hidden=0` — the `0` was the **transient
+  import value** noted above and settled by itself. The write changed nothing real. **Lesson: when a
+  flag disagrees with expectations, compare against a known-good row of the same class and WAIT for the
+  store to settle before touching it.**
 
 ### 2026-10-31 — Game-day regressions: three root causes (game `GM_260914_1342_52`)
 
@@ -778,6 +885,22 @@ game is mid-day.
   and force-pushed.
 
 ## Open questions
+- **iPhone uploader — what remains unknown.** Nine runs of the installed graph from this Mac all
+  succeeded (including back-to-back runs with different payloads), the delivered artifact is re-signed
+  from that same source, the VIEW read-back is byte-verified, and only one image-accepting uploader
+  exists in the library. **The one fact never obtained is the phone's own result text.** The new
+  shortcut prints GitHub's error on failure, so the next iPhone run answers it. See "Next steps".
+- **Was the user's phone running the stale 8-action copy?** Both delivered files (sha256 `8421de23…`)
+  lacked the `Show Result` action and the no-input guard, while the Mac's install had both. This is the
+  leading explanation for "silent failure after a first success", but it is **not yet confirmed from the
+  device** — the phone's shortcut action count is the check that would settle it.
+- **Tool cap: is the count now under 128?** The fix (`githubMcpServer.enabled=false`) needs a window
+  reload to take effect, so it is **not yet verified**. If the warning persists, the failing
+  `pylance mcp server` is the next suspect (it sat in `mcpState: error` while still holding a slot).
+- **VIEW feature, in-app half — deferred by the user.** The shortcut half is done. If/when the in-app
+  view is built (e.g. on `admin.html` next to the other diagnostics), it **must** read through the
+  Contents API with `Accept: application/vnd.github.raw`; the CDN and `raw.githubusercontent.com` are
+  both stale right after an upload and would show the wrong photo.
 - **Connection-loss hardening — reconciliation DONE, these remain** (audit 2026-10-31):
   ✅ **done:** `WRV.recover()` reconciliation re-wired (save-time + 60 s idle tick) and
   `onComplete` firing fixed.
@@ -805,8 +928,31 @@ game is mid-day.
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **PRIORITY 1 — the iPhone photo-upload shortcut is NOT working (see `AD-HOC.md`).** Not started
-  from a clean state; a new chat should read `AD-HOC.md` first.
+- **PRIORITY 1 — confirm the uploader on the iPhone (see `AD-HOC.md` for the private handoff).**
+  Everything reproducible from this Mac is GREEN: the installed graph runs, the delivered file is
+  re-signed from the same source, the VIEW read-back returns byte-identical bytes, and only **one**
+  image-accepting uploader exists in the library.
+  **The one remaining unknown is the phone itself.** The new shortcut is self-reporting, so the next
+  attempt produces evidence rather than a guess:
+  1. On the iPhone, **let iCloud sync the new copy down** (no import needed). The delivered file is
+     sha256 **`37d8a8b7…`**; the row must show **19 actions** and step 1 a token starting `github_pat_`.
+     Photos → Share → **UploadPhoto** on a real photo.
+  2. **Success** → the run **displays the photo**. That image *is* the file now on `main`.
+     **Failure** → the run prints **GitHub's own error `message`** (e.g. `Bad credentials` = the PAT was
+     rotated; `sha wasn't supplied` / `does not match` = a conflict).
+  3. Only if a stale copy persists, import the file — and **verify it appears in the share sheet**
+     afterwards. Prefer route 1; the Mac GUI import was unreliable this session (see findings).
+- **ROTATE the photo PAT.** It is still **baked into** the shortcut (readable by anyone who obtains the
+  file) and both it and the `gh` token were used in plaintext during testing. If it is rotated, the
+  shortcut **must be rebuilt** from `/tmp/scbuild/build_v2.py`'s approach (source plist → `shortcuts sign`).
+- **Delete the leftover a-Shell artifacts:** the `C.jpg` folder in `~/Documents/a-shell/` and
+  `iOS/sync_celebration.sh` (dead code — the API path replaced it).
+- **VIEW feature (the user's second request): the shortcut half is DONE** (the run displays the upload
+  read back from GitHub). The in-app half was **deferred by the user** — if built, it must read via the
+  **Contents API `vnd.github.raw`**, never the CDN or `raw.githubusercontent.com` (both stale right
+  after an upload — see findings).
+- **Re-check the tool count after the `settings.json` reload.** If the `128 tools` warning persists, the
+  next lever is the **failing `pylance mcp server`** (it was in `mcpState: error` but still occupies a slot).
 - **All other 2026-10-31 fixes are committed, pushed and live on PROD** (Cloudflare Pages deploys on push
   to `main`): celebration-data.js 1.01, celebration-photo.js 1.22, sign-card.js 1.43,
   load-game.js 1.06, post-game.html 1.14, hcp-adjust.html 1.41, **real-game-save.js 1.43**,
@@ -819,21 +965,39 @@ game is mid-day.
   3. The **next real game** is the true end-to-end confirmation of the T-2 code fix
      (`real-game-save.js` v1.43) — it only exercises when two scorers save holes out of order.
 - Decide the Firestore write-auth question above before the next game day.
-- **Confirm the uploader on the iPhone (2026-10-31).** Fixes in place and each verified by running:
-  missing `Bearer ` prefix, missing no-input guard, and the **quarantine/hidden state that stopped it
-  appearing in the share sheet**. The installed `pk=129 UploadPhoto` has been patched and is
-  **un-quarantined, visible, guarded, and has `Show Result`** so the next run reports its outcome.
-  Latest delivered file sha256 **`97b600d0…`** (iCloud `.../CloudDocs/Upload/UploadPhoto.shortcut`, copy in
-  `~/Downloads/`).
-  **On the iPhone — prefer route 1:**
-  1. **Let iCloud sync the fixed shortcut down** (fastest, no import). Watch briefly for the sync-conflict
-     behaviour noted above; the correct copy must show a token starting `github_pat_` at step 1.
-  2. Only if needed, import the file. ⚠️ Importing through the **Files** app is what **quarantined and
-     hid** the shortcut last time and stopped it appearing in the share sheet — so after any import,
-     **verify it is actually offered in the share sheet** before relying on it.
-  Then Photos → Share → **UploadPhoto** on a real photo and confirm a new commit on `main`.
-  **The run now shows a result** (commit JSON on success, exact error text on failure) — report what it
-  says if anything goes wrong.
+- **Never tap/run the uploader without a photo** as a "test". The guard is present and verified in the
+  **delivered** graph now, but until the phone is confirmed to run it, a no-image run **wipes `C.jpg`
+  to 0 bytes**.
+  **⚠️ CORRECT recovery recipe — you MUST use the blobs API, not the Contents API:**
+  `GET /repos/prapi01/SICC-Ryder-Cup/contents/images/celebration/C.jpg?ref=<good-commit>` returns
+  **`content: ""` with `encoding: "none"` for any file over ~1 MB** (usually `encoding: "base64"` for
+  smaller files). Writing that empty string back via PUT therefore **writes a 0-byte file** — exactly the
+  mistake made on 2026-10-31 (`196db416`), which deepened the damage instead of repairing it.
+  Instead: take the good commit's **blob sha**, then
+  `GET /repos/prapi01/SICC-Ryder-Cup/git/blobs/<blob-sha>` → returns full `encoding: base64` content
+  regardless of size (verified: 2,007,336 base64 chars for the 1,480,820-byte photo), and PUT that back
+  with the current contents `sha`. Preferred good commits for `C.jpg`: **`8597b4f5`** (1,480,820 bytes,
+  blob `f844b46b...`, restored as `16bfeec6`) or `b8ac561c` (635,029 bytes).
+  **A simpler local path now exists:** the correct game-day photo is also at blob sha
+  **`4709b6e5`** (1,015,556 B) — a plain `GET` of the **blobs** endpoint returns its full base64, which
+  can be PUT straight back (this is how it was restored five times this session).
+- Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
+  verified green 2026-10-29 on v4.00.
+- Decide whether to mitigate the scorer tab-close write risk (see Open questions).
+- Open each project once so its `AD-HOC.md` rename+clean task runs (then it self-empties).
+- See `backup/HANDOVER.md` for chat backup/restore operating instructions.
+- **All other 2026-10-31 fixes are committed, pushed and live on PROD** (Cloudflare Pages deploys on push
+  to `main`): celebration-data.js 1.01, celebration-photo.js 1.22, sign-card.js 1.43,
+  load-game.js 1.06, post-game.html 1.14, hcp-adjust.html 1.41, **real-game-save.js 1.43**,
+  versions.json META 1.05. Verified in a browser on PROD after deploy.
+- **User-side smoke test (iPhone, PROD):**
+  1. Main Menu → **GAME DAY** opens TODAY's celebration (Team A 10–9) with the **real** photo,
+     without going through "View Previous Game".
+  2. The scorecard's **T-2 row** reads `A10 A10 A9 A10 A10` at holes 14–18, with **no green
+     squares** and the gold still on hole 14.
+  3. The **next real game** is the true end-to-end confirmation of the T-2 code fix
+     (`real-game-save.js` v1.43) — it only exercises when two scorers save holes out of order.
+- Decide the Firestore write-auth question above before the next game day.
 - **Never tap/run the uploader without a photo** as a "test". Until you confirm the guard is present on
   the phone, a no-image run **wipes `C.jpg` to 0 bytes**.
   **⚠️ CORRECT recovery recipe — you MUST use the blobs API, not the Contents API:**
@@ -846,10 +1010,6 @@ game is mid-day.
   regardless of size (verified: 2,007,336 base64 chars for the 1,480,820-byte photo), and PUT that back
   with the current contents `sha`. Preferred good commits for `C.jpg`: **`8597b4f5`** (1,480,820 bytes,
   blob `f844b46b…`, restored as `16bfeec6`) or `b8ac561c` (635,029 bytes).
-- **ROTATE the `gh` OAuth token AND the photo PAT.** Both were used in plaintext during testing, and the
-  PAT is **baked into `UploadPhoto.shortcut`** (readable by anyone who obtains the file).
-- **Delete the leftover a-Shell artifacts** once the new shortcut works: the `C.jpg` folder in
-  `~/Documents/a-shell/` and `iOS/sync_celebration.sh` (now dead code — the API path replaces it).
 - Saturday 2026-10-31: play the real game `GM_260914_1342_52` (SICC Millennium-Peirce) — flow
   verified green 2026-10-29 on v4.00.
 - Decide whether to mitigate the scorer tab-close write risk (see Open questions).
