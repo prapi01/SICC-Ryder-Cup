@@ -1,11 +1,14 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - BUMPED: VERSIONS_JSON_VERSION 1.00 -> 1.01 so the browser always re-fetches
-     js/versions.json instead of serving it from cache. Without this bump a version
-     change in versions.json (e.g. sign-card.js 1.41 -> 1.42) keeps loading the OLD
-     script version - the exact class of bug this file must prevent.
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - BUMPED: VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
+   - NOTE: this constant must be bumped EVERY time js/versions.json changes.
+     The manifest is fetched as `js/versions.json?v=<this value>`, so without a bump
+     the browser serves the CACHED manifest and keeps loading the OLD script versions
+     - the exact class of bug this file exists to prevent. The previous bump (1.00 ->
+     1.01) was defeated within one deploy because versions.json changed again.
+   - v1.04: VERSIONS_JSON_VERSION 1.00 -> 1.01 (first corrective bump).
    - PRESERVED: ALL loading behaviour from v1.03 unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration
@@ -14,14 +17,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.04";
+window.LOAD_GAME_VERSION = "1.05";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
-var VERSIONS_JSON_VERSION = "1.01";
+var VERSIONS_JSON_VERSION = "1.02";
 
-console.log("[LOAD-GAME] Initializing v1.04");
+console.log("[LOAD-GAME] Initializing v1.05");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -261,12 +264,15 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - BUMPED: VERSIONS_JSON_VERSION 1.00 -> 1.01 so the browser always re-fetches
-     js/versions.json instead of serving it from cache. Without this bump a version
-     change in versions.json (e.g. sign-card.js 1.41 -> 1.42) keeps loading the OLD
-     script version - the exact class of bug this file must prevent.
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - BUMPED: VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
+   - NOTE: this constant must be bumped EVERY time js/versions.json changes.
+     The manifest is fetched as `js/versions.json?v=<this value>`, so without a bump
+     the browser serves the CACHED manifest and keeps loading the OLD script versions
+     - the exact class of bug this file exists to prevent. The previous bump (1.00 ->
+     1.01) was defeated within one deploy because versions.json changed again.
+   - v1.04: VERSIONS_JSON_VERSION 1.00 -> 1.01 (first corrective bump).
    - PRESERVED: ALL loading behaviour from v1.03 unchanged
 DEPENDS ON: js/versions.json
 STATUS: Ready for integration

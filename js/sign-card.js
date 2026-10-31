@@ -1,12 +1,17 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - ADDED: saveGameToHistory() now also persists the celebration photo onto the archive
-     record by calling copyCelebrationPhoto(). The archive record previously got NO
-     celebration field, so every reader fell back to the default/GitHub photo - the
-     celebration then showed an image different from the one uploaded to GitHub
-     (reported 2026-10-31).
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - FIXED: ordering bug introduced in v1.42. The celebration photo was copied BEFORE
+     the history record was created, but copyCelebrationPhoto() writes with
+     update() - so on a fresh game it failed with "No document to update" and the
+     archive still got no celebration field.
+   - CHANGED: saveGameToHistory() now resolves through a finish() helper that runs the
+     photo copy only AFTER the history record has been written.
+   - v1.42: saveGameToHistory() persists the celebration photo onto the archive record
+     by calling copyCelebrationPhoto(). The archive previously got NO celebration field,
+     so every reader fell back to the default/GitHub photo - the celebration then showed
+     an image different from the one uploaded to GitHub (reported 2026-10-31).
    - WHY HERE: post-game.html v1.09 was the only caller of copyCelebrationPhoto and
      post-game.html v1.13 (2026-07-08) removed that call, orphaning the function.
    - PRESERVED: celebration photo display is still sessionStorage ONLY (v1.41 behavior)
@@ -18,8 +23,8 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.SIGN_CARD_VERSION = "1.42";
-console.log("[SIGN-CARD] Initializing v1.42 - archive celebration photo");
+window.SIGN_CARD_VERSION = "1.43";
+console.log("[SIGN-CARD] Initializing v1.43 - archive celebration photo");
 
 // ============================================================
 // v1.40: Helper: Normalize clinchedAt keys to use labels
@@ -285,18 +290,23 @@ var SignCard = (function() {
                     var db = firebase.firestore();
                     var archiveId = gameId + '_H';
                     
-                    // v1.42: Persist the per-game celebration photo onto the archive
-                    // record. OFFLINE-SAFE: reads Storage metadata, never GitHub, so it
-                    // adds no network dependency to the history save. This restores the
-                    // trigger post-game.html v1.09 had and v1.13 dropped, so the archive
-                    // carries celebration.imageUrl instead of falling back to the default.
-                    if (typeof copyCelebrationPhoto === 'function') {
+                    // v1.42: Resolve AFTER persisting the per-game celebration photo onto
+                    // the archive record. It MUST run only once the record exists -
+                    // copyCelebrationPhoto() writes celebration.imageUrl with update(), so
+                    // calling it before the record is created fails with "No document to
+                    // update" and the archive would fall back to the default/GitHub photo.
+                    // This restores the trigger post-game.html v1.09 had and v1.13 dropped.
+                    function finish(payload) {
+                        if (typeof copyCelebrationPhoto !== 'function') {
+                            console.warn("[SIGN-CARD] copyCelebrationPhoto not available - archive will show the default photo");
+                            resolve(payload);
+                            return;
+                        }
                         copyCelebrationPhoto(gameId, function(photoErr) {
                             if (photoErr) console.warn("[SIGN-CARD] Celebration photo copy failed:", photoErr.message || photoErr);
                             else console.log("[SIGN-CARD] ✅ Celebration photo recorded for:", archiveId);
+                            resolve(payload);
                         });
-                    } else {
-                        console.warn("[SIGN-CARD] copyCelebrationPhoto not available - archive will show the default photo");
                     }
                     
                     // Check if history record already exists
@@ -317,14 +327,14 @@ var SignCard = (function() {
                                             resolve({ success: false, error: err.message });
                                         } else {
                                             console.log("[SIGN-CARD] WRV update verified");
-                                            resolve({ success: true, archiveId: archiveId, action: 'updated' });
+                                            finish({ success: true, archiveId: archiveId, action: 'updated' });
                                         }
                                     });
                                 } else {
                                     db.collection("historyGames").doc(archiveId).set(dataToSave, { merge: true })
                                         .then(function() {
                                             console.log("[SIGN-CARD] History record updated:", archiveId);
-                                            resolve({ success: true, archiveId: archiveId, action: 'updated' });
+                                            finish({ success: true, archiveId: archiveId, action: 'updated' });
                                         })
                                         .catch(function(err) {
                                             console.error("[SIGN-CARD] Failed to update history record:", err);
@@ -343,14 +353,14 @@ var SignCard = (function() {
                                             resolve({ success: false, error: err.message });
                                         } else {
                                             console.log("[SIGN-CARD] WRV write verified");
-                                            resolve({ success: true, archiveId: archiveId, action: 'created' });
+                                            finish({ success: true, archiveId: archiveId, action: 'created' });
                                         }
                                     });
                                 } else {
                                     db.collection("historyGames").doc(archiveId).set(dataToSave)
                                         .then(function() {
                                             console.log("[SIGN-CARD] History record created:", archiveId);
-                                            resolve({ success: true, archiveId: archiveId, action: 'created' });
+                                            finish({ success: true, archiveId: archiveId, action: 'created' });
                                         })
                                         .catch(function(err) {
                                             console.error("[SIGN-CARD] Failed to create history record:", err);
@@ -605,17 +615,22 @@ window.saveGameToHistory = SignCard.saveGameToHistory;
 window.showCelebrationScreen = SignCard.showCelebrationScreen;
 window.normalizeClinchedAt = SignCard.normalizeClinchedAt;
 
-console.log("[SIGN-CARD] v1.42 loaded - archive celebration photo");
+console.log("[SIGN-CARD] v1.43 loaded - archive celebration photo");
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - ADDED: saveGameToHistory() now also persists the celebration photo onto the archive
-     record by calling copyCelebrationPhoto(). The archive record previously got NO
-     celebration field, so every reader fell back to the default/GitHub photo - the
-     celebration then showed an image different from the one uploaded to GitHub
-     (reported 2026-10-31).
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - FIXED: ordering bug introduced in v1.42. The celebration photo was copied BEFORE
+     the history record was created, but copyCelebrationPhoto() writes with
+     update() - so on a fresh game it failed with "No document to update" and the
+     archive still got no celebration field.
+   - CHANGED: saveGameToHistory() now resolves through a finish() helper that runs the
+     photo copy only AFTER the history record has been written.
+   - v1.42: saveGameToHistory() persists the celebration photo onto the archive record
+     by calling copyCelebrationPhoto(). The archive previously got NO celebration field,
+     so every reader fell back to the default/GitHub photo - the celebration then showed
+     an image different from the one uploaded to GitHub (reported 2026-10-31).
    - WHY HERE: post-game.html v1.09 was the only caller of copyCelebrationPhoto and
      post-game.html v1.13 (2026-07-08) removed that call, orphaning the function.
    - PRESERVED: celebration photo display is still sessionStorage ONLY (v1.41 behavior)
