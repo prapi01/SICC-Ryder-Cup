@@ -1,21 +1,25 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.41
-KEY CHANGES from v1.39:
-   - FIXED: clinchedAt keys now normalized to use labels before saving to history
-   - REASON: Inconsistent clinchedAt keys (some use full names, some use labels)
-   - FIXED: Added normalizeClinchedAt() helper to convert full-name keys to label-based keys
-   - REASON: Ensures all history records use labels consistently for match keys
-   - PRESERVED: ALL other functionality from v1.39 unchanged
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/game-loader.js, js/modal.js, js/waiting-screen.js, js/wrv.js
+VERSION: 1.42
+KEY CHANGES from v1.41:
+   - ADDED: saveGameToHistory() now also persists the celebration photo onto the archive
+     record by calling copyCelebrationPhoto(). The archive record previously got NO
+     celebration field, so every reader fell back to the default/GitHub photo - the
+     celebration then showed an image different from the one uploaded to GitHub
+     (reported 2026-10-31).
+   - WHY HERE: post-game.html v1.09 was the only caller of copyCelebrationPhoto and
+     post-game.html v1.13 (2026-07-08) removed that call, orphaning the function.
+   - PRESERVED: celebration photo display is still sessionStorage ONLY (v1.41 behavior)
+   - PRESERVED: ALL other functionality from v1.41 unchanged
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/game-loader.js, js/modal.js, js/waiting-screen.js, js/wrv.js, js/celebration-photo.js
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.SIGN_CARD_VERSION = "1.41";
-console.log("[SIGN-CARD] Initializing v1.41 - Normalized clinchedAt labels");
+window.SIGN_CARD_VERSION = "1.42";
+console.log("[SIGN-CARD] Initializing v1.42 - archive celebration photo");
 
 // ============================================================
 // v1.40: Helper: Normalize clinchedAt keys to use labels
@@ -280,6 +284,20 @@ var SignCard = (function() {
                     // Save to Firestore
                     var db = firebase.firestore();
                     var archiveId = gameId + '_H';
+                    
+                    // v1.42: Persist the per-game celebration photo onto the archive
+                    // record. OFFLINE-SAFE: reads Storage metadata, never GitHub, so it
+                    // adds no network dependency to the history save. This restores the
+                    // trigger post-game.html v1.09 had and v1.13 dropped, so the archive
+                    // carries celebration.imageUrl instead of falling back to the default.
+                    if (typeof copyCelebrationPhoto === 'function') {
+                        copyCelebrationPhoto(gameId, function(photoErr) {
+                            if (photoErr) console.warn("[SIGN-CARD] Celebration photo copy failed:", photoErr.message || photoErr);
+                            else console.log("[SIGN-CARD] ✅ Celebration photo recorded for:", archiveId);
+                        });
+                    } else {
+                        console.warn("[SIGN-CARD] copyCelebrationPhoto not available - archive will show the default photo");
+                    }
                     
                     // Check if history record already exists
                     db.collection("historyGames").doc(archiveId).get()
@@ -587,17 +605,21 @@ window.saveGameToHistory = SignCard.saveGameToHistory;
 window.showCelebrationScreen = SignCard.showCelebrationScreen;
 window.normalizeClinchedAt = SignCard.normalizeClinchedAt;
 
-console.log("[SIGN-CARD] v1.41 loaded - Normalized clinchedAt labels");
+console.log("[SIGN-CARD] v1.42 loaded - archive celebration photo");
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.41
-KEY CHANGES from v1.39:
-   - FIXED: clinchedAt keys now normalized to use labels before saving to history
-   - REASON: Inconsistent clinchedAt keys (some use full names, some use labels)
-   - FIXED: Added normalizeClinchedAt() helper to convert full-name keys to label-based keys
-   - REASON: Ensures all history records use labels consistently for match keys
-   - PRESERVED: ALL other functionality from v1.39 unchanged
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/game-loader.js, js/modal.js, js/waiting-screen.js, js/wrv.js
+VERSION: 1.42
+KEY CHANGES from v1.41:
+   - ADDED: saveGameToHistory() now also persists the celebration photo onto the archive
+     record by calling copyCelebrationPhoto(). The archive record previously got NO
+     celebration field, so every reader fell back to the default/GitHub photo - the
+     celebration then showed an image different from the one uploaded to GitHub
+     (reported 2026-10-31).
+   - WHY HERE: post-game.html v1.09 was the only caller of copyCelebrationPhoto and
+     post-game.html v1.13 (2026-07-08) removed that call, orphaning the function.
+   - PRESERVED: celebration photo display is still sessionStorage ONLY (v1.41 behavior)
+   - PRESERVED: ALL other functionality from v1.41 unchanged
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/game-loader.js, js/modal.js, js/waiting-screen.js, js/wrv.js, js/celebration-photo.js
 STATUS: Ready for integration
 */

@@ -82,6 +82,41 @@
   `~/Library/Mobile Documents/com~apple~CloudDocs/Upload/CelebrationPhotoUpload.shortcut` (iCloud Drive)
   with a copy in `~/Downloads/`. Signed artifacts are **AEA1 encrypted archives** — the action graph
   cannot be read back out of a signed file, so verify the **source** plist before signing.
+- **2026-10-31 — Celebration pipeline: three game-day defects fixed (photo + today's-game access).**
+  Both reported symptoms were **not** code regressions — no `js/`/HTML commit since 2026-08-14 —
+  but older defects that only surface **on game day** (a real photo broadcast + a completed game).
+  See HANDOVER "Technical findings" for full evidence; summary:
+  1. **The default photo overwrote the real photo's pointer.** `loadDefaultCelebrationPhoto()`
+     → `setPhotoFlags()` wrote the **default** `imageUrl` into `scheduledGames.photo` and reset
+     `f2Downloaded`/`viewDownloaded`, so other devices pulled the default image. `view-game.html`
+     has called this at game start since **2026-08-09**, but it only bites when a real photo was
+     **already broadcast** — i.e. on a real game day. Fixed in `celebration-photo.js` v1.22: when
+     `newPhotoAvailable === true` the real photo owns the flags and is used instead.
+  2. **The archive record never received a `celebration` field.** `copyCelebrationPhoto()` was the
+     only writer and its sole caller lived in `post-game.html`; **v1.13 (2026-07-08)** removed that
+     call when the page became display-only, orphaning it (zero callers since). Readers therefore
+     fell back to the **shared** `images/celebration/C.jpg` — which is `getCelebrationPhoto()`'s
+     documented last resort (design v1.07). The function also skipped the Firestore write entirely
+     when the photo file already existed in Storage. Fixed: `sign-card.js` v1.42 calls it from
+     `saveGameToHistory()`, and v1.22 always records the pointer.
+  3. **`post-game.html` rendered the celebration from sessionStorage only** (v1.13), so TODAY's game
+     dead-ended once the playing session ended — contradicting the design that keeps TODAY's game
+     accessible until midnight. `hcp-adjust.html`'s 🎉 button had the same flaw. Fixed with the new
+     shared **`js/celebration-data.js`** (`CelebrationData.replayCelebration()`), which rebuilds the
+     data + photo from Firestore. Isolated as a shared module because two pages need it.
+  **Photo resolution (unchanged, for reference):** `getCelebrationPhoto()` falls back
+  `historyGames.celebration.imageUrl` → `localStorage['celebration_photo_url_<gameId>']` →
+  `GITHUB_PHOTO_URL` (shared `C.jpg`). The `localStorage` link is populated per game by
+  `storePhotoUrlForHistory()` (not by the default-photo path).
+  **Repair:** the live `historyGames/GM_260914_1342_52_H` record was backfilled with its
+  `celebration` pointer; pixel comparison (RMSE 1.5 %) proved the Storage copy **is** the user's
+  `C.jpg` (canvas re-encode only).
+- **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
+  to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
+  removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had
+  already been scoped to `/celebration/**` (public read/write); Firestore has **no** equivalent
+  guard. Writes should require auth while reads stay public — **an architecture decision for the
+  user, not changed here** (GLOBAL §23).
 - (Older decisions: see `RELEASE_NOTES.md` and the full design doc.)
 
 ## Related docs
