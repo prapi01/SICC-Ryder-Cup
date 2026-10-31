@@ -240,6 +240,24 @@
   may accept share-sheet images; never import via the **Files** app (it quarantines); `?branch=` is
   ignored by the Contents API (branch must be in the JSON body); and to restore any image **> 1 MB**
   use `GET /git/blobs/<sha>` because the Contents API GET returns `content: ""`.
+  **⚠️ 2026-10-31 — STANDING RULE: never leave a test shortcut where it can sync to the iPhone.**
+  iOS Shortcuts are **synced per-device**; deleting a shortcut from the Mac's library does **NOT**
+  delete it from the phone, and the Mac has **no interface to delete a shortcut on the device**. Eleven
+  test shortcuts created during debugging (`After404S`, `ErrOutS`, `OkTestS`, `ErrTestS`, `FailTestS`,
+  `ReadbackTestS`, `UploadPhoto 3/4`, `UploadPhoto_signed`, `UploadPhotoFinal`, `Upload-Photo 2`)
+  survived a Mac-side cleanup and were still offered in the iPhone's share sheet, **each of them
+  writing the same `C.jpg`** — so a wrong pick is indistinguishable from a broken shortcut.
+  **Rules, in order of preference:**
+  1. **Do not create test shortcuts on the Mac at all.** Test the HTTP layer with `curl` against the
+     Contents API, and the action graph by reading the plist from
+     `~/Library/Shortcuts/Shortcuts.sqlite` (`ZSHORTCUTACTIONS.ZDATA`). Neither touches the device.
+  2. If a test *must* be imported to verify Shortcuts-engine behaviour, **name it so it cannot be
+     confused** (e.g. `ZZ-test-<what>`), and **delete it on the iPhone** as part of the same task —
+     the Mac delete alone is incomplete.
+  3. **Cleanup is not complete until the iPhone's share sheet is checked.** The Mac library being clean
+     is **not** evidence the device is clean; assert it explicitly and say which device you verified.
+  **Never report a shortcut cleanup as done on the basis of the Mac library alone** — that is exactly
+  the error made here.
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had
