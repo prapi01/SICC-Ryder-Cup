@@ -229,6 +229,64 @@ be shown as this game's celebration. Fixed in v1.01: the revisit path clears
    `?v=` it appends. Both realigned, and a full audit now reports **0 mismatches** across
    HTML `?v=` ↔ `js/versions.json` ↔ JS header/footer VERSION ↔ page header/`APP_VERSION`.
 
+### 2026-10-31 — T-2 row showed green squares at holes 16 & 17 (fixed in the data)
+
+**Symptom (user, on the completed game's scorecard, `view-game.html` v8.16):** the T-2 row
+showed the gold clinch at hole 14, grey at hole 15, then **two green squares at holes 16 and
+17**, before returning to `A10` at hole 18.
+
+**Diagnosis — proven, not guessed.** A square is rendered only when the row value is `'AS'`
+(`getAsSquareHtml()`, `game-scorecard.js`), i.e. "all square"; the surrounding cells being `A10`
+made that self-contradictory. Both live documents agreed on the same impossible series:
+
+```text
+pos  | 13 | 14 | 15 | 16 | 17
+hole | 14 | 15 | 16 | 17 | 18
+F2   | 10 | 10 |  0 |  0 | 10     <- 0 at 15/16
+T-2  |A10 |A10 | AS | AS |A10     <- squares at 16/17
+F2 clinchedHole = 14, T-2 leader = AS at 15/16
+```
+
+The app's own `GameTeam.calculateWithClinched()` was then **executed** (Node `vm`, real
+`game-team.js`/`game-data.js`/`game-order.js`, real data strings, real course SI/par, all 8 real
+players) and it reproduced the stored arrays **exactly at 17 of 18 positions**, differing at only
+**positions 15 and 16**:
+
+| | F1 | F2 |
+|---|---|---|
+| cumulative matches stored | 18/18 positions ✅ | 16/18 ❌ (15, 16) |
+| clinched hole | 16 = stored ✅ | 14 = stored ✅ |
+
+So the T-2 arrays were **stale**: they had been written while holes 16 and 17 were not yet saved
+by both flights (that state computes cumulative `0` → leader `'AS'`), and were never recomputed
+once those holes were saved. The correct values are **`A9`** (hole 16) and **`A10`** (hole 17).
+
+**Root cause class.** The T-1/T-2 arrays are written per position as holes are saved, and the
+cascade that repairs earlier positions is gated by `if (currentPosition < lastSyncedPos)`
+(`real-game-save.js`). That **strict `<`** skips the current position, so when the second flight
+saves a hole late (whose position was already written with the other flight's data missing), the
+stale value is never recomputed. The clinch holes were unaffected because they are recomputed
+over all positions. The identical fallback clobbered this game's `displayT2` (the stored `'AS'`
+defaults — `game-team.js` `calculate()` uses `new Array(18).fill("AS")` and sets
+`cumulativeFlight2[idx] = f2Available ? runningFlight2 : 0`).
+
+**Fix applied (data, not code).** Both documents — `scheduledGames/GM_260914_1342_52` and
+`historyGames/GM_260914_1342_52_H` — were repaired with the app-recomputed values for exactly
+three F2 fields (`cumulativePoints`, `leader`, `displayT2`). `clinchedHole` stays **14**, exactly
+as the app recomputes it, so **the gold cell did not move**. T-1 was **already fully correct**
+(no change), and `pointsA`/`pointsB`/`tr` were left alone — they are display-time-derived and
+flat, which is why they never showed the fault. Verified in a real browser afterwards:
+T-2 `A10 A10 A9 A10 A10`, **0 squares**, class counts green 13 / gold 1 (hole 14) / grey 4;
+T-1 green 15 / gold 1 (hole 16) / grey 2.
+
+⚠️ **OPEN — the code path is NOT fixed.** This is a recurrence risk: an out-of-order save by the
+two flights can leave a T-2 position stale again. Proposed fixes (needs the user's call, since
+this is the live, signed-off scoring pipeline):
+(a) change the cascade guard `currentPosition < lastSyncedPos` → `<=` so the current position is
+also recomputed; or (b) recompute the T-1/T-2/T-3 arrays from the data strings at game
+completion. (b) is the safer, capability-preserving option; (a) is a smaller diff but sits in the
+live save path.
+
 ### ⚠️ SECURITY (raised 2026-10-31, NOT fixed): Firestore is world-writable
 A plain unauthenticated `PATCH` to `scheduledGames/<id>` returned **HTTP 200** — no auth of any
 kind (confirmed with a harmless `probe` field, which was then removed). This is broader than the
@@ -532,6 +590,9 @@ game is mid-day.
   and force-pushed.
 
 ## Open questions
+- **T-2 stale-position bug: code fix not applied** (see Technical findings 2026-10-31). Data was
+  repaired; the live save path can reproduce it. Decide between fixing the cascade guard
+  (`<` → `<=`) or adding a completion-time recompute.
 - **Firestore has NO write protection** (found 2026-10-31, unauthenticated `PATCH` → HTTP 200).
   Should writes require auth while reads stay public? Not changed — needs the user's decision.
 - Cause A's fix was verified against the **live** flag shape; the next real game is the true

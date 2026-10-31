@@ -121,6 +121,16 @@
   **replaced together or a historical game silently keeps the wrong photo** — the archive only holds
   a pointer, never the image. (Done once on 2026-10-31 when the uploaded shot turned out to be the
   wrong frame of the burst.)
+- **2026-10-31 — T-2 row could show a stale "all square" (green squares) at holes whose data was
+  saved late.** The T-1/T-2 result arrays are written per position, and the cascade that repairs
+  earlier positions is gated by `if (currentPosition < lastSyncedPos)` — a **strict `<`** that skips
+  the current position. If the second flight saves a hole after that position was already written
+  with the other flight's data missing, the stale value survives. A row value of `'AS'` renders as
+  the green `as-square` (`getAsSquareHtml()`, whose CSS background is hard-coded `#4caf50`, so it
+  ignores the `score-grey` class). Reproduced exactly with the app's own `GameTeam.
+  calculateWithClinched()` on the 2026-10-31 game: only F2 positions 15/16 were stale (`0`/`'AS'`
+  instead of `9`/`10`). The live documents were repaired with the app-computed values; **the save
+  path is still open** (see HANDOVER).
 - **2026-10-31 — ⚠️ OPEN (unfixed): Firestore is publicly writable.** An unauthenticated `PATCH`
   to `scheduledGames/<id>` returned **HTTP 200** (verified with a harmless probe field, since
   removed). Anyone can rewrite scores, signatures, `status`, and celebration pointers. Storage had
