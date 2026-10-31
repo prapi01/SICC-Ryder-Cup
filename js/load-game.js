@@ -1,8 +1,9 @@
 /*
 FILE: js/load-game.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - BUMPED: VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - BUMPED: VERSIONS_JSON_VERSION 1.03 -> 1.04 (js/versions.json changed again).
+   - v1.06: BUMPED VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
    - v1.05: BUMPED VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
    - NOTE: this constant must be bumped EVERY time js/versions.json changes.
      The manifest is fetched as `js/versions.json?v=<this value>`, so without a bump
@@ -18,14 +19,14 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.LOAD_GAME_VERSION = "1.06";
+window.LOAD_GAME_VERSION = "1.07";
 
 // ============================================================
 // Version of versions.json - bump this when versions.json changes
 // ============================================================
-var VERSIONS_JSON_VERSION = "1.03";
+var VERSIONS_JSON_VERSION = "1.04";
 
-console.log("[LOAD-GAME] Initializing v1.06");
+console.log("[LOAD-GAME] Initializing v1.07");
 
 // ============================================================
 // Helper: Load script with cache-busting
@@ -265,9 +266,10 @@ window.VERSIONS_JSON_VERSION = VERSIONS_JSON_VERSION;
 
 /*
 FILE: js/load-game.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - BUMPED: VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - BUMPED: VERSIONS_JSON_VERSION 1.03 -> 1.04 (js/versions.json changed again).
+   - v1.06: BUMPED VERSIONS_JSON_VERSION 1.02 -> 1.03 (js/versions.json changed again).
    - v1.05: BUMPED VERSIONS_JSON_VERSION 1.01 -> 1.02 (js/versions.json changed again).
    - NOTE: this constant must be bumped EVERY time js/versions.json changes.
      The manifest is fetched as `js/versions.json?v=<this value>`, so without a bump

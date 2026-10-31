@@ -1,6 +1,6 @@
 {
   "META": {
-    "version": "1.05",
+    "version": "1.06",
     "updatedAt": "2026-10-31"
   },
   "auth-pin.js": "2.08",
@@ -10,7 +10,7 @@
   "encoding.js": "1.01",
   "firebase-config.js": "1.02",
   "firebase-retry.js": "1.01",
-  "game-data.js": "4.13",
+  "game-data.js": "4.14",
   "game-loader.js": "1.17",
   "game-match.js": "2.28",
   "game-order.js": "1.00",
@@ -21,7 +21,7 @@
   "hcp-adjust.js": "2.66",
   "history-record.js": "3.12",
   "index-hidden.js": "1.08",
-  "load-game.js": "1.06",
+  "load-game.js": "1.07",
   "modal.js": "1.03",
   "real-game-cascade.js": "1.02",
   "real-game-init.js": "1.16",
@@ -50,6 +50,6 @@
   "util-validate-record.js": "1.34",
   "util-validate-ui.js": "1.24",
   "waiting-screen.js": "1.00",
-  "wrv.js": "1.14",
+  "wrv.js": "1.15",
   "celebration-data.js": "1.01"
 }

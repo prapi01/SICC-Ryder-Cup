@@ -1,20 +1,27 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.13
-KEY CHANGES from v4.12:
-   - ADDED: isInitialized flag and getter methods for initialization state
-   - ADDED: getEditableFlight() public method
-   - ADDED: isGameDataInitialized() public method
-   - FIXED: saveCurrentHole() now uses RealGameState for flight determination
-   - FIXED: savedHoles now stores the actual hole number based on storage position
-   - ADDED: Safety check - if not initialized, tries to initialize from cache
-   - This fixes the Shotgun Start savedHoles corruption bug
-   - PRESERVED: ALL existing functionality from v4.12 (debug logs retained)
+VERSION: 4.14
+KEY CHANGES from v4.13:
+   - FIXED: WRV lost-connection RECOVERY is wired up again. startWRVVerification()
+     (and therefore WRV.recover(), the read -> compare -> rewrite -> verify
+     reconciler) had been DEAD CODE since v4.03 (2026-06-26) - that version removed
+     this file's own Firestore write, which also removed the v4.01 call sites that
+     lived in that write's .then()/.catch().
+   - SYMPTOM IT CAUSED (2026-10-31): the F1 scorer could not see F2's H16/H17, so
+     one flight silently scored from incomplete data.
+   - ADDED: scheduleWRVReconcile() - re-attaches startWRVVerification() after a
+     score save (delayed so the consolidated write in real-game-save.js lands first).
+   - ADDED: startWRVReconcileLoop() / stopWRVReconcileLoop() - a 60s idle tick so a
+     device that has been silently out of sync also self-heals while not saving.
+   - SAFETY: adds NO new Firestore write. recover() only rewrites this flight's own
+     f<n>.d / f<n>.se when Firestore disagrees with local truth, so it can never
+     overwrite the other scorer's data; it is fire-and-forget and stops once in sync.
+   - PRESERVED: ALL existing functionality from v4.13 (debug logs retained)
 DEPENDS ON: js/game-order.js, Firebase Firestore, RealGameState (optional)
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.13 (Shotgun Start Fix)
+// FILE: js/game-data.js - VERSION 4.14 (WRV recovery re-wired)
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -601,6 +608,20 @@ var GameData = (function() {
         logWithTimestamp('[SAVE]', 'Local data updated - flight ' + flight + ' data: ' + newData.substring(0, 50) + '...');
         logWithTimestamp('[SAVE]', '⚠️ WRV write SKIPPED - consolidated write in real-game-save.js handles Firestore');
         
+        // ============================================================
+        // v4.14: RESTORED - schedule the WRV verify/reconcile half.
+        // game-data.js v4.03 (2026-06-26) removed this function's own Firestore
+        // write, which also removed the v4.01 startWRVVerification() call sites that
+        // lived in that write's .then()/.catch() - orphaning WRV.recover() entirely.
+        // It is re-attached here (delayed, so the consolidated write in
+        // real-game-save.js has already issued) instead of to the removed write.
+        // This is the ONLY thing that detects and heals "Firestore does not match my
+        // local truth" - without it a scorer whose data never arrived has no way to
+        // notice. recover() rewrites ONLY this flight's f<n>.d / f<n>.se, so it can
+        // never overwrite the other scorer's data.
+        // ============================================================
+        scheduleWRVReconcile(flight, holeNumber, newData);
+        
         // Notify UI immediately (user sees match, T-1, Next button)
         notifyDataChanged();
         logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
@@ -680,6 +701,14 @@ var GameData = (function() {
         gameId = activeGame.gameId;
         gameMode = activeGame.gameMode || activeGame.gameType || "real";
         editableFlight = null;
+        
+        // v4.14: begin the idle WRV reconcile loop for this game session.
+        // Idempotent, and strictly read/compare/rewrite-own-flight only.
+        try {
+            startWRVReconcileLoop();
+        } catch (loopErr) {
+            console.warn('[WRV-VERIFY] Could not start reconcile loop:', loopErr.message);
+        }
         
         isPreviewSandbox = (activeGame.collection === "previewSandboxes");
         
@@ -1092,8 +1121,99 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v4.09: saveCurrentHole - WRV call REMOVED to eliminate competing writes
-    // Only the consolidated WRV write in real-game-save.js writes to Firestore
+    // v4.14: WRV reconciliation scheduling
+    //
+    // WHY (real incident 2026-10-31): the F1 scorer could not see F2's H16/H17.
+    // game-data.js v4.03 removed this file's own Firestore write, which also
+    // removed the v4.01 startWRVVerification() call sites that lived inside that
+    // write's .then()/.catch(). startWRVVerification() (and therefore
+    // WRV.recover(), the read -> compare -> rewrite -> verify reconciler) has been
+    // dead code since 2026-06-26, so a scorer whose score never reached the other
+    // device had NO way to detect or heal it.
+    //
+    // Re-attached WITHOUT a page reload (an incident happens mid-round) and
+    // WITHOUT introducing any new write: recover() only rewrites this flight's own
+    // f<n>.d / f<n>.se when Firestore disagrees with local truth, and it is
+    // fire-and-forget with a 10s re-check loop that stops once in sync.
+    //
+    // The periodic tick (not just on save) matters: a device that has been silently
+    // out of sync also heals while idle, which is exactly the reported symptom -
+    // the scorer kept entering scores locally and believed it was in sync.
+    // ============================================================
+    
+    var WRV_RECONCILE_DELAY = 15000;      // let the consolidated write land first
+    var WRV_RECONCILE_INTERVAL = 60000;   // idle self-heal cadence
+    var wrvReconcileTimer = null;
+    var wrvReconcileIntervalId = null;
+    
+    function scheduleWRVReconcile(flight, holeNumber, newData) {
+        // Only a scoring device reconciles (VIEW has no flight data to push)
+        if (flight !== 1 && flight !== 2) {
+            logWithTimestamp('[WRV-VERIFY]', '⏭️ Reconcile skipped - not a scoring flight (flight=' + flight + ')');
+            return;
+        }
+        if (wrvReconcileTimer) {
+            clearTimeout(wrvReconcileTimer);
+        }
+        wrvReconcileTimer = setTimeout(function() {
+            wrvReconcileTimer = null;
+            runWRVReconcile(flight, holeNumber, newData);
+        }, WRV_RECONCILE_DELAY);
+    }
+    
+    function runWRVReconcile(flight, holeNumber, newData) {
+        if (!gameId) {
+            logWithTimestamp('[WRV-VERIFY]', '⏭️ Reconcile skipped - no gameId');
+            return;
+        }
+        // Nothing saved locally yet (fresh page) - the device has no local truth to
+        // reconcile, so firing here would be a no-op write.
+        if (!flight1Data.data && !flight2Data.data) {
+            logWithTimestamp('[WRV-VERIFY]', '⏭️ Reconcile skipped - no local flight data yet');
+            return;
+        }
+        if (typeof WRV === 'undefined' || typeof WRV.recover !== 'function') {
+            logWithTimestamp('[WRV-VERIFY]', '❌ Reconcile skipped - WRV.recover unavailable');
+            return;
+        }
+        logWithTimestamp('[WRV-VERIFY]', '🔄 Starting scheduled WRV reconcile (flight ' + flight + ', hole ' + holeNumber + ')');
+        startWRVVerification(flight, holeNumber, newData);
+    }
+    
+    // Start the idle self-heal loop. Safe to call repeatedly (idempotent).
+    function startWRVReconcileLoop() {
+        if (wrvReconcileIntervalId !== null) {
+            return;
+        }
+        wrvReconcileIntervalId = setInterval(function() {
+            // Only while a game is actually loaded and this device can score
+            if (!gameId) return;
+            var editableFlight = (typeof RealGameState !== 'undefined' && RealGameState.getEditableFlight)
+                ? RealGameState.getEditableFlight()
+                : null;
+            if (editableFlight !== 1 && editableFlight !== 2) return;
+            startWRVVerification(editableFlight, null, null);
+        }, WRV_RECONCILE_INTERVAL);
+        logWithTimestamp('[WRV-VERIFY]', '✅ WRV reconcile loop started (every ' + (WRV_RECONCILE_INTERVAL / 1000) + 's)');
+    }
+    
+    function stopWRVReconcileLoop() {
+        if (wrvReconcileTimer) {
+            clearTimeout(wrvReconcileTimer);
+            wrvReconcileTimer = null;
+        }
+        if (wrvReconcileIntervalId !== null) {
+            clearInterval(wrvReconcileIntervalId);
+            wrvReconcileIntervalId = null;
+            logWithTimestamp('[WRV-VERIFY]', '🛑 WRV reconcile loop stopped');
+        }
+    }
+    
+    // ============================================================
+    // v4.09: saveCurrentHole does not write to Firestore itself
+    // Only the consolidated WRV write in real-game-save.js writes to Firestore.
+    // v4.14: the WRV *reconcile* half is re-attached via scheduleWRVReconcile()
+    //        (delayed) and the idle loop - see above. It adds no competing write.
     // ============================================================
     
     // v4.13: This function is now replaced with the debug + fix version above
@@ -1156,7 +1276,11 @@ var GameData = (function() {
         logWithTimestamp: logWithTimestamp,
         // v4.13: Initialization state methods
         isGameDataInitialized: isGameDataInitialized,
-        getEditableFlight: getEditableFlight
+        getEditableFlight: getEditableFlight,
+        // v4.14: WRV reconciliation wiring
+        scheduleWRVReconcile: scheduleWRVReconcile,
+        startWRVReconcileLoop: startWRVReconcileLoop,
+        stopWRVReconcileLoop: stopWRVReconcileLoop
     };
     
 })();
@@ -1166,16 +1290,23 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.13
-KEY CHANGES from v4.12:
-   - ADDED: isInitialized flag and getter methods for initialization state
-   - ADDED: getEditableFlight() public method
-   - ADDED: isGameDataInitialized() public method
-   - FIXED: saveCurrentHole() now uses RealGameState for flight determination
-   - FIXED: savedHoles now stores the actual hole number based on storage position
-   - ADDED: Safety check - if not initialized, tries to initialize from cache
-   - This fixes the Shotgun Start savedHoles corruption bug
-   - PRESERVED: ALL existing functionality from v4.12 (debug logs retained)
+VERSION: 4.14
+KEY CHANGES from v4.13:
+   - FIXED: WRV lost-connection RECOVERY is wired up again. startWRVVerification()
+     (and therefore WRV.recover(), the read -> compare -> rewrite -> verify
+     reconciler) had been DEAD CODE since v4.03 (2026-06-26) - that version removed
+     this file's own Firestore write, which also removed the v4.01 call sites that
+     lived in that write's .then()/.catch().
+   - SYMPTOM IT CAUSED (2026-10-31): the F1 scorer could not see F2's H16/H17, so
+     one flight silently scored from incomplete data.
+   - ADDED: scheduleWRVReconcile() - re-attaches startWRVVerification() after a
+     score save (delayed so the consolidated write in real-game-save.js lands first).
+   - ADDED: startWRVReconcileLoop() / stopWRVReconcileLoop() - a 60s idle tick so a
+     device that has been silently out of sync also self-heals while not saving.
+   - SAFETY: adds NO new Firestore write. recover() only rewrites this flight's own
+     f<n>.d / f<n>.se when Firestore disagrees with local truth, so it can never
+     overwrite the other scorer's data; it is fire-and-forget and stops once in sync.
+   - PRESERVED: ALL existing functionality from v4.13 (debug logs retained)
 DEPENDS ON: js/game-order.js, Firebase Firestore, RealGameState (optional)
 STATUS: Ready for integration
 */
