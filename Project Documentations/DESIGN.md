@@ -145,13 +145,18 @@
   incoming realtime updates** (`if (RealGameState.isWRVInProgress()) return;`). What *is* in place:
   WRV verify-after-write + unlimited backoff retries (1–60 s) on error, and a `localStorage`
   pending-writes queue resumed on re-entry.
-  **WRV's lost-connection RECONCILIATION (`WRV.recover()`: read → compare with local truth →
-  rewrite → verify → retry every 10 s) exists and is correct, but is ORPHANED.** Its only caller,
-  `startWRVVerification()` in `game-data.js`, is defined and exported but never invoked — because
-  `game-data.js` **v4.03 (2026-06-26 15:31)** removed `saveCurrentHole()`'s own Firestore write,
-  which also removed the v4.01 call sites that sat in that write's `.then()`/`.catch()`. So since
-  then the app retries writes on error but never detects or heals silently-lost data. Re-wiring it
-  is the recommended fix (see HANDOVER).
+  **WRV's lost-connection RECONCILIATION (`WRV.recover()`) — was orphaned, now RESTORED.**
+  It was dead code from **2026-06-26 to 2026-10-31**: `game-data.js` **v4.03 (2026-06-26 15:31)**
+  removed `saveCurrentHole()`'s own Firestore write, which also removed the v4.01
+  `startWRVVerification()` call sites that sat in that write's `.then()`/`.catch()` — leaving the
+  function defined and exported but never called. During that window the app retried writes **on
+  error** but never detected or healed silently-lost data (the 2026-10-31 incident: F1 could not
+  see F2's H16/H17). **Fixed in `game-data.js` v4.14 / `wrv.js` v1.15:** the reconcile runs
+  **after each score save (15 s delay**, so the consolidated write lands first**)** and on an
+  **idle 60 s tick**, so a silently-out-of-sync device heals without saving. It writes **only the
+  own flight's** `f<n>.d`/`f<n>.se` with **local truth**, so one scorer can never overwrite the
+  other's holes, and it stops once in sync. `wrv.js` v1.15 also fixes `recover()` never calling
+  `options.onComplete`.
   Fixes recommended (timeout the write + clear the flag
   in a `finally` + defer rather than drop updates while in progress + enable persistence + surface
   connection state) are **not applied** — they change live scoring behaviour.

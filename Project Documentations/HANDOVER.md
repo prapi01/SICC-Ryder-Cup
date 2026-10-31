@@ -371,11 +371,34 @@ is right about the *design* and wrong about the *runtime*. Verified by reading t
   retries on error, but it no longer reconciles. Together with (B)/(C) above — where a hung write
   sets `WRVInProgress` and that flag makes the device drop all incoming updates — the losing scorer
   has **no mechanism at all** to detect that its data never reached the other flight.
-- **Recommended fix:** re-wire `startWRVVerification()` after the WRV write in `saveCurrentHole()`
-  (i.e. restore the v4.01 call, now attached to the WRV callback). Cheap: the function and
-  `WRV.recover()` are both already correct and intact. Prefer calling it on a **timer/verification
-  tick**, not only at save time, so a device that has been silently out of sync also heals while
-  idle. **Not applied** — it is a change to the live scoring path.
+- **✅ FIX APPLIED — the recovery is re-wired (this was a refactor accident being undone, not a new
+  architecture).** `game-data.js` **4.13 → 4.14**, `wrv.js` **1.14 → 1.15**:
+  - `saveCurrentHole()` now calls a new `scheduleWRVReconcile()` **after** a score save, delayed
+    **15 s** so the consolidated write in `real-game-save.js` lands first (this replaces the v4.01
+    call sites that were lost with the removed raw write — deliberately re-attached to the *delay*
+    rather than to a write that no longer exists, avoiding competing writes).
+  - `startWRVReconcileLoop()` runs an **idle tick every 60 s** (started on game load, stopped at
+    game end) so a device that has been **silently** out of sync also self-heals while not saving
+    — which is exactly the reported symptom (the scorer kept entering scores and believed it was in
+    sync).
+  - `wrv.js` v1.15: `recover()` now **actually calls `options.onComplete`** (it accepted the
+    callback but never invoked it), via a new `finishRecovery()` that also releases the
+    `activeRecoveries` key. Before this, `game-data.js`'s `wrvRecoveryKeys` dedupe key was never
+    released, so the guard could only ever suppress one repeat.
+  - **Safety (verified by running the real `recover()` against a Firestore stub):** it detects the
+    mismatch, writes **local truth** (not the server value), and rewrites **only the own flight's**
+    `f<n>.d` / `f<n>.se` — `f1.d` was never touched, so one scorer can never overwrite the other's
+    holes. It fired `onComplete` once and **stopped once in sync** (1 write, not a loop → no write
+    storm). It adds **no competing write**: `game-data.js` still makes no Firestore write of its
+    own, and the reconcile only fires when a game is loaded and the device can score.
+  - **Verified on PROD after deploy:** on `real-game` (the scorer page) `WRV` is present,
+    `WRV.recover` is a function, `WRV_VERSION 1.15`, and all five hooks
+    (`scheduleWRVReconcile` / `startWRVReconcileLoop` / `stopWRVReconcileLoop` /
+    `startWRVVerification` / `WRV.recover`) are live functions. `view-game` correctly does **not**
+    load `wrv.js` (display-only).
+  - **No regression:** re-checked the scorecard (T-2 `A10 A10 A9 A10 A10`, **0 squares**, gold on
+    hole 14; T-1 gold 16; Strk gold 18) and the celebration (Team A 10–9, correct per-game photo),
+    no page errors.
 
 **E. What IS in place (the actual defences today):** WRV's verify-after-write plus **unlimited**
 exponential-backoff retries (1 s → 60 s cap) on *error*; a **pending-writes queue** persisted in
@@ -390,7 +413,7 @@ own in-memory SDK queue for brief drops **within one page session**. The **recon
 | Scorer-to-scorer visibility | ❌ a hung write can suspend the realtime listener forever |
 | Offline write detection | ❌ `set()` never times out; WRV retry never engages |
 | Write retry on error | ✅ WRV, unlimited backoff (1–60 s) |
-| Lost-connection **reconciliation** | ⚠️ built (`WRV.recover()`) but **orphaned since 2026-06-26** |
+| Lost-connection **reconciliation** | ✅ **FIXED** — `WRV.recover()` re-wired (was orphaned 2026-06-26 → 2026-10-31) |
 | Resumé across reloads | ✅ `localStorage` pending-writes queue |
 | Connectivity UI / status | ❌ none |
 
@@ -712,11 +735,15 @@ game is mid-day.
   and force-pushed.
 
 ## Open questions
-- **Connection-loss hardening not applied** (audit 2026-10-31): write timeout + clear the
-  `WRVInProgress` flag in a `finally` + watchdog, defer (do not drop) realtime updates while the
-  flag is set, enable Firestore offline persistence, and surface connection state in the UI.
-  Recommend (1) and (2) first — they are small and stop a hung write from muting the listener.
-  Not done unilaterally: they change live scoring behaviour.
+- **Connection-loss hardening — reconciliation DONE, these remain** (audit 2026-10-31):
+  ✅ **done:** `WRV.recover()` reconciliation re-wired (save-time + 60 s idle tick) and
+  `onComplete` firing fixed.
+  ⬜ **still open:** (a) timeout the write so a hung `set()` cannot sit pending for ever, and clear
+  `WRVInProgress` in a `finally` + watchdog; (b) **defer rather than drop** realtime updates while
+  `WRVInProgress` is set (today `real-game-init.js` silently `return`s, so a stuck flag hides the
+  other flight indefinitely); (c) enable Firestore offline persistence; (d) surface connection
+  state in the UI. (a) and (b) are small and address the same hang; (c) needs testing against the
+  T-2 fix because reconnect-flushed writes arriving out of order would change save ordering.
 - **Firestore has NO write protection** (found 2026-10-31, unauthenticated `PATCH` → HTTP 200).
   Should writes require auth while reads stay public? Not changed — needs the user's decision.
 - Cause A's fix was verified against the **live** flag shape; the next real game is the true
