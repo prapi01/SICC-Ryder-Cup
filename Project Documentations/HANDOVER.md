@@ -98,6 +98,23 @@
   always re-downloads, and that is precisely what makes a stale copy impossible. It does mean the size
   half of the check is dead and the ETag half is never exercised. **Do not "optimise" this without a
   device test** — tightening it could make the app *skip* a real change. Status: **open decision.**
+- **2026-11-01 — how to avoid the 5-minute stale window when checking a photo by hand.** The GitHub web
+  view and `raw.githubusercontent.com` both send **`max-age=300`**, and **that window CANNOT be bypassed
+  from the browser** — measured, not assumed:
+  - A **cache-buster query string does NOT create a new cache object.** `?v=1`, `?v=2` and `?cb=<ns>`
+    all returned `x-cache: HIT` against the **same** Fastly object (Fastly ignores the query string as a
+    cache key).
+  - **`Cache-Control: no-cache` and `Pragma: no-cache` request headers are ignored** — still
+    `x-cache: HIT`, same object. So even a hard reload does not necessarily help inside the window.
+  - The **only** reliably fresh GitHub URL is a **committed path that changes on every upload** (the
+    `raw.githubusercontent.com/<commit-sha>/…` form, which is exactly what `UploadPhoto-004`'s VIEW
+    read-back already uses).
+  **✅ THE PRACTICAL ANSWER — use the CDN URL the app itself uses:**
+  `https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg` — it sends
+  **`max-age=0, must-revalidate`**, so the browser is **obliged** to fetch the current bytes on every
+  load. **Verified byte-for-byte:** its md5 (`7fe33e30…`) is **identical to the repo blob's md5**, so it
+  is not merely fresher — it is exactly what GitHub holds. **Bookmark that URL for manual photo checks;
+  never judge an upload from the GitHub web view.**
 - **2026-11-01 — the game-day "celebration showed the placeholder" bug is ALREADY FIXED AND DEPLOYED.
   It was never a CDN problem.** Re-analysed and confirmed against the live evidence: the photo was
   uploaded at **08:41** and the game ended **14:01** — over 5 hours later, so no deploy lag can explain
