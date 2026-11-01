@@ -6,6 +6,7 @@
   "scripts": {
     "suite:a": "playwright test specs/suite-a-admin.spec.js",
     "suite:b": "playwright test specs/suite-b-realtime.spec.js",
+    "suite:c": "playwright test specs/suite-c-celebration-guard.spec.js",
     "test": "playwright test",
     "test:headed": "HEADED=1 playwright test",
     "run:step": "node step-runner.js",

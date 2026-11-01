@@ -1276,31 +1276,25 @@ game is mid-day.
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **PRIORITY 1 — VERIFY v1.22's game-day guard before the next real game.** The placeholder fix is
-  deployed but has **never** run under live conditions. The guard only takes its branch when
-  `loadDefaultCelebrationPhoto()` runs **after** a real photo has been broadcast, i.e. both must be true:
-  1. A real photo has been uploaded **and** `scheduledGames/<gameId>.photo.newPhotoAvailable === true`
-     (F1 ran `checkAndRenameCelebrationPhoto()` after an upload).
-  2. A viewer opens **after** that — `view-game.html` then calls `loadDefaultCelebrationPhoto()`.
-  **Test:** during a round, upload a photo from the iPhone, confirm the flags go T/F/F in Firestore,
-  **then** open the viewer page load, and confirm `scheduledGames.photo.imageUrl` is **still the real
-  Storage URL** — not `SRC_Default_Photo.jpg` — and that `f2Downloaded`/`viewDownloaded` were **not**
-  reset. A browser console on the viewer should log
-  `[CelebrationPhoto] Real photo broadcast in progress - keeping it, not setting default flags`.
-  **Watch from the console (one copy-to-run block):**
-
-  ```js
-  var db = firebase.firestore();
-  db.collection('scheduledGames').doc(window.gameId || prompt('gameId (GM_...)')).get().then(d => {
-    var p = d.data().photo || {};
-    console.log('newPhotoAvailable:', p.newPhotoAvailable,
-                '| f2Downloaded:', p.f2Downloaded,
-                '| viewDownloaded:', p.viewDownloaded);
-    console.log('imageUrl:', p.imageUrl);
-    console.log('EXPECT: newPhotoAvailable true, imageUrl WITHOUT SRC_Default_Photo');
-  });
-  ```
-
+- **PRIORITY 1 — v1.22 game-day guard: ✅ VERIFIED by automated test (2026-11-01).**
+  `automated-tests/specs/suite-c-celebration-guard.spec.js` (`npm run suite:c`) proves the fix:
+  1. **Guard fires** — with `photo.newPhotoAvailable === true` + a real `imageUrl`, a fresh viewer page
+     load emits the guard's own log line (`Real photo broadcast in progress`) and does **not** take the
+     sessionStorage early-return.
+  2. **State preserved** — `photo.imageUrl` is unchanged, `newPhotoAvailable` stays `true`, and
+     `sessionStorage['celebrationPhoto']` holds the **broadcast** photo, not `SRC_Default_Photo`.
+  3. **Negative control** — with nothing broadcast, the default **is** published, so the guard is
+     conditional and has not silently disabled the "always show a photo" design.
+  The spec asserts on the **log line**, not merely on "nothing broke": `loadDefaultCelebrationPhoto()`
+  returns early when `sessionStorage['celebrationPhoto']` is already set, so a naive test could pass
+  without ever reaching the guard. **Verified non-vacuous** — pointing the expected log string at a
+  value that cannot occur makes test 1 fail as intended. Both tests create and delete their own
+  throwaway games; PROD was confirmed clean afterwards.
+  **Residual (genuine, and now small):** the test seeds the flags directly rather than driving a real
+  iPhone upload mid-round. The remaining gap is therefore only the upload→flags step itself, which the
+  `UploadPhoto-004` device run already covers. A full dress rehearsal across a real 18-hole round is
+  still the only way to cover the whole chain at once.
+- **PRIORITY 2 — import `UploadPhoto-004` on the iPhone and confirm one upload.**
 - **PRIORITY 2 — import the new shortcut on the iPhone and confirm one upload.**
 **⚠️ SUPERSEDED — `UploadPhoto-004` is the current build and VIEW is confirmed working. See below.**
 The chain is now proven end-to-end on the device: **user confirmed "view showing the uploaded photo
