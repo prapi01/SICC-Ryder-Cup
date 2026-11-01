@@ -36,13 +36,12 @@
   38 real commits with `git commit-tree`, each carrying its **own original tree** (preserving author and
   committer dates), then `--force-with-lease`. **`main` is now `d70fa21e`; its tree `119d9746…` is
   byte-identical to the pre-cleanup tree — all 132 blobs match, 132 files on disk, 0 empty commits.**
-  **⚠️ WHAT THIS SACRIFICED — read before assuming it was free:** it **collapsed the 126 production
-  device-upload commits into the 38**, so **that individual photo-upload history is no longer in `main`'s
-  ancestry.** **No photo BYTES were destroyed** — every dropped commit, and every `C.jpg` version back to
-  37 KB, is still reachable through the pushed `backup/*` refs (verified: **127/127** device-upload
-  commits reachable; spot-checked `C.jpg` at 641,989 B and 673,944 B). **But if blob garbage-collection
-  ever runs on those refs, that history is gone.** **If the upload archive matters, say so and I will
-  preserve it as a dedicated branch instead of leaving it merely reachable.**
+  **ℹ️ SCOPE OF THE REWRITE — and why it is now fully safe:** it **collapsed the 126 production
+  device-upload commits into the 38**, so that individual upload history is no longer in `main`'s
+  ancestry. **No photo BYTES were destroyed**, and this is now **permanently protected** — see the
+  `archive/photo-uploads` branch entry below. The 58 scratch paths that do not exist at the tip
+  (`tmp-*`, `_*`, `__probe__.txt`) were all deleted deliberately before the cleanup — no real content
+  lost.
   **Two mechanisms were REJECTED after testing on a clone, never on the real repo:**
   - `git filter-repo --commit-callback` + `commit.skip()` — **destroys content**, not just commits: it
     collapsed 2593 commits → 3 and left only **5 of 132 files** (`C.jpg` gone). A nested `def` in
@@ -62,6 +61,17 @@
   `backup/*` refs keep them alive, but they are **not** ancestors of the current `main`. To inspect one,
   pass it together with a backup ref, e.g. `git show 24bb6b2:js/celebration-photo.js`. Shas written from
   here on refer to the cleaned history.
+- **2026-11-01 — `archive/photo-uploads` branch created — the upload history is now PERMANENT.**
+  The cleanup above left the 126 device-upload commits reachable only through the `backup/*` refs, which
+  would have lost them if blob garbage-collection ever ran. **Fixed properly:** a permanent branch
+  **`archive/photo-uploads` → `24bb6b25831edce09fa603db3a6e01898a5a5d06`** (the exact pre-cleanup tip, so
+  **zero reconstruction risk**) is **pushed to the remote**. It holds the **full 2,593-commit history**,
+  including **all 127 device-upload commits** and **54 distinct `C.jpg` versions** back to 37 KB.
+  **Verified from the remote:** the ref equals the old tip, and **0 of the upload commits are missing
+  their `C.jpg`**. **This is the answer to "where did the upload history go?"** — it did not go anywhere;
+  `main` is clean and the archive keeps every upload. **Do not delete this branch.**
+  To recover any historical photo: `git fetch origin archive/photo-uploads` then
+  `git show origin/archive/photo-uploads:images/celebration/C.jpg`, or browse the branch on GitHub.
 - **2026-11-01 — the game-day "celebration showed the placeholder" bug is ALREADY FIXED AND DEPLOYED.
   It was never a CDN problem.** Re-analysed and confirmed against the live evidence: the photo was
   uploaded at **08:41** and the game ended **14:01** — over 5 hours later, so no deploy lag can explain
