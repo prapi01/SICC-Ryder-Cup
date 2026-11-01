@@ -98,6 +98,10 @@
   trigger on `ZSHORTCUTRUNEVENT` (see the HANDOVER finding for the verified workaround). After any such
   surgery, **run the uploader for real** — DB cleanliness is not evidence the graph still works.
 - **2026-11-01 — Uploader v4 (current): NO comparison at all; the run SHOWS the uploaded photo.**
+  **✅ NOW NAMED `UploadPhoto-C.jpg`** (user rename, 2026-11-01; verified installed pk=159, 14 actions).
+  The `UploadPhoto-004` name used throughout these docs refers to **this same 14-action build** — read
+  them as synonyms. The library now holds exactly `UploadPhoto-C.jpg` + `Rename To C.jpg`.
+  **Device-tested repeatedly by the user: "all successful"; 7 real uploads landed on 2026-11-01.**
   **14 actions** (v3 was 13; the user added a trailing `Stop and output`). Chain: token → resize 1920 /
   JPEG 0.9 / base64 → `GET` current `sha` → `PUT` (**`branch: main` in the JSON body**) → read
   `commit.sha` **from the PUT's own response** → **read the file back from GitHub and display it**.
@@ -227,6 +231,37 @@
   **replaced together or a historical game silently keeps the wrong photo** — the archive only holds
   a pointer, never the image. (Done once on 2026-10-31 when the uploaded shot turned out to be the
   wrong frame of the burst.)
+- **2026-11-01 — LIVE-GAME PHOTO PIPELINE: the app reads a FIREBASE copy, not GitHub, and the refresh
+  step is what guarantees freshness.** This is the architecture behind "will the app see the new `C.jpg`?",
+  verified in code and against live services:
+  1. **Detection (in-round, F1 only):** `triggerPhotoCheck()` ([real-game-save.js:256]) runs after **every**
+     hole save — cascade and normal paths, **no hole limit** — so it fires at the **final hole** as well.
+     It calls `checkAndRenameCelebrationPhoto()` → `checkPhotoChanged()`, which `HEAD`s
+     **`GITHUB_PHOTO_URL`** (the **Pages CDN**, `max-age=0, must-revalidate`) and compares the **ETag**.
+  2. **Snapshot:** on a change the CDN image is downloaded (`addCacheBuster()`), compressed, uploaded to
+     **Firebase Storage** at the fixed path `celebration/<gameId>_H.jpg`, verified, and
+     `scheduledGames/<gameId>.photo` is set to `{newPhotoAvailable:true, f2Downloaded:false,
+     viewDownloaded:false, imageUrl}`.
+  3. **At game end:** `sign-card.js` calls **`copyCelebrationPhoto()`**, which **re-reads the same CDN URL**
+     and writes `historyGames/<gameId>_H.celebration.imageUrl`. **This refresh step is what makes a late
+     upload visible.**
+  4. **Readers use the Firebase copy only:** `getCelebrationPhoto()` reads
+     `historyGames/<gameId>_H.celebration.imageUrl`; Viewer **and** Celebration both go through it.
+     Firebase Storage sends **`cache-control: private, max-age=0`** and the app appends `?t=` — so there is
+     **no client-side stale-cache path**.
+  **Consequence:** GitHub/CDN staleness **cannot** reach the celebration, because at celebration time the
+  app never reads GitHub — it reads Firebase, which the app itself wrote by downloading from the CDN.
+  **Verified on real PROD data:** `scheduledGames/GM_260914_1342_52` has `photo.newPhotoAvailable: true`
+  with `photo.imageUrl` **and** `celebration.imageUrl` identical, both pointing at
+  `celebration/GM_260914_1342_52_H.jpg` — steps 2 and 3 both completed for a real game.
+  **Two properties to keep in mind, both deliberate:** the check runs **every** hole (≈18 redundant
+  re-uploads per round — harmless), and the **CDN must have deployed the photo before the check runs** —
+  measured deploy latency **~20 s**, negligible against a multi-hour round.
+  **⚠️ TWO KNOWN TRAPS (both bit us):** (a) **`loadDefaultCelebrationPhoto()` must never overwrite a
+  broadcast photo** — that was Cause A of the game-day placeholder bug, fixed in **v1.22**; (b) the
+  **photo slot is shared** (`celebration/C.jpg` is a single file and the archive stores only a
+  **pointer**), so the CDN copy and the Storage snapshot must be replaced together or a historical game
+  silently keeps the wrong photo.
 - **2026-10-31 — T-2 row could show a stale "all square" (green squares) at holes whose data was
   saved late.** The T-1/T-2 result arrays are written per position, and the cascade that repairs
   earlier positions is gated by `if (currentPosition < lastSyncedPos)` — a **strict `<`** that skips

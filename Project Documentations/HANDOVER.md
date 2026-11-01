@@ -4,8 +4,17 @@
 > new technical findings. Read at the start of every session. Updated 2026-10-31.
 
 ## Current status (2026-11-01)
+- **2026-11-01 — ✅ UPLOADER FINALISED: renamed to `UploadPhoto-C.jpg`, device-tested repeatedly, ALL
+  SUCCESSFUL.** The shortcut was renamed by the user from `UploadPhoto-004` to **`UploadPhoto-C.jpg`**
+  (verified installed: pk=159, **14 actions**), and the library now holds exactly two upload-related
+  shortcuts — **`UploadPhoto-C.jpg`** plus the user's own `Rename To C.jpg`. All the `UploadPhoto-001/002/003/004`
+  variants are gone; the tidy-up task is **complete**. **User report: "I have tested the UploadPhoto and
+  the URL viewer many times ... all successful".** Corroborated by the repo: **5 more real uploads landed
+  on 2026-11-01 at 17:05, 17:07, 17:58, 18:00 and 18:05**, on top of the earlier pair at 16:12.
+  **`UploadPhoto-004` below is a historical name for the SAME 14-action build — read it as
+  `UploadPhoto-C.jpg` for all current work.**
 - **2026-11-01 — iPhone uploader: ✅ VIEW FIXED and confirmed working on the device; deliver
-  `UploadPhoto-004`.** The upload path had been working all along — the failures seen during this session
+  `UploadPhoto-004` (now `UploadPhoto-C.jpg`).** The upload path had been working all along — the failures seen during this session
   were **mine** (local test runs overwriting `C.jpg`, then a wrong restore). The genuine defect was the
   **VIEW result dialog**, and its cause is now proven: `is.workflow.actions.showresult` had `Text` as a
   raw **`WFTextTokenAttachment`**, where Shortcuts requires a **`WFTextTokenString` containing a `\ufffc`
@@ -13,10 +22,10 @@
   comparing against the user's own working shortcuts — `Music Quiz` and `Make GIF` both use
   `WFTextTokenString`; `UploadPhoto-003` was the **only** shortcut in the library using the attachment
   form. **`UploadPhoto-004`** fixes it and also points the VIEW read-back at
-  `raw.githubusercontent.com/<commit-sha>/…` (returns `content-type: image/jpeg`, so Shortcuts renders it
+  `raw.githubusercontent.com/<commit-sha>/...` (returns `content-type: image/jpeg`, so Shortcuts renders it
   as a photo; the Contents API + `Accept: application/vnd.github.raw` returns a **non-image** type and
   renders blank). **User confirmed: "view showing the uploaded photo correctly".**
-  Delivered byte-identical to `~/Downloads/` + iCloud `Upload/` (sha256 `406d8b14…`, 24,088 B, 14 actions).
+  Delivered byte-identical to `~/Downloads/` + iCloud `Upload/` (sha256 `406d8b14...`, 24,088 B, 14 actions).
 - **2026-11-01 — ⚠️ MY COMMIT CHURN ON `main` — and a CORRECTION to my own first account of it.**
   Diagnosing the above drove a large volume of throwaway commits straight onto `main`, and scratch files
   were committed (`_flowtest.txt`, `images/celebration/_semtest.txt`, `images/celebration/_probe.txt`,
@@ -98,6 +107,41 @@
   always re-downloads, and that is precisely what makes a stale copy impossible. It does mean the size
   half of the check is dead and the ETag half is never exercised. **Do not "optimise" this without a
   device test** — tightening it could make the app *skip* a real change. Status: **open decision.**
+- **2026-11-01 — ✅ ASSURANCE: will the app pick up `C.jpg` during a LIVE game? — traced end-to-end, and
+  YES, with one honest caveat.** The chain, verified in code and against the live services:
+  1. **Check runs at EVERY hole save, F1 only** — `triggerPhotoCheck()` ([real-game-save.js:256]) is called
+     from both the cascade and normal save paths and has **no hole limit**, so it fires at the **final
+     hole** too. That matters: a photo uploaded at H17 **is** seen by the time the game ends.
+  2. **Detection: `checkPhotoChanged()`** fetches `HEAD` on the Pages CDN and compares the **ETag**. Its
+     always-"changed" size bug (above) makes it **re-download every time** — noisy, but it **cannot miss a
+     change**.
+  3. **Download** → compress → **upload to Firebase Storage** at the fixed path `celebration/<gameId>_H.jpg`
+     → **verify** → write `scheduledGames/<gameId>.photo` = `{newPhotoAvailable:true, f2Downloaded:false,
+     viewDownloaded:false, imageUrl}`.
+  4. **At game end** `sign-card.js` runs `copyCelebrationPhoto()`, which re-reads the **same CDN URL** with
+     `addCacheBuster()`, uploads to that same Storage path, and writes
+     `historyGames/<gameId>_H.celebration.imageUrl` — **so the celebration reads the Firebase copy, which
+     was refreshed from GitHub by this step.**
+  5. **Both Viewer and Celebration read the FIREBASE copy**, not GitHub: `getCelebrationPhoto()` reads
+     `historyGames/<gameId>_H.celebration.imageUrl`. Firebase Storage sends
+     **`cache-control: private, max-age=0`** and the app appends `?t=`/`&t=` — so **no stale-cache path
+     exists on the client side.**
+  **EVIDENCE THE WHOLE CHAIN WORKS ON REAL DATA:** `scheduledGames/GM_260914_1342_52` in PROD reads
+  `photo.newPhotoAvailable: true` with `photo.imageUrl` and `celebration.imageUrl` **identical and both
+  pointing at `celebration/GM_260914_1342_52_H.jpg`** — i.e. step 3 and step 4 both completed for a real
+  game.
+  **CAVEATS, stated plainly (not hidden):**
+  - **CDN deploy latency is real but small: measured ~20 s** for a new file to reach the CDN (~150 s
+    observed for the 18:05 photo). A photo uploaded **seconds** before the celebration is therefore the
+    only risky timing — and a normal round finishes **hours** after the H17 upload.
+  - **The `checkPhotoChanged()` size bug means redundant uploads** (up to ~18 per round). Harmless to
+    correctness, but if it were ever "optimised" the safety margin shrinks — hence the open decision.
+  - **v1.22's guard has still never been exercised by a real mid-round upload plus a later viewer open.**
+    The automated suite covers the guard's logic and the device runs cover the upload, but the two have
+    not yet been combined in a live round. **This is the one genuinely unverified step.**
+  **MEASUREMENT LESSON (new, reusable):** a Pages deploy **cannot** be detected by HTTP status — Pages
+  serves `index.html` with **HTTP 200 for ANY missing path** (verified: a nonsense path returned 200 and
+  53,021 B). A status-based probe reported a false "live in 1 s". **Poll the CONTENT, not the status.**
 - **2026-11-01 — how to avoid the 5-minute stale window when checking a photo by hand.** The GitHub web
   view and `raw.githubusercontent.com` both send **`max-age=300`**, and **that window CANNOT be bypassed
   from the browser** — measured, not assumed:
@@ -1386,18 +1430,22 @@ game is mid-day.
 - **PRIORITY 2 — import `UploadPhoto-004` on the iPhone and confirm one upload.**
 **⚠️ SUPERSEDED — `UploadPhoto-004` is the current build and VIEW is confirmed working. See below.**
 The chain is now proven end-to-end on the device: **user confirmed "view showing the uploaded photo
-correctly"** (2026-11-01). What remains is only the deeper game-day verification and the iPhone
-tidy-up:
-1. **Delete the superseded shortcuts on the iPhone.** Keep exactly one uploader, plus the user's own
-   `Rename To C.jpg`. The uploader to keep is **`UploadPhoto-004`** (14 actions). Delete
-   `UploadPhoto-001`, `UploadPhoto-002`, `UploadPhoto-003`, and any duplicates — a second uploader
-   writing the same `C.jpg` is indistinguishable from a broken one.
-2. **Run one real photo through `UploadPhoto-004`** and confirm the result sheet shows **the photo**
-   (not an empty panel). Then confirm the commit landed with
-   `gh api repos/prapi01/SICC-Ryder-Cup/git/ref/heads/main` — **do NOT use
-   `commits?path=images/celebration/C.jpg`, which is CDN-cached.**
-3. **Then do the v1.22 game-day verification (PRIORITY 1 above)** — that is the one remaining
-   unproven path that matters on game day.
+correctly"** (2026-11-01), and **repeatedly since — "tested the UploadPhoto and the URL viewer many
+times ... all successful"**. **The tidy-up is DONE and the shortcut is renamed to `UploadPhoto-C.jpg`:**
+1. **✅ DONE — shortcut tidy-up.** The library holds exactly **`UploadPhoto-C.jpg`** (pk=159, **14
+   actions**) plus the user's own `Rename To C.jpg`. `UploadPhoto-001/002/003/004` are **all removed** —
+   verified by querying the installed library directly.
+2. **✅ DONE — repeated real uploads confirmed.** 7 real uploads landed on 2026-11-01 (16:12 ×2;
+   17:05, 17:07, 17:58, 18:00, 18:05), each a commit on `main`, and the VIEW sheet shows the photo.
+   **Verify a landing with `gh api repos/prapi01/SICC-Ryder-Cup/git/ref/heads/main` — do NOT use
+   `commits?path=images/celebration/C.jpg` (CDN-cached).**
+3. **⬜ REMAINING — the v1.22 game-day verification (PRIORITY 1 above)** — the one genuinely unproven
+   path: a real mid-round upload **plus** a viewer/celebration opened afterwards, in one live round.
+- **⚠️ CORRECTION to the "in-app VIEW" note below:** it says to read via the **Contents API
+  `Accept: application/vnd.github.raw`** — that is **WRONG and was the cause of the blank VIEW dialog**
+  (`content-type: application/vnd.github.raw`, not an image). The working form, and what
+  `UploadPhoto-C.jpg` ships, is **`raw.githubusercontent.com/<commit-sha>/...`**. Do **not** re-introduce
+  the Contents-API read-back.
 - **Decide the photo-PAT rotation** (see Open questions) — recommended sequence: mint new token → I
   rebuild + re-deliver → confirm one phone upload → **then** revoke the old one.
 - **Build the in-app VIEW screen** (approved 2026-11-01). Shortcut half is done. It must read via the
