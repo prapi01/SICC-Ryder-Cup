@@ -72,6 +72,32 @@
   `main` is clean and the archive keeps every upload. **Do not delete this branch.**
   To recover any historical photo: `git fetch origin archive/photo-uploads` then
   `git show origin/archive/photo-uploads:images/celebration/C.jpg`, or browse the branch on GitHub.
+- **2026-11-01 — "the 2nd upload is not working": it DID work — that was a BROWSER cache window, not an
+  upload failure.** The two uploads landed at **16:12:08** (`dc8cb66`, 525,990 B) and **16:12:35**
+  (`cd84e62`, 517,461 B) — **only 27 seconds apart**. `main`'s `C.jpg` blob (`21069a19…`) is
+  **byte-identical to `cd84e62`'s**, i.e. **GitHub holds upload #2** — confirmed three ways: the Contents
+  API, `raw.githubusercontent.com`, and the Pages CDN **all serve 517,461 B**. The stale view was the
+  **GitHub browser view** only, which redirects `blob/…?raw=true` → `raw/refs/heads/main/…` →
+  **`raw.githubusercontent.com`**, and that host sends **`cache-control: max-age=300` (5 minutes)**.
+  Every reload inside that window re-served upload **#1** from the browser cache — **reloading does not
+  bypass a still-fresh `max-age`.** The window expired at **16:17:08**. **Lesson: never judge an upload by
+  the GitHub web view within ~5 minutes of it; verify with `git/ref/heads/main` or the Contents API.**
+  This is the SAME trap as the earlier "the shortcut is lying?" false alarm — the browser is the slow
+  observer, not the source of truth.
+- **2026-11-01 — the app is IMMUNE to that browser-cache path (this is why game day is safe).** The app
+  never requests `raw.githubusercontent.com`: `GITHUB_PHOTO_URL` points at the **Pages CDN**, which sends
+  **`cache-control: public, max-age=0, must-revalidate`** — a browser is **forbidden** to reuse a stale
+  copy and must revalidate every time; and when the app actually **downloads**, it appends a
+  cache-buster via `addCacheBuster()` (`js/celebration-photo.js` :430, :609). So a photo that is live on
+  `main` **cannot** be masked for the app, however long the browser holds its own copy.
+- **2026-11-01 — latent (currently harmless) defect found in `checkPhotoChanged()`.** It probes with
+  `fetch(GITHUB_PHOTO_URL, { method: 'HEAD' })` and compares `content-length`, but the CDN's **HEAD
+  response omits `content-length`** (verified: HEAD has none, GET has `517461`). So `currentSize` is
+  `null` while `SIZE_STORAGE_KEY` stores `currentSize || ''` = `''`, and `null !== ''` is **always true**
+  → the function reports "changed" on **every** run. **Today that is protective, not harmful** — the app
+  always re-downloads, and that is precisely what makes a stale copy impossible. It does mean the size
+  half of the check is dead and the ETag half is never exercised. **Do not "optimise" this without a
+  device test** — tightening it could make the app *skip* a real change. Status: **open decision.**
 - **2026-11-01 — the game-day "celebration showed the placeholder" bug is ALREADY FIXED AND DEPLOYED.
   It was never a CDN problem.** Re-analysed and confirmed against the live evidence: the photo was
   uploaded at **08:41** and the game ended **14:01** — over 5 hours later, so no deploy lag can explain
