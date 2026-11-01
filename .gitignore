@@ -10,3 +10,6 @@ AD-HOC.md
 Rename & Clean Chats.command
 Icon*
 Icon
+
+# Firebase CLI debug output (transient; can contain tokens)
+firebase-debug.log
