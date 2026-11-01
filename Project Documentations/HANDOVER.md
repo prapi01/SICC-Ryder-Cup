@@ -17,15 +17,37 @@
   as a photo; the Contents API + `Accept: application/vnd.github.raw` returns a **non-image** type and
   renders blank). **User confirmed: "view showing the uploaded photo correctly".**
   Delivered byte-identical to `~/Downloads/` + iCloud `Upload/` (sha256 `406d8b14…`, 24,088 B, 14 actions).
-- **2026-11-01 — ⚠️ I POLLUTED `main` WITH ~169 TEST COMMITS.** Diagnosing the above drove a large volume
-  of throwaway commits straight onto `main` (`Update celebration photo` ×54, `t` ×21, `c` ×19, `x` ×16,
-  plus `probe`/`ratest`/`fix1-3`/`sim1-5`/`t1-3`/`cage`-style messages), and 2 scratch files were
-  committed (`_flowtest.txt`, `images/celebration/_semtest.txt`, `images/celebration/_probe.txt`).
-  `_flowtest.txt` was removed in `b5bd16a`; the other two were already deleted. **Not yet done: a history
-  rewrite — deliberately held for the user's call**, since it needs a force-push on a production repo and
-  would desync `staging`, `feature/team-one-rename`, `test/sign-submit-prognosis`. **Safety net in place:
-  branch + tag `backup/main-pre-cleanup-20261101-121850` → `3cd69bd1`, both pushed.** **Standing rule:
-  experiment on a branch — never commit test churn to `main`.**
+- **2026-11-01 — ⚠️ I POLLUTED `main` WITH TEST COMMITS — NOW CLEANED UP.** Diagnosing the above drove a
+  large volume of throwaway commits straight onto `main`, and scratch files were committed
+  (`_flowtest.txt`, `images/celebration/_semtest.txt`, `images/celebration/_probe.txt`). `_flowtest.txt`
+  was removed in `5930b91`; the other two were already deleted. The final count was **405 commits since
+  baseline `9671a4f`** (the earlier "~169" note in this file under-counted), of which only **38** were
+  real (conventional-commit or WRAP subjects). Worst offenders: `Update celebration photo` ×188,
+  `c`/`t`/`x`/`c1`/`c2` ×48, `cleanup` ×18, plus `probe`/`reset`/`v3`/`timing 300…4000`-style noise.
+  **Standing rule: experiment on a branch — never commit test churn to `main`.**
+- **2026-11-01 — HISTORY CLEANUP DONE (405 → 38 commits), content PROVEN identical.** Replayed only the
+  38 real commits with `git commit-tree`, each carrying its **own original tree** (preserving author and
+  committer dates), then `--force-with-lease`. **`main` is now `d70fa21e`; its tree `119d9746…` is
+  byte-identical to the pre-cleanup tree — all 132 blobs match, 132 files on disk, 0 empty commits.**
+  **Two mechanisms were REJECTED after testing on a clone, never on the real repo:**
+  - `git filter-repo --commit-callback` + `commit.skip()` — **destroys content**, not just commits: it
+    collapsed 2593 commits → 3 and left only **5 of 132 files** (`C.jpg` gone). A nested `def` in
+    `--commit-callback` is also silently never invoked — the callback takes a **body**, not a function.
+  - `git filter-branch --prune-empty --commit-filter` — git refuses the combination outright
+    (*"Cannot set --prune-empty and --commit-filter at the same time"*).
+  **Desync risk checked and cleared:** `staging`, `agents/bugfix-wrong-calculations`,
+  `feature/team-one-rename`, `test/sign-submit-prognosis` all contain **0 commits after the baseline**,
+  so rewriting `main` cannot desynchronise them. **Never use `commits?path=` to verify a push** (CDN
+  cache) — read `git/ref/heads/main`. **Safety nets:** remote branches/tags
+  `backup/main-pre-cleanup-20261101-121850` → `3cd69bd1` and
+  `backup/main-pre-cleanup-20261101-144625` → `24bb6b25`, plus local refs
+  `backup-local-pre-cleanup` / `backup-local-tag-pre-cleanup` → `24bb6b2`.
+  **Note for readers:** this cleanup **re-hashed the 38 kept commits** (they now have new sha's), and the
+  removed junk commits are gone from `main`. **Every commit sha recorded ABOVE in this log (older
+  entries) therefore refers to the PRE-cleanup history** — those objects still resolve because the
+  `backup/*` refs keep them alive, but they are **not** ancestors of the current `main`. To inspect one,
+  pass it together with a backup ref, e.g. `git show 24bb6b2:js/celebration-photo.js`. Shas written from
+  here on refer to the cleaned history.
 - **2026-11-01 — the game-day "celebration showed the placeholder" bug is ALREADY FIXED AND DEPLOYED.
   It was never a CDN problem.** Re-analysed and confirmed against the live evidence: the photo was
   uploaded at **08:41** and the game ended **14:01** — over 5 hours later, so no deploy lag can explain
@@ -1295,7 +1317,6 @@ game is mid-day.
   `UploadPhoto-004` device run already covers. A full dress rehearsal across a real 18-hole round is
   still the only way to cover the whole chain at once.
 - **PRIORITY 2 — import `UploadPhoto-004` on the iPhone and confirm one upload.**
-- **PRIORITY 2 — import the new shortcut on the iPhone and confirm one upload.**
 **⚠️ SUPERSEDED — `UploadPhoto-004` is the current build and VIEW is confirmed working. See below.**
 The chain is now proven end-to-end on the device: **user confirmed "view showing the uploaded photo
 correctly"** (2026-11-01). What remains is only the deeper game-day verification and the iPhone
