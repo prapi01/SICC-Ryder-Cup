@@ -1,9 +1,33 @@
 # sicc-ryder-cup — HANDOVER Log
 
 > Running project log. Updated after every milestone: new decisions, design changes,
-> new technical findings. Read at the start of every session. Updated 2026-10-31.
+> new technical findings. Read at the start of every session. Updated 2026-11-01.
 
 ## Current status (2026-11-01)
+- **✅ WRAP 2026-11-01 (21:10 SGT) — milestone closed. Photo pipeline is WORKING; ONE test remains.**
+  **Where things stand:** the iPhone→GitHub photo upload and the VIEW feature are **both working** and
+  **repeatedly device-tested by the user** ("tested the UploadPhoto and the URL viewer many times ...
+  all successful"). The uploader is now named **`UploadPhoto-C.jpg`** (14 actions; the old
+  `UploadPhoto-004` is the same build). Repo `main` is `a48c4a0`, clean, pushed, `C.jpg` = 635,029 B.
+  **The ONLY outstanding verification: the v1.22 game-day guard in a LIVE round** — a real mid-round
+  upload **plus** a viewer/celebration opened afterwards, in the same round. That is precisely the
+  combination that failed on the previous game day, so it is the one thing NOT claimed as proven.
+  **Practical routine (use this from now on):**
+  1. Upload with **`UploadPhoto-C.jpg`** → the run's VIEW sheet shows the photo that landed.
+  2. To confirm independently, open **`https://sicc-ryder-cup.pages.dev/images/celebration/C.jpg`** —
+     `max-age=0, must-revalidate`, so it is **always current**; its md5 equals the repo blob's.
+  3. **Never judge an upload from the GitHub web view** — `blob/...?raw=true` redirects to
+     `raw.githubusercontent.com`, which caches **`max-age=300`**, and a reload does **not** bypass a
+     fresh `max-age`. Verified ignorable bypasses: `?v=`, `?cb=<ns>`, `Cache-Control: no-cache`,
+     `Pragma: no-cache`.
+  **Open decisions parked by the user (do NOT act without asking):** (a) `checkPhotoChanged()`'s dead
+  `content-length` half → ~18 redundant re-uploads/round, harmless, left alone deliberately;
+  (b) **PAT rotation** — explicitly deferred by the user ("ignore the PAT rotation");
+  (c) tab-close data-loss risk on scorers (2026-10-29).
+- **2026-11-01 — 📌 RESUME HERE (fresh chat):** read this file's **Current status** section only; the
+  milestone is closed and nothing is mid-flight. The next real action is the **live-round rehearsal**
+  above, which needs a game in progress. Do **not** re-derive the CDN/cache findings — they are settled
+  and recorded (section on the 5-minute window + the `checkPhotoChanged()` entry).
 - **2026-11-01 — ✅ UPLOADER FINALISED: renamed to `UploadPhoto-C.jpg`, device-tested repeatedly, ALL
   SUCCESSFUL.** The shortcut was renamed by the user from `UploadPhoto-004` to **`UploadPhoto-C.jpg`**
   (verified installed: pk=159, **14 actions**), and the library now holds exactly two upload-related
