@@ -4,6 +4,50 @@
 > new technical findings. Read at the start of every session. Updated 2026-10-31.
 
 ## Current status (2026-11-01)
+- **2026-11-01 — iPhone uploader: ✅ VIEW FIXED and confirmed working on the device; deliver
+  `UploadPhoto-004`.** The upload path had been working all along — the failures seen during this session
+  were **mine** (local test runs overwriting `C.jpg`, then a wrong restore). The genuine defect was the
+  **VIEW result dialog**, and its cause is now proven: `is.workflow.actions.showresult` had `Text` as a
+  raw **`WFTextTokenAttachment`**, where Shortcuts requires a **`WFTextTokenString` containing a `\ufffc`
+  placeholder**. Symptom: the sheet opened **completely empty** (just Cancel/Done). Confirmed by
+  comparing against the user's own working shortcuts — `Music Quiz` and `Make GIF` both use
+  `WFTextTokenString`; `UploadPhoto-003` was the **only** shortcut in the library using the attachment
+  form. **`UploadPhoto-004`** fixes it and also points the VIEW read-back at
+  `raw.githubusercontent.com/<commit-sha>/…` (returns `content-type: image/jpeg`, so Shortcuts renders it
+  as a photo; the Contents API + `Accept: application/vnd.github.raw` returns a **non-image** type and
+  renders blank). **User confirmed: "view showing the uploaded photo correctly".**
+  Delivered byte-identical to `~/Downloads/` + iCloud `Upload/` (sha256 `406d8b14…`, 24,088 B, 14 actions).
+- **2026-11-01 — ⚠️ I POLLUTED `main` WITH ~169 TEST COMMITS.** Diagnosing the above drove a large volume
+  of throwaway commits straight onto `main` (`Update celebration photo` ×54, `t` ×21, `c` ×19, `x` ×16,
+  plus `probe`/`ratest`/`fix1-3`/`sim1-5`/`t1-3`/`cage`-style messages), and 2 scratch files were
+  committed (`_flowtest.txt`, `images/celebration/_semtest.txt`, `images/celebration/_probe.txt`).
+  `_flowtest.txt` was removed in `b5bd16a`; the other two were already deleted. **Not yet done: a history
+  rewrite — deliberately held for the user's call**, since it needs a force-push on a production repo and
+  would desync `staging`, `feature/team-one-rename`, `test/sign-submit-prognosis`. **Safety net in place:
+  branch + tag `backup/main-pre-cleanup-20261101-121850` → `3cd69bd1`, both pushed.** **Standing rule:
+  experiment on a branch — never commit test churn to `main`.**
+- **2026-11-01 — the game-day "celebration showed the placeholder" bug is ALREADY FIXED AND DEPLOYED.
+  It was never a CDN problem.** Re-analysed and confirmed against the live evidence: the photo was
+  uploaded at **08:41** and the game ended **14:01** — over 5 hours later, so no deploy lag can explain
+  it. The cause is **Cause A** (already documented below): `loadDefaultCelebrationPhoto()` ran **after**
+  the real photo was broadcast, called `setPhotoFlags()` with the **default** URL, overwrote
+  `photo.imageUrl` with `SRC_Default_Photo.jpg` and reset `f2Downloaded`/`viewDownloaded` — so F2/VIEW
+  correctly downloaded the *default* image. **`js/celebration-photo.js` v1.22 fixes this** (guard:
+  "Real photo broadcast in progress - keeping it, not setting default flags") and is **verified live on
+  the CDN** (deployed sha `92a12ae10fc9` = repo, version string `1.22`, guard present). It landed
+  **2026-10-31 16:13**, i.e. ~2 h **after** that game — **the game was played on the pre-fix build.**
+  **⚠️ No code change is needed for this symptom.** The only real gap: v1.22 has never been exercised
+  under live game-day conditions (needs a mid-round upload *plus* a viewer opening after the broadcast).
+  See the dedicated finding for the full timeline and the retracted false lead.
+- **2026-11-01 — ⚠️ RETRACTED FALSE LEAD: "Cloudflare Pages deploy lag explains the placeholder".**
+  I proposed an 80-minute deploy lag as the cause; **the user correctly rejected it** — a round takes
+  ~4.5 h and the photo was up 5 h 20 m before the celebration, so a lag of that size cannot be causal.
+  Also retracted: a proposal to repoint `GITHUB_PHOTO_URL` at `raw.githubusercontent.com`. The CDN
+  **ETag is content-derived** after all (`66ff11a5…` at 294,112 B → `b048020b…` at 641,989 B; prod and
+  staging differ for different content), so the app's ETag check is **correct** and needs no change.
+  **Method rule: check the timeline against the symptom's own clock before proposing a cause.**
+  Separately, real Pages **deploy latency does exist** (measured: a commit pushed 12:19 was still
+  undeployed at 14:03) — but it is **not** the cause of this bug.
 - **2026-11-01 — iPhone uploader: FALSE NEGATIVE FIXED (deletion, 19 → 13 actions), delivered, NOT yet
   imported.** Root cause is settled: the Contents API `PUT` is **idempotent and always returns HTTP 200
   with a `content.sha`**, so the old `If` block's **sha comparison took the `Else` branch on a fully
@@ -180,6 +224,73 @@ defeated within one deploy because the manifest changed again);
   no logic change. Also reset local + `origin/staging` to `main` (removed garbage commits).
 
 ## Technical findings
+- 2026-11-01 — **✅ iPhone VIEW: the empty result dialog — root cause is the `Text` SERIALIZATION TYPE.**
+  Symptom: the shortcut ran and the upload succeeded, but the result sheet was **completely empty**
+  (a bare Cancel/Done panel) — and at the same time the user's browser showed the **old** `C.jpg`.
+  **Cause:** `is.workflow.actions.showresult` was given
+  `Text = {"Value": {"OutputUUID": …, "Type": "ActionOutput", "OutputName": "Contents of URL"}, "WFSerializationType": "WFTextTokenAttachment"}`
+  — a **bare attachment**. Shortcuts requires **`WFTextTokenString` with a `\ufffc` placeholder** in the
+  string and the attachment in `attachmentsByRange`. With the wrong shape the dialog opens with **nothing
+  renderable to display**, which is exactly what an "empty" sheet looks like.
+  **Proof it is the discriminator:** every `showresult` in the user's library — `Music Quiz` (×3) and
+  `Make GIF` — uses `WFTextTokenString`; `UploadPhoto-003` was the **only** one using
+  `WFTextTokenAttachment`. The shape was copied from a *working* shortcut (`Make GIF`) to build
+  `UploadPhoto-004`.
+  **Second, independent fix in the same build — the VIEW read-back URL.** The Contents API with
+  `Accept: application/vnd.github.raw` returns the correct **bytes** but
+  `content-type: application/vnd.github.raw; charset=utf-8` — **not an image**, so Shortcuts cannot
+  render it. Fetching `https://raw.githubusercontent.com/prapi01/SICC-Ryder-Cup/<commit-sha>/images/celebration/C.jpg`
+  returns `content-type: image/jpeg` (measured, byte-identical content) and **does** render. Using the
+  **commit sha** (read from the `PUT`'s own `commit.sha`) rather than `main` makes the URL **immutable**,
+  so the `max-age=300` on that host cannot serve a stale image.
+  **Also confirmed:** the CDN's **ETag is content-derived** (`66ff11a5…` at 294,112 B → `b048020b…` at
+  641,989 B; prod vs staging differ for different content), so the **app's** `checkPhotoChanged()` ETag
+  comparison is correct and needs no change. `raw.githubusercontent.com` **ignores cache-buster query
+  strings** (verified) and is `max-age=300`.
+  **Files:** the shortcut graph only. A rebuild recipe (installed graph → fixed plist → sign → deliver)
+  is kept in this session's state folder as `rebuild-shortcut.sh`; it is not committed.
+- 2026-11-01 — **✅ GAME-DAY "PLACEHOLDER AT CELEBRATION" — FULL TIMELINE, AND WHY NO CODE CHANGE IS NEEDED.**
+  Symptom reported by the user: the browser showed the **new** `C.jpg`, but the Celebration screen still
+  showed the earlier **placeholder cartoon**. The following is the settled explanation, reconstructed
+  from git history plus the live Firestore evidence recorded in Cause A.
+  **Timeline (all times SGT, 2026-10-31):**
+
+  | Time | Event |
+  |---|---|
+  | 08:41 | Last `C.jpg` commit before play — the real photo the user uploaded |
+  | 12:56 | Firebase Storage `celebration/GM_260914_1342_52_H.jpg` **created** (the real photo) |
+  | 13:35 | **Overwritten with `SRC_Default_Photo.jpg`** ← the defect fires here |
+  | 14:01 | Game completed → celebration modal shown → **placeholder visible** |
+
+  **Cause:** `loadDefaultCelebrationPhoto()` (invoked by the viewer, `view-game.html` v8.16, since
+  2026-08-09) ran **after** a real photo had been broadcast, and called `setPhotoFlags()` with the
+  **default** URL. That overwrote `photo.imageUrl` with the default and reset `f2Downloaded` /
+  `viewDownloaded` to `false` — so F2 and VIEW, honouring those flags, downloaded the **default** image
+  by design. F1 alone kept the real blob in `sessionStorage`, which is why the scorer and the other
+  devices disagreed.
+  **Fix:** `js/celebration-photo.js` **v1.22**, landed **2026-10-31 16:13** — **~2 h after that game.**
+  **Verified live on the CDN** (deployed sha `92a12ae10fc9` = repo; version string `1.22`; the guard
+  line is present). **The game was played on the pre-fix build, so this is expected to recur no more.**
+  **⚠️ Residual risk:** v1.22 was written after that game and has **never** run under live game-day
+  conditions — the guard's branch needs a mid-round upload *plus* a viewer opening after the broadcast.
+  That specific condition should be verified deliberately before the next game (see Next steps).
+  **Files:** [js/celebration-photo.js](../../js/celebration-photo.js) (`loadDefaultCelebrationPhoto`,
+  `setPhotoFlags`), [view-game.html](../../view-game.html) (`checkPhotoForView`),
+  [js/sign-card.js](../../js/sign-card.js) (`showCelebrationScreen`, reads `sessionStorage
+  ['celebrationPhoto']`).
+  **Retracted false leads from this same investigation — do not repeat them:**
+  - **"Deploy lag explains it."** Wrong: 08:41 → 14:01 is 5 h 20 m; the user rejected it on that basis
+    and was right.
+  - **"The CDN ETag is deployment-derived, not content-derived."** Wrong: I verified `66ff11a5…`
+    (294,112 B) → `b048020b…` (641,989 B), and prod vs staging differ for different content. The ETag
+    **is** content-derived, so `checkPhotoChanged()` is correct.
+  - **"Repoint `GITHUB_PHOTO_URL` at `raw.githubusercontent.com`."** Not needed for this bug; proposed on
+    the bad premise above.
+  **Still true, and worth keeping separate:** Cloudflare Pages deploys of `main` can run **hours** behind
+  (measured 2026-11-01: a commit pushed 12:19 was still undeployed at 14:03). That is a real operational
+  fact for pages that must reflect a deploy, but it is **not** the cause of this symptom.
+  **Method rule for next time: before proposing a cause, check the timeline against the symptom's own
+  clock.**
 - 2026-10-31 — **⚠️ THE UPLOADER WAS NOT BROKEN — THE DELIVERED ARTIFACT WAS STALE (root cause).**
   The whole "it used to work and now it's broken" loop resolves to an **artifact/device mismatch**, not
   a broken graph. Evidence:
@@ -202,6 +313,13 @@ defeated within one deploy because the manifest changed again);
     C.jpg API — re-verified after every import.
 - 2026-10-31 — **⚠️ `raw.githubusercontent.com` AND the Cloudflare CDN are BOTH stale right after an
   upload — neither can back a "show me what's on GitHub NOW" view.** Measured:
+  > **⚠️ 2026-11-01 NUANCE — this finding is about immediate freshness after a write, and it still
+  > holds. But do NOT generalise it into "the CDN ETag is unusable":** the CDN ETag **is**
+  > content-derived (verified: `66ff11a5…` @ 294,112 B → `b048020b…` @ 641,989 B; prod vs staging differ
+  > for different content), so the app's `checkPhotoChanged()` ETag comparison is sound. The staleness
+  > above is a **propagation/lag** effect, not a broken ETag. `raw.githubusercontent.com` also
+  > **ignores cache-buster query strings** and sends `cache-control: max-age=300` (both re-verified
+  > 2026-11-01) — which is why the VIEW uses an **immutable commit-sha URL** instead.
   - `raw.githubusercontent.com/…/C.jpg` → `cache-control: max-age=300`, and it **IGNORES cache-buster
     query strings**. Immediately after a restore it still served the **previous** file for minutes
     (served a 37,244-byte test image while `main` held the 1,015,556-byte real photo).
@@ -1158,21 +1276,46 @@ game is mid-day.
 - If `deepseek` / the old SICC container are ever un-archived, re-add them via the web app.
 
 ## Next steps
-- **PRIORITY 1 — import the new shortcut on the iPhone and confirm one upload.**
-  The built file is sha256 **`c1803ef9...`** (23,881 B, `--mode anyone`), delivered byte-identical to
-  `~/Downloads/UploadPhoto.shortcut` and iCloud `Upload/UploadPhoto.shortcut`. The previous version
-  (sha256 `37d8a8b7...`) is backed up at `/tmp/pc/old_UploadPhoto.shortcut`.
-  1. On the iPhone, import `UploadPhoto.shortcut`. The row must show **13 actions** (was 19).
-  2. Photos → Share → **UploadPhoto** on a real photo.
-  3. **Success → the run displays the photo.** That image *is* the file now on `main` — and **there is
-     no failure text any more by design.** With the comparison deleted, the old
-     "⚠️ UPLOAD FAILED — GitHub returned no new file" message **cannot** appear; if the upload fails the
-     display simply will not be the new photo (and the run stops after the `PUT`).
-  4. To confirm independently: `gh api repos/prapi01/SICC-Ryder-Cup/commits?path=images/celebration/C.jpg`
-     is CDN-cached — instead check `gh api repos/prapi01/SICC-Ryder-Cup/git/ref/heads/main`.
-- **Delete the 11 leftover test shortcuts on the iPhone** (Shortcuts → Select → Delete). The Mac cannot
-  do this — iOS shortcuts are synced per-device. **Keep `UploadPhoto`**; **do not delete
-  `Rename To C.jpg`** (the user's own, created 2026-05-15).
+- **PRIORITY 1 — VERIFY v1.22's game-day guard before the next real game.** The placeholder fix is
+  deployed but has **never** run under live conditions. The guard only takes its branch when
+  `loadDefaultCelebrationPhoto()` runs **after** a real photo has been broadcast, i.e. both must be true:
+  1. A real photo has been uploaded **and** `scheduledGames/<gameId>.photo.newPhotoAvailable === true`
+     (F1 ran `checkAndRenameCelebrationPhoto()` after an upload).
+  2. A viewer opens **after** that — `view-game.html` then calls `loadDefaultCelebrationPhoto()`.
+  **Test:** during a round, upload a photo from the iPhone, confirm the flags go T/F/F in Firestore,
+  **then** open the viewer page load, and confirm `scheduledGames.photo.imageUrl` is **still the real
+  Storage URL** — not `SRC_Default_Photo.jpg` — and that `f2Downloaded`/`viewDownloaded` were **not**
+  reset. A browser console on the viewer should log
+  `[CelebrationPhoto] Real photo broadcast in progress - keeping it, not setting default flags`.
+  **Watch from the console (one copy-to-run block):**
+
+  ```js
+  var db = firebase.firestore();
+  db.collection('scheduledGames').doc(window.gameId || prompt('gameId (GM_...)')).get().then(d => {
+    var p = d.data().photo || {};
+    console.log('newPhotoAvailable:', p.newPhotoAvailable,
+                '| f2Downloaded:', p.f2Downloaded,
+                '| viewDownloaded:', p.viewDownloaded);
+    console.log('imageUrl:', p.imageUrl);
+    console.log('EXPECT: newPhotoAvailable true, imageUrl WITHOUT SRC_Default_Photo');
+  });
+  ```
+
+- **PRIORITY 2 — import the new shortcut on the iPhone and confirm one upload.**
+**⚠️ SUPERSEDED — `UploadPhoto-004` is the current build and VIEW is confirmed working. See below.**
+The chain is now proven end-to-end on the device: **user confirmed "view showing the uploaded photo
+correctly"** (2026-11-01). What remains is only the deeper game-day verification and the iPhone
+tidy-up:
+1. **Delete the superseded shortcuts on the iPhone.** Keep exactly one uploader, plus the user's own
+   `Rename To C.jpg`. The uploader to keep is **`UploadPhoto-004`** (14 actions). Delete
+   `UploadPhoto-001`, `UploadPhoto-002`, `UploadPhoto-003`, and any duplicates — a second uploader
+   writing the same `C.jpg` is indistinguishable from a broken one.
+2. **Run one real photo through `UploadPhoto-004`** and confirm the result sheet shows **the photo**
+   (not an empty panel). Then confirm the commit landed with
+   `gh api repos/prapi01/SICC-Ryder-Cup/git/ref/heads/main` — **do NOT use
+   `commits?path=images/celebration/C.jpg`, which is CDN-cached.**
+3. **Then do the v1.22 game-day verification (PRIORITY 1 above)** — that is the one remaining
+   unproven path that matters on game day.
 - **Decide the photo-PAT rotation** (see Open questions) — recommended sequence: mint new token → I
   rebuild + re-deliver → confirm one phone upload → **then** revoke the old one.
 - **Build the in-app VIEW screen** (approved 2026-11-01). Shortcut half is done. It must read via the

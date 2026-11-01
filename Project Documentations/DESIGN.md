@@ -97,10 +97,11 @@
   **stale counts**; (b) quit the Shortcuts app before any surgery, and beware the `AFTER DELETE` CoreData
   trigger on `ZSHORTCUTRUNEVENT` (see the HANDOVER finding for the verified workaround). After any such
   surgery, **run the uploader for real** — DB cleanliness is not evidence the graph still works.
-- **2026-11-01 — Uploader v3 (current): NO comparison at all; the run SHOWS the uploaded photo.**
-  **13 actions** (was 19): token → resize 1920 / JPEG 0.9 / base64 → `GET` current `sha` → `PUT`
-  (**`branch: main` in the JSON body**) → read `content.sha` **from the PUT's own response** →
-  **read the file back from GitHub and display it**. The `IF`/`ELSE` block is **deleted**.
+- **2026-11-01 — Uploader v4 (current): NO comparison at all; the run SHOWS the uploaded photo.**
+  **14 actions** (v3 was 13; the user added a trailing `Stop and output`). Chain: token → resize 1920 /
+  JPEG 0.9 / base64 → `GET` current `sha` → `PUT` (**`branch: main` in the JSON body**) → read
+  `commit.sha` **from the PUT's own response** → **read the file back from GitHub and display it**.
+  The `IF`/`ELSE` block is **deleted**.
   **Hard rule — never compare anything in the shortcut.** The Contents API `PUT` is **idempotent and
   always returns HTTP 200 + `content.sha`**; a sha/"did it change" comparison therefore **cannot
   prevent a failure and can only invent one**, which is exactly what v2 did (a fully successful upload
@@ -108,16 +109,25 @@
   when the user uploads, just make sure it lands"* — is now the design. The displayed photo **is** the
   proof, so no separate success test is needed or wanted.
   **Design decisions, each measured:**
-  - **The read-back MUST use the Contents API with `Accept: application/vnd.github.raw`.** It is the
-    only immediately-fresh, byte-exact source: it returns the current bytes, its `etag` **is** the blob
-    sha, and Shortcuts renders the response as an image whose bytes are **identical** to `main`.
-    **`raw.githubusercontent.com` (`max-age=300`, and it IGNORES cache-busters) and the Cloudflare CDN
-    (`sicc-ryder-cup.pages.dev`, what the app itself reads) are BOTH stale right after an upload** — a
-    view built on either would confidently show the *previous* photo. This is also why the app's own
-    celebration can lag behind an upload.
-  - **The `?cb=<sha>` cache-buster on the read-back is bound to the sha from the PUT response**, so the
-    URL is unique on every upload and the previous `GET`'s copy is never reused. (The wiring is
-    unchanged from v2 — only the sha's source moved.)
+  - **⚠️ CORRECTED 2026-11-01 — the read-back MUST use `raw.githubusercontent.com` with an IMMUTABLE
+    commit-sha URL.** The previous entry here claimed the Contents API with
+    `Accept: application/vnd.github.raw` could be rendered as an image by Shortcuts. **That is false,
+    and it caused an empty result dialog on the device.** Measured:
+    `Accept: application/vnd.github.raw` returns the right **bytes** but
+    `content-type: application/vnd.github.raw; charset=utf-8` — **not an image** — so Shortcuts has
+    nothing renderable and the sheet opens **blank**. `Accept: image/jpeg` is rejected with **415**, and
+    `media.githubusercontent.com` **404s** for this path.
+    `https://raw.githubusercontent.com/prapi01/SICC-Ryder-Cup/<commit-sha>/images/celebration/C.jpg`
+    returns **`content-type: image/jpeg`** (byte-identical content) and **does** render.
+    **Use the commit sha**, read from the PUT's own `commit.sha`: it makes the URL immutable, so that
+    host's `max-age=300` cannot serve a stale image. **Do not use `main` in that URL** — branch URLs are
+    mutable and cached.
+  - **⚠️ The result dialog's `Text` MUST be a `WFTextTokenString` containing a `\ufffc` placeholder,
+    with the attachment in `attachmentsByRange`.** A bare `WFTextTokenAttachment` renders an **empty**
+    dialog. This was the actual cause of the blank sheet (see HANDOVER). Copy the shape from a working
+    shortcut rather than hand-rolling it.
+  - **The `?cb=<sha>` cache-buster on the read-back is NOT needed with a commit-sha URL** and does
+    nothing for `raw.githubusercontent.com` anyway (verified: it ignores cache-buster query strings).
   - **The pre-upload `GET sha` must stay** — the Contents API rejects an update to an existing file
     without it (verified: `422 Invalid request. "sha" wasn't supplied.`). It is a *requirement*, not a
     check.
@@ -198,6 +208,15 @@
   `historyGames.celebration.imageUrl` → `localStorage['celebration_photo_url_<gameId>']` →
   `GITHUB_PHOTO_URL` (shared `C.jpg`). The `localStorage` link is populated per game by
   `storePhotoUrlForHistory()` (not by the default-photo path).
+  **⚠️ `GITHUB_PHOTO_URL` stays pointed at the Cloudflare CDN — verified correct 2026-11-01.**
+  `checkPhotoChanged()` compares the CDN's `ETag` and `content-length` against `localStorage` to decide
+  whether to re-pull the photo. **The CDN `ETag` IS content-derived** (measured: `66ff11a5…` @ 294,112 B
+  → `b048020b…` @ 641,989 B; prod vs staging differ for different content), so this check is sound and
+  **must not be "fixed"** by repointing it at `raw.githubusercontent.com` — that idea was proposed on a
+  false premise and retracted. **Do distinguish two different things:** the ETag *value* tracks content
+  correctly, but the *file* the CDN serves can sit behind the repo while a Pages deploy is pending
+  (measured hours-long lag). Lag is a propagation property of Pages, not an ETag defect, and it was
+  **not** the cause of the 2026-10-31 placeholder incident (that was cause A).
   **Repair:** the live `historyGames/GM_260914_1342_52_H` record was backfilled with its
   `celebration` pointer, and `scheduledGames/GM_260914_1342_52.photo` (left pointing at
   `SRC_Default_Photo.jpg` by cause A, with `viewDownloaded: false`) was repointed at the per-game
